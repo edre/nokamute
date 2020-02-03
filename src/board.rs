@@ -109,7 +109,8 @@ fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
     let hash = ZOBRIST_TABLE[(id as usize) << 4 | (bug as usize) << 1 | (color as usize)];
     // I don't really want to multiply the table by another factor of 7, so
     // just realign the existing random bits.
-    hash.rotate_left(height)
+    // Also include the color to move hash.
+    hash.rotate_left(height) ^ 0xa6c11b626b105b7c
 }
 
 impl Board {
