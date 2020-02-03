@@ -498,16 +498,15 @@ impl Board {
             }
         }
         // Wrap around in each direction
-        occupied |= occupied << 6;
-        occupied = (occupied << 1) | (occupied >> 5) & 1;
-        let mut slideable = !occupied & (occupied << 1 ^ occupied >> 1);
+        occupied |= occupied << 6 | occupied << 12;
+        let mut slideable = (!occupied & (occupied << 1 ^ occupied >> 1)) >> 6;
 
         for neighbor in neighbors.iter() {
-            slideable >>= 1;
             if slideable & 1 != 0 {
                 out[n] = Some(*neighbor);
                 n += 1;
             }
+            slideable >>= 1;
         }
 
         out
