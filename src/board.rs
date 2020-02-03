@@ -481,10 +481,10 @@ impl Board {
     }
 
     // For a position on the outside (whether occupied or not), find all
-    // adjacent locations still connected to the hive that are slideable.
-    // A slideable position has 2 empty slots next to an occupied slot.
-    // For all 2^6 possibilities, there can be 0, 2, or 4 slideable neighbors.
-    fn slideable_adjacent(&self, origin: Id, id: Id) -> [Option<Id>; 4] {
+    // adjacent locations still connected to the hive that are slidable.
+    // A slidable position has 2 empty slots next to an occupied slot.
+    // For all 2^6 possibilities, there can be 0, 2, or 4 slidable neighbors.
+    fn slidable_adjacent(&self, origin: Id, id: Id) -> [Option<Id>; 4] {
         let mut out = [None; 4];
         let mut n = 0;
         let neighbors = self.adjacent(id);
@@ -499,14 +499,14 @@ impl Board {
         }
         // Wrap around in each direction
         occupied |= occupied << 6 | occupied << 12;
-        let mut slideable = (!occupied & (occupied << 1 ^ occupied >> 1)) >> 6;
+        let mut slidable = (!occupied & (occupied << 1 ^ occupied >> 1)) >> 6;
 
         for neighbor in neighbors.iter() {
-            if slideable & 1 != 0 {
+            if slidable & 1 != 0 {
                 out[n] = Some(*neighbor);
                 n += 1;
             }
-            slideable >>= 1;
+            slidable >>= 1;
         }
 
         out
@@ -546,7 +546,7 @@ impl Board {
     }
 
     fn generate_walk1(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        for adj in self.slideable_adjacent(id, id).iter() {
+        for adj in self.slidable_adjacent(id, id).iter() {
             if let &Some(node) = adj {
                 moves[*n] = Some(Move::Movement(id, node));
                 *n += 1;
@@ -568,7 +568,7 @@ impl Board {
                 return;
             }
             path.push(id);
-            for adj in board.slideable_adjacent(orig, id).iter() {
+            for adj in board.slidable_adjacent(orig, id).iter() {
                 if let Some(node) = *adj {
                     dfs(node, orig, board, path, moves, n);
                 }
@@ -591,7 +591,7 @@ impl Board {
                 moves[*n] = Some(Move::Movement(orig, node));
                 *n += 1;
             }
-            for adj in self.slideable_adjacent(orig, node).iter() {
+            for adj in self.slidable_adjacent(orig, node).iter() {
                 if let Some(next) = adj {
                     queue.push(*next);
                 }
@@ -841,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn test_slideable() {
+    fn test_slidable() {
         let mut board = Board::default();
         let x = board.alloc((0, 0));
         // One neighbor.
@@ -849,27 +849,27 @@ mod tests {
         board.insert_loc((1, 0), Bug::Queen, Color::Black);
         assert_eq!(
             [Some(board.alloc((0, -1))), Some(board.alloc((1, 1))), None, None],
-            board.slideable_adjacent(x, x)
+            board.slidable_adjacent(x, x)
         );
         // Two adjacent neighbors.
         board.insert_loc((1, 1), Bug::Queen, Color::Black);
         assert_eq!(
             [Some(board.alloc((0, -1))), Some(board.alloc((0, 1))), None, None],
-            board.slideable_adjacent(x, x)
+            board.slidable_adjacent(x, x)
         );
         // Four adjacent neighbors.
         board.insert_loc((0, 1), Bug::Queen, Color::Black);
         board.insert_loc((-1, 0), Bug::Queen, Color::Black);
         assert_eq!(
             [Some(board.alloc((-1, -1))), Some(board.alloc((0, -1))), None, None],
-            board.slideable_adjacent(x, x)
+            board.slidable_adjacent(x, x)
         );
         // Five adjacent neighbors.
         board.insert_loc((-1, -1), Bug::Queen, Color::Black);
-        assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
+        assert_eq!([None, None, None, None], board.slidable_adjacent(x, x));
         // 2 separated groups of neighbors.
         board.remove_loc((0, 1));
-        assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
+        assert_eq!([None, None, None, None], board.slidable_adjacent(x, x));
         // 2 opposite single neighbors
         board.remove_loc((1, 1));
         board.remove_loc((-1, -1));
@@ -880,7 +880,7 @@ mod tests {
                 Some(board.alloc((1, 1))),
                 Some(board.alloc((0, 1)))
             ],
-            board.slideable_adjacent(x, x)
+            board.slidable_adjacent(x, x)
         );
     }
 
