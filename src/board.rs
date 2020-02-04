@@ -208,11 +208,11 @@ impl Board {
     fn get_available_bugs(&self) -> [(Bug, u8); 5] {
         let remaining = self.get_remaining();
         [
-            (Bug::Queen, remaining[0]),
-            (Bug::Grasshopper, remaining[1]),
-            (Bug::Spider, remaining[2]),
-            (Bug::Ant, remaining[3]),
-            (Bug::Beetle, remaining[4]),
+            (Bug::Queen, remaining[Bug::Queen as usize]),
+            (Bug::Grasshopper, remaining[Bug::Grasshopper as usize]),
+            (Bug::Spider, remaining[Bug::Spider as usize]),
+            (Bug::Ant, remaining[Bug::Ant as usize]),
+            (Bug::Beetle, remaining[Bug::Beetle as usize]),
         ]
     }
 
@@ -644,7 +644,8 @@ impl minimax::Game for Game {
             // Find placeable positions.
             board.generate_placements(moves, &mut n);
 
-            if !board.queen_required() {
+            // Once queen has been placed, pieces may move.
+            if board.get_remaining()[Bug::Queen as usize] == 0 {
                 // For movable pieces, generate all legal moves.
                 board.generate_movements(moves, &mut n);
             }
