@@ -1,5 +1,5 @@
 use hive;
-use minimax::{Game, Move, Strategy};
+use minimax::{Game, Move, Strategy, Negamax, Options};
 use std::io::{self, BufRead, Write};
 
 fn read_line(prompt: &str) -> String {
@@ -140,7 +140,7 @@ fn main() {
         }
         // Precompute possible moves.
         let mut moves = [None; 200];
-        let n = hive::Game::generate_moves(&mut board, minimax::Player::Computer, &mut moves);
+        let n = hive::Game::generate_moves(&mut board, &mut moves);
         if moves[0] == Some(hive::Move::Pass) {
             // Auto-pass if there are no valid moves.
             hive::Move::Pass.apply(&mut board);
@@ -157,11 +157,10 @@ fn main() {
                     depth = num;
                 }
             }
-            let mut strategy = hive::Negamax::<hive::DumbEvaluator>::new(hive::NegamaxOptions {
+            let mut strategy = Negamax::<hive::DumbEvaluator>::new(Options {
                 max_depth: depth,
             });
-            let player = board.player_to_move();
-            if let Some(m) = strategy.choose_move(&mut board, player) {
+            if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);
                 m.apply(&mut board);
             }

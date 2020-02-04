@@ -623,14 +623,6 @@ impl Board {
             }
         }
     }
-
-    pub fn player_to_move(&self) -> minimax::Player {
-        if self.move_num & 1 == 0 {
-            minimax::Player::Computer
-        } else {
-            minimax::Player::Opponent
-        }
-    }
 }
 
 pub struct Game;
@@ -639,7 +631,7 @@ impl minimax::Game for Game {
     type S = Board;
     type M = Move;
 
-    fn generate_moves(board: &Board, _: minimax::Player, moves: &mut [Option<Move>]) -> usize {
+    fn generate_moves(board: &Board, moves: &mut [Option<Move>]) -> usize {
         let mut n = 0;
 
         if board.move_num < 2 {
@@ -676,10 +668,10 @@ impl minimax::Game for Game {
         } else if queens_surrounded == [6, 6] {
             // Draw by simultaneous queen surrounding.
             Some(minimax::Winner::Draw)
-        } else if queens_surrounded[board.move_num as usize & 1] == 6 {
-            Some(minimax::Winner::Competitor(minimax::Player::Computer))
-        } else if queens_surrounded[(board.move_num + 1) as usize & 1] == 6 {
-            Some(minimax::Winner::Competitor(minimax::Player::Opponent))
+        } else if queens_surrounded[board.to_move() as usize] == 6 {
+            Some(minimax::Winner::PlayerJustMoved)
+        } else if queens_surrounded[1-board.to_move() as usize] == 6 {
+            Some(minimax::Winner::PlayerToMove)
         } else {
             None
         }
@@ -691,14 +683,8 @@ pub struct DumbEvaluator;
 
 impl minimax::Evaluator for DumbEvaluator {
     type G = Game;
-    fn evaluate(_: &Board, mw: Option<minimax::Winner>) -> minimax::Evaluation {
-        match mw {
-            Some(minimax::Winner::Competitor(wp)) => match wp {
-                minimax::Player::Computer => minimax::Evaluation::Best,
-                minimax::Player::Opponent => minimax::Evaluation::Worst,
-            },
-            _ => minimax::Evaluation::Score(0),
-        }
+    fn evaluate(_: &Board) -> minimax::Evaluation {
+        minimax::Evaluation::Score(0)
     }
 }
 
@@ -1025,8 +1011,7 @@ mod tests {
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: 1 });
-        let player = minimax::Player::Computer;
-        let m = strategy.choose_move(&mut board, player);
+        let m = strategy.choose_move(&mut board);
         board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
 
         // TODO: Switch colors.

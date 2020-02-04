@@ -4,14 +4,14 @@ extern crate hive;
 extern crate minimax;
 
 use bencher::Bencher;
-use hive::{Board, Bug, Negamax, NegamaxOptions};
-use minimax::{Move, Strategy};
+use hive::{Board, Bug};
+use minimax::{Move, Strategy, Negamax, Options};
 
 fn empty_board_depth4(b: &mut Bencher) {
     b.iter(|| {
         let mut board = Board::default();
-        let mut strategy = Negamax::<hive::DumbEvaluator>::new(NegamaxOptions { max_depth: 4 });
-        let m = strategy.choose_move(&mut board, minimax::Player::Opponent);
+        let mut strategy = Negamax::<hive::DumbEvaluator>::new(Options { max_depth: 4 });
+        let m = strategy.choose_move(&mut board);
         assert!(m.is_some());
     });
 }
@@ -39,8 +39,8 @@ fn full_board_depth2(b: &mut Bencher) {
         hive::Move::Pass.apply(&mut board);
         hive::Move::Place(board.id((5, 5)), Bug::Ant).apply(&mut board);
         hive::Move::Pass.apply(&mut board);
-        let mut strategy = Negamax::<hive::DumbEvaluator>::new(NegamaxOptions { max_depth: 2 });
-        let m = strategy.choose_move(&mut board, minimax::Player::Opponent);
+        let mut strategy = Negamax::<hive::DumbEvaluator>::new(Options { max_depth: 2 });
+        let m = strategy.choose_move(&mut board);
         assert!(m.is_some());
     });
 }
