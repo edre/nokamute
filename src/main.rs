@@ -1,5 +1,5 @@
 use hive;
-use minimax::{Game, Move, Strategy, Negamax, Options};
+use minimax::{Game, Move, Negamax, Options, Strategy};
 use std::io::{self, BufRead, Write};
 
 fn read_line(prompt: &str) -> String {
@@ -132,9 +132,9 @@ fn main() {
     loop {
         if let Some(winner) = hive::Game::get_winner(&board) {
             if winner == minimax::Winner::Draw {
-                println!("Game over. Draw.");
+                println!("{}Game over. Draw.", board);
             } else {
-                println!("Game over.");
+                println!("{}Game over.", board);
             }
             break;
         }
@@ -157,9 +157,7 @@ fn main() {
                     depth = num;
                 }
             }
-            let mut strategy = Negamax::<hive::DumbEvaluator>::new(Options {
-                max_depth: depth,
-            });
+            let mut strategy = Negamax::<hive::BasicEvaluator>::new(Options { max_depth: depth });
             if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);
                 m.apply(&mut board);

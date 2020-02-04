@@ -670,7 +670,7 @@ impl minimax::Game for Game {
             Some(minimax::Winner::Draw)
         } else if queens_surrounded[board.to_move() as usize] == 6 {
             Some(minimax::Winner::PlayerJustMoved)
-        } else if queens_surrounded[1-board.to_move() as usize] == 6 {
+        } else if queens_surrounded[1 - board.to_move() as usize] == 6 {
             Some(minimax::Winner::PlayerToMove)
         } else {
             None
@@ -685,6 +685,50 @@ impl minimax::Evaluator for DumbEvaluator {
     type G = Game;
     fn evaluate(_: &Board) -> minimax::Evaluation {
         minimax::Evaluation::Score(0)
+    }
+}
+
+// An evaluator that counts movable pieces and how close to death the queen is.
+pub struct BasicEvaluator;
+
+impl minimax::Evaluator for BasicEvaluator {
+    type G = Game;
+    fn evaluate(board: &Board) -> minimax::Evaluation {
+        const QUEEN_FACTOR: i64 = 20;
+        const MOVABLE_BUG_FACTOR: i64 = 1;
+
+        let queens_surrounded = board.queens_surrounded();
+        let immovable = board.find_cut_vertexes();
+
+        fn value(bug: Bug) -> i64 {
+            // Mostly made up. All I know is that ants are good.
+            match bug {
+                Bug::Queen => 10,
+                Bug::Ant => 7,
+                Bug::Beetle => 6,
+                Bug::Grasshopper => 3,
+                Bug::Spider => 3,
+            }
+        }
+
+        let mut score: i64 = queens_surrounded[1 - board.to_move() as usize] as i64
+            - queens_surrounded[board.to_move() as usize] as i64;
+        score *= QUEEN_FACTOR;
+
+        for (id, node) in (0..).zip(board.nodes.iter()) {
+            if let Some(ref tile) = node.tile {
+                if tile.underneath.is_none() && immovable.get(id) {
+                    continue;
+                }
+                let mut bug_score = MOVABLE_BUG_FACTOR * value(tile.bug);
+                if tile.color != board.to_move() {
+                    bug_score = -bug_score;
+                }
+                score += bug_score;
+            }
+        }
+
+        minimax::Evaluation::Score(score)
     }
 }
 
@@ -1010,10 +1054,14 @@ mod tests {
         crate::Move::Place(board.alloc((2, 2)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
-        let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: 1 });
-        let m = strategy.choose_move(&mut board);
-        board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
+        for depth in 0..2 {
+            let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: depth });
+            let m = strategy.choose_move(&mut board);
+            board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
 
-        // TODO: Switch colors.
+            let mut strategy = Negamax::<BasicEvaluator>::new(Options { max_depth: depth });
+            let m = strategy.choose_move(&mut board);
+            board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
+        }
     }
 }

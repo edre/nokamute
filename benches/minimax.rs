@@ -5,18 +5,18 @@ extern crate minimax;
 
 use bencher::Bencher;
 use hive::{Board, Bug};
-use minimax::{Move, Strategy, Negamax, Options};
+use minimax::{Game, Move, Negamax, Options, Strategy};
 
-fn empty_board_depth4(b: &mut Bencher) {
+fn empty_board_depth3(b: &mut Bencher) {
     b.iter(|| {
         let mut board = Board::default();
-        let mut strategy = Negamax::<hive::DumbEvaluator>::new(Options { max_depth: 4 });
+        let mut strategy = Negamax::<hive::BasicEvaluator>::new(Options { max_depth: 3 });
         let m = strategy.choose_move(&mut board);
         assert!(m.is_some());
     });
 }
 
-fn full_board_depth2(b: &mut Bencher) {
+fn full_board_depth1(b: &mut Bencher) {
     b.iter(|| {
         let mut board = Board::default();
         // From some game I found online, subbed out some expansion pieces.
@@ -39,11 +39,30 @@ fn full_board_depth2(b: &mut Bencher) {
         hive::Move::Pass.apply(&mut board);
         hive::Move::Place(board.id((5, 5)), Bug::Ant).apply(&mut board);
         hive::Move::Pass.apply(&mut board);
-        let mut strategy = Negamax::<hive::DumbEvaluator>::new(Options { max_depth: 2 });
+        let mut strategy = Negamax::<hive::BasicEvaluator>::new(Options { max_depth: 1 });
         let m = strategy.choose_move(&mut board);
         assert!(m.is_some());
     });
 }
 
-benchmark_group!(benchmarks, empty_board_depth4, full_board_depth2);
+fn random_walk(b: &mut Bencher) {
+    b.iter(|| {
+        // Simple deterministic RNG.
+        let mut rand = 12345u32;
+        let mut board = Board::default();
+        for _ in 0..300 {
+            if hive::Game::get_winner(&board).is_some() {
+                break;
+            }
+            let mut moves = [None; 200];
+            let n = hive::Game::generate_moves(&board, &mut moves);
+            // Iterate RNG
+            rand = rand.wrapping_mul(101).wrapping_add(1);
+            let m = moves[rand as usize % n].unwrap();
+            m.apply(&mut board);
+        }
+    })
+}
+
+benchmark_group!(benchmarks, empty_board_depth3, full_board_depth1, random_walk);
 benchmark_main!(benchmarks);
