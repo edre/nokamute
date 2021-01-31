@@ -292,7 +292,7 @@ impl minimax::Move for Move {
 }
 
 impl Board {
-    fn generate_placements(&self, board_moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_placements(&self, moves: &mut [Option<Move>], n: &mut usize) {
         // First find empty spaces next to the correct color bugs.
         let mut available = HashSet::new();
         for (&loc, tile) in self.grid.iter() {
@@ -317,7 +317,7 @@ impl Board {
                         continue;
                     }
                     if *num_left > 0 {
-                        board_moves[*n] = Some(Move::Place(pos, *bug));
+                        moves[*n] = Some(Move::Place(pos, *bug));
                         *n += 1;
                     }
                 }
@@ -360,7 +360,7 @@ impl Board {
     // adjacent locations still connected to the hive that are slideable.
     // A slideable position has 2 empty slots next to an occupied slot.
     // For all 2^6 possibilities, there can be 0, 2, or 4 slideable neighbors.
-    fn slideable_adjacent(&self, loc: Loc) -> [Option<Loc>; 4] {
+    fn slideable_adjacent(&self, origin: Loc, loc: Loc) -> [Option<Loc>; 4] {
         let mut out = [None; 4];
         let mut n = 0;
         let neighbors = adjacent(loc);
@@ -368,7 +368,8 @@ impl Board {
         let mut occupied = 0;
         for neighbor in neighbors.iter().rev() {
             occupied <<= 1;
-            if self.get(*neighbor).is_some() {
+            // Since the origin bug is moving, we can't crawl around it.
+            if self.get(*neighbor).is_some() && *neighbor != origin {
                 occupied |= 1;
             }
         }
@@ -389,17 +390,17 @@ impl Board {
     }
 
     // From any bug on top of a stack. Walk or jump down in any direction.
-    fn generate_stack_walking(&self, loc: Loc, board_moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_stack_walking(&self, loc: Loc, moves: &mut [Option<Move>], n: &mut usize) {
         for &adj in adjacent(loc).iter() {
             if self.get(adj).is_none() {
-                board_moves[*n] = Some(Move::Movement(loc, adj));
+                moves[*n] = Some(Move::Movement(loc, adj));
                 *n += 1;
             }
         }
     }
 
     // Jumping over contiguous linear lines of tiles.
-    fn generate_jumps(&self, loc: Loc, board_moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_jumps(&self, loc: Loc, moves: &mut [Option<Move>], n: &mut usize) {
         for &dir in adjacent(loc).iter() {
             if self.get(dir).is_some() {
                 let dx = dir.0 - loc.0;
@@ -410,33 +411,77 @@ impl Board {
                     x += dx;
                     y += dy;
                 }
-                board_moves[*n] = Some(Move::Movement(loc, (x, y)));
+                moves[*n] = Some(Move::Movement(loc, (x, y)));
                 *n += 1;
             }
         }
     }
 
-    fn generate_walk1(&self, loc: Loc, board_moves: &mut [Option<Move>], n: &mut usize) {
-        // TODO
-    }
-    fn generate_walk3(&self, loc: Loc, board_moves: &mut [Option<Move>], n: &mut usize) {
-        // TODO
-    }
-    fn generate_walk_all(&self, loc: Loc, board_moves: &mut [Option<Move>], n: &mut usize) {
-        // TODO
+    fn generate_walk1(&self, loc: Loc, moves: &mut [Option<Move>], n: &mut usize) {
+        for adj in self.slideable_adjacent(loc, loc).iter() {
+            if let &Some(node) = adj {
+                moves[*n] = Some(Move::Movement(loc, node));
+                *n += 1;
+            }
+        }
     }
 
-    fn generate_movements(&self, board_moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_walk3(&self, orig: Loc, moves: &mut [Option<Move>], n: &mut usize) {
+        fn dfs(
+            loc: Loc, orig: Loc, board: &Board, path: &mut Vec<Loc>, moves: &mut [Option<Move>],
+            n: &mut usize,
+        ) {
+            if path.contains(&loc) {
+                return;
+            }
+            if path.len() == 3 {
+                moves[*n] = Some(Move::Movement(orig, loc));
+                *n += 1;
+                return;
+            }
+            path.push(loc);
+            for adj in board.slideable_adjacent(orig, loc).iter() {
+                if let Some(node) = *adj {
+                    dfs(node, orig, board, path, moves, n);
+                }
+            }
+            path.pop();
+        }
+        let mut path = Vec::new();
+        dfs(orig, orig, self, &mut path, moves, n);
+    }
+
+    fn generate_walk_all(&self, orig: Loc, moves: &mut [Option<Move>], n: &mut usize) {
+        let mut visited = HashSet::<Loc>::new();
+        let mut queue = vec![orig];
+        while let Some(node) = queue.pop() {
+            if visited.contains(&node) {
+                continue;
+            }
+            visited.insert(node);
+            if node != orig {
+                moves[*n] = Some(Move::Movement(orig, node));
+                *n += 1;
+            }
+            for adj in self.slideable_adjacent(orig, node).iter() {
+                if let Some(next) = adj {
+                    queue.push(*next);
+                }
+            }
+        }
+    }
+
+    fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
         for (&loc, tile) in self.grid.iter() {
             if tile.underneath.is_some() {
-                self.generate_stack_walking(loc, board_moves, n);
+                self.generate_stack_walking(loc, moves, n);
             } else if !self.is_cut_vertex(loc) {
                 match tile.bug {
-                    Bug::Queen => self.generate_walk1(loc, board_moves, n),
-                    Bug::Grasshopper => self.generate_jumps(loc, board_moves, n),
-                    Bug::Spider => self.generate_walk3(loc, board_moves, n),
-                    Bug::Ant => self.generate_walk_all(loc, board_moves, n),
-                    Bug::Beetle => self.generate_walk1(loc, board_moves, n),
+                    Bug::Queen => self.generate_walk1(loc, moves, n),
+                    Bug::Grasshopper => self.generate_jumps(loc, moves, n),
+                    Bug::Spider => self.generate_walk3(loc, moves, n),
+                    Bug::Ant => self.generate_walk_all(loc, moves, n),
+                    Bug::Beetle => self.generate_walk1(loc, moves, n),
                 }
             }
         }
@@ -470,45 +515,118 @@ fn test_cut_vertex() {
 #[test]
 fn test_slideable() {
     let mut board = Board::default();
+    let x = (0, 0);
     // One neighbor.
     board.insert((0, 0), Bug::Queen, Color::Black);
     board.insert((1, 0), Bug::Queen, Color::Black);
-    assert_eq!([Some((0, -1)), Some((1, 1)), None, None], board.slideable_adjacent((0, 0)));
+    assert_eq!([Some((0, -1)), Some((1, 1)), None, None], board.slideable_adjacent(x, x));
     // Two adjacent neighbors.
     board.insert((1, 1), Bug::Queen, Color::Black);
-    assert_eq!([Some((0, -1)), Some((0, 1)), None, None], board.slideable_adjacent((0, 0)));
+    assert_eq!([Some((0, -1)), Some((0, 1)), None, None], board.slideable_adjacent(x, x));
     // Four adjacent neighbors.
     board.insert((0, 1), Bug::Queen, Color::Black);
     board.insert((-1, 0), Bug::Queen, Color::Black);
-    assert_eq!([Some((-1, -1)), Some((0, -1)), None, None], board.slideable_adjacent((0, 0)));
+    assert_eq!([Some((-1, -1)), Some((0, -1)), None, None], board.slideable_adjacent(x, x));
     // Five adjacent neighbors.
     board.insert((-1, -1), Bug::Queen, Color::Black);
-    assert_eq!([None, None, None, None], board.slideable_adjacent((0, 0)));
+    assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
     // 2 separated groups of neighbors.
     board.remove((0, 1));
-    assert_eq!([None, None, None, None], board.slideable_adjacent((0, 0)));
+    assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
     // 2 opposite single neighbors
     board.remove((1, 1));
     board.remove((-1, -1));
     assert_eq!(
         [Some((-1, -1)), Some((0, -1)), Some((1, 1)), Some((0, 1))],
-        board.slideable_adjacent((0, 0))
+        board.slideable_adjacent(x, x)
     );
 }
 
 #[test]
 fn test_generate_jumps() {
     let mut board = Board::default();
+    //．．．🦗🦗🦗．
+    // ．．🦗．．．
+    //．．．．．．
+    // ．🦗．．
     for &node in &[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)] {
         board.insert(node, Bug::Grasshopper, Color::Black);
     }
+    println!("{}", board);
     let mut moves = [None; 6];
     let mut n = 0;
     board.generate_jumps((0, 0), &mut moves, &mut n);
     assert_eq!(n, 2);
-    moves[..2].sort();
+    moves[..n].sort();
     assert_eq!(moves[0], Some(Move::Movement((0, 0), (0, 2))));
     assert_eq!(moves[1], Some(Move::Movement((0, 0), (3, 0))));
+}
+
+#[test]
+fn test_generate_walk3() {
+    let mut board = Board::default();
+    //．．．🕷．．．．．
+    // ．．．🕷．🕷．．
+    //．．．🕷．．🕷．
+    // ．．．🕷🕷🕷
+    for &node in &[(-1, -1), (0, 0), (2, 0), (0, 1), (3, 1), (1, 2), (2, 2), (3, 2)] {
+        board.insert(node, Bug::Spider, Color::Black);
+    }
+    println!("{}", board);
+    let mut moves = [None; 6];
+    let mut n = 0;
+    board.generate_walk3((-1, -1), &mut moves, &mut n);
+    assert_eq!(n, 4);
+    moves[..n].sort();
+    assert_eq!(moves[0], Some(Move::Movement((-1, -1), (0, 2))));
+    assert_eq!(moves[1], Some(Move::Movement((-1, -1), (1, -1))));
+    assert_eq!(moves[2], Some(Move::Movement((-1, -1), (1, 1))));
+    assert_eq!(moves[3], Some(Move::Movement((-1, -1), (2, 1))));
+
+    // ．．🕷．🕷．．
+    //．．🕷🕷．🕷．
+    // ．．🕷🕷🕷
+    board.remove((-1, -1));
+    board.insert((1, 1), Bug::Spider, Color::Black);
+    println!("{}", board);
+    moves = [None; 6];
+    n = 0;
+    board.generate_walk3((1, 1), &mut moves, &mut n);
+    assert_eq!(n, 4);
+    moves[..n].sort();
+    assert_eq!(moves[0], Some(Move::Movement((1, 1), (-1, -1))));
+    assert_eq!(moves[1], Some(Move::Movement((1, 1), (0, -1))));
+    assert_eq!(moves[2], Some(Move::Movement((1, 1), (1, -1))));
+    assert_eq!(moves[3], Some(Move::Movement((1, 1), (2, -1))));
+}
+
+#[test]
+fn test_generate_walk_all() {
+    let mut board = Board::default();
+    //．．．🐜．．．．
+    // ．．．🐜．．．
+    //．．．🐜．🐜．
+    // ．．．🐜🐜
+    for &node in &[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)] {
+        board.insert(node, Bug::Ant, Color::Black);
+    }
+    println!("{}", board);
+    let mut moves = [None; 20];
+    let mut n = 0;
+    board.generate_walk_all((-1, -1), &mut moves, &mut n);
+    assert_eq!(n, 11);
+    moves[..n].sort();
+    assert_eq!(moves[0], Some(Move::Movement((-1, -1), (-1, 0))));
+    assert_eq!(moves[1], Some(Move::Movement((-1, -1), (-1, 1))));
+    assert_eq!(moves[2], Some(Move::Movement((-1, -1), (0, -1))));
+    assert_eq!(moves[3], Some(Move::Movement((-1, -1), (0, 2))));
+    assert_eq!(moves[4], Some(Move::Movement((-1, -1), (1, 0))));
+    assert_eq!(moves[5], Some(Move::Movement((-1, -1), (1, 3))));
+    assert_eq!(moves[6], Some(Move::Movement((-1, -1), (2, 0))));
+    assert_eq!(moves[7], Some(Move::Movement((-1, -1), (2, 3))));
+    assert_eq!(moves[8], Some(Move::Movement((-1, -1), (3, 1))));
+    assert_eq!(moves[9], Some(Move::Movement((-1, -1), (3, 2))));
+    assert_eq!(moves[10], Some(Move::Movement((-1, -1), (3, 3))));
 }
 
 pub struct Game;
@@ -517,34 +635,26 @@ impl minimax::Game for Game {
     type S = Board;
     type M = Move;
 
-    fn generate_moves(
-        board: &Board, _: minimax::Player, board_moves: &mut [Option<Move>],
-    ) -> usize {
+    fn generate_moves(board: &Board, _: minimax::Player, moves: &mut [Option<Move>]) -> usize {
         let mut n = 0;
 
-        // Special case for the first 2 moves:
         if board.move_num < 2 {
+            // Special case for the first 2 moves:
             for (bug, _) in board.get_available_bugs().iter() {
-                board_moves[n] = Some(Move::Place((board.move_num as i8, 0), *bug));
+                moves[n] = Some(Move::Place((board.move_num as i8, 0), *bug));
                 n += 1;
             }
-            board_moves[n] = None;
-            return n;
+        } else {
+            // Find placeable positions.
+            board.generate_placements(moves, &mut n);
+
+            if !board.queen_required() {
+                // For moveable pieces, generate all legal moves.
+                board.generate_movements(moves, &mut n);
+            }
         }
 
-        // Find placeable positions.
-        board.generate_placements(board_moves, &mut n);
-
-        if board.queen_required() {
-            // No movement allowed.
-            board_moves[n] = None;
-            return n;
-        }
-
-        // For moveable pieces, generate all legal moves.
-        board.generate_movements(board_moves, &mut n);
-
-        board_moves[n] = None;
+        moves[n] = None;
         n
     }
 
