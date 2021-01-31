@@ -57,16 +57,19 @@ enum Color {
 }
 
 // A tile on the board.
+#[derive(Clone)]
 struct Tile {
     bug: Bug,
     color: Color,
     underneath: Option<Box<Tile>>,
 }
 
+#[derive(Clone)]
 pub struct Board {
     // TODO: try some simpler association list.
     grid: HashMap<Loc, Tile>,
     remaining: [[u8; 5]; 2],
+    queens: [Loc; 2],
     move_num: u16,
 }
 
@@ -87,6 +90,9 @@ impl Board {
         if let Some(prev) = self.grid.insert(loc, Tile { bug: bug, color: color, underneath: None })
         {
             self.grid.get_mut(&loc).unwrap().underneath = Some(Box::new(prev));
+        }
+        if bug == Bug::Queen {
+            self.queens[self.move_num as usize & 1] = loc;
         }
     }
 
@@ -121,6 +127,15 @@ impl Board {
     fn queen_required(&self) -> bool {
         self.move_num > 5 && self.get_remaining()[0] > 0
     }
+
+    fn queens_surrounded(&self) -> [usize; 2] {
+        let mut out = [0; 2];
+        for i in 0..2 {
+            out[i] =
+                adjacent(self.queens[i]).iter().filter(|adj| self.get(**adj).is_some()).count();
+        }
+        out
+    }
 }
 
 #[test]
@@ -145,7 +160,12 @@ fn test_gen_placement() {
 
 impl Default for Board {
     fn default() -> Self {
-        Board { grid: HashMap::new(), remaining: [[1, 3, 3, 2, 2], [1, 3, 3, 2, 2]], move_num: 0 }
+        Board {
+            grid: HashMap::new(),
+            remaining: [[1, 3, 2, 3, 2], [1, 3, 2, 3, 2]],
+            queens: [(0, 0), (0, 0)],
+            move_num: 0,
+        }
     }
 }
 
@@ -220,6 +240,7 @@ impl Board {
 pub enum Move {
     Place(Loc, Bug),
     Movement(Loc, Loc),
+    Pass,
 }
 
 // For reproducible tests.
@@ -240,6 +261,7 @@ impl Ord for Move {
                     Ordering::Greater
                 }
             }
+            Move::Pass => Ordering::Less,
         }
     }
 }
@@ -273,10 +295,12 @@ impl minimax::Move for Move {
                 let tile = board.remove(start);
                 board.insert(end, tile.bug, tile.color);
             }
+            Move::Pass => {}
         }
         board.move_num += 1;
     }
     fn undo(&self, board: &mut Board) {
+        board.move_num -= 1;
         match *self {
             Move::Place(loc, bug) => {
                 board.remove(loc);
@@ -286,8 +310,8 @@ impl minimax::Move for Move {
                 let tile = board.remove(end);
                 board.insert(start, tile.bug, tile.color);
             }
+            Move::Pass => {}
         }
-        board.move_num -= 1;
     }
 }
 
@@ -392,10 +416,8 @@ impl Board {
     // From any bug on top of a stack. Walk or jump down in any direction.
     fn generate_stack_walking(&self, loc: Loc, moves: &mut [Option<Move>], n: &mut usize) {
         for &adj in adjacent(loc).iter() {
-            if self.get(adj).is_none() {
-                moves[*n] = Some(Move::Movement(loc, adj));
-                *n += 1;
-            }
+            moves[*n] = Some(Move::Movement(loc, adj));
+            *n += 1;
         }
     }
 
@@ -412,6 +434,15 @@ impl Board {
                     y += dy;
                 }
                 moves[*n] = Some(Move::Movement(loc, (x, y)));
+                *n += 1;
+            }
+        }
+    }
+
+    fn generate_walk_up(&self, loc: Loc, moves: &mut [Option<Move>], n: &mut usize) {
+        for &adj in adjacent(loc).iter() {
+            if self.get(adj).is_some() {
+                moves[*n] = Some(Move::Movement(loc, adj));
                 *n += 1;
             }
         }
@@ -473,6 +504,9 @@ impl Board {
 
     fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
         for (&loc, tile) in self.grid.iter() {
+            if tile.color != self.to_move() {
+                continue;
+            }
             if tile.underneath.is_some() {
                 self.generate_stack_walking(loc, moves, n);
             } else if !self.is_cut_vertex(loc) {
@@ -481,7 +515,10 @@ impl Board {
                     Bug::Grasshopper => self.generate_jumps(loc, moves, n),
                     Bug::Spider => self.generate_walk3(loc, moves, n),
                     Bug::Ant => self.generate_walk_all(loc, moves, n),
-                    Bug::Beetle => self.generate_walk1(loc, moves, n),
+                    Bug::Beetle => {
+                        self.generate_walk1(loc, moves, n);
+                        self.generate_walk_up(loc, moves, n);
+                    }
                 }
             }
         }
@@ -560,6 +597,23 @@ fn test_generate_jumps() {
     moves[..n].sort();
     assert_eq!(moves[0], Some(Move::Movement((0, 0), (0, 2))));
     assert_eq!(moves[1], Some(Move::Movement((0, 0), (3, 0))));
+}
+
+#[test]
+fn test_generate_beetle() {
+    let mut board = Board::default();
+    board.insert((0, 0), Bug::Beetle, Color::Black);
+    board.insert((1, 1), Bug::Beetle, Color::Black);
+    println!("{}", board);
+    let mut moves = [None; 6];
+    let mut n = 0;
+    board.generate_walk1((0, 0), &mut moves, &mut n);
+    board.generate_walk_up((0, 0), &mut moves, &mut n);
+    assert_eq!(n, 3);
+    moves[..n].sort();
+    assert_eq!(moves[0], Some(Move::Movement((0, 0), (0, 1))));
+    assert_eq!(moves[1], Some(Move::Movement((0, 0), (1, 0))));
+    assert_eq!(moves[2], Some(Move::Movement((0, 0), (1, 1))));
 }
 
 #[test]
@@ -654,12 +708,79 @@ impl minimax::Game for Game {
             }
         }
 
+        if n == 0 {
+            moves[n] = Some(Move::Pass);
+            n += 1;
+        }
+
         moves[n] = None;
         n
     }
 
-    fn get_winner(_: &Board) -> Option<minimax::Winner> {
-        // TODO
-        None
+    fn get_winner(board: &Board) -> Option<minimax::Winner> {
+        let queens_surrounded = board.queens_surrounded();
+        if queens_surrounded == [6, 6] {
+            Some(minimax::Winner::Draw)
+        } else if queens_surrounded[board.move_num as usize & 1] == 6 {
+            Some(minimax::Winner::Competitor(minimax::Player::Computer))
+        } else if queens_surrounded[(board.move_num + 1) as usize & 1] == 6 {
+            Some(minimax::Winner::Competitor(minimax::Player::Opponent))
+        } else {
+            None
+        }
     }
+}
+
+// An evaluator that knows nothing but the rules, and maximally explores the tree.
+pub struct DumbEvaluator;
+
+impl minimax::Evaluator for DumbEvaluator {
+    type G = Game;
+    fn evaluate(_: &Board, mw: Option<minimax::Winner>) -> minimax::Evaluation {
+        match mw {
+            Some(minimax::Winner::Competitor(wp)) => match wp {
+                minimax::Player::Computer => minimax::Evaluation::Best,
+                minimax::Player::Opponent => minimax::Evaluation::Worst,
+            },
+            _ => minimax::Evaluation::Score(0),
+        }
+    }
+}
+
+#[test]
+fn test_minimax() {
+    use minimax::strategies::negamax::{Negamax, Options};
+    use minimax::{Move, Strategy};
+
+    // Find the winning move.
+    // ．．．🐝🕷．．
+    //．．🐜🐜🐝．．
+    // ．．．🦗🪲
+    let mut board = Board::default();
+    crate::Move::Place((0, 0), Bug::Queen).apply(&mut board);
+    crate::Move::Place((1, 0), Bug::Spider).apply(&mut board);
+    crate::Move::Place((-1, 1), Bug::Ant).apply(&mut board);
+    crate::Move::Place((0, 1), Bug::Ant).apply(&mut board);
+    crate::Move::Place((1, 2), Bug::Grasshopper).apply(&mut board);
+    crate::Move::Place((1, 1), Bug::Queen).apply(&mut board);
+    crate::Move::Place((2, 2), Bug::Beetle).apply(&mut board);
+    crate::Move::Pass.apply(&mut board);
+    println!("{}", board);
+    let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: 1 });
+    let player = minimax::Player::Computer;
+    let m = strategy.choose_move(&mut board, player);
+    assert_eq!(m, Some(crate::Move::Movement((-1, 1), (2, 1))));
+
+    // TODO: Switch colors.
+    /*
+    for tile in board.grid.values_mut() {
+        tile.color = match tile.color {
+            Color::Black => Color::White,
+            Color::White => Color::Black,
+        }
+    }
+    crate::Move::Pass.apply(&mut board);
+    let m = strategy.choose_move(&mut board, minimax::Player::Opponent);
+    assert_eq!(m, Some(crate::Move::Movement((-1, 1), (2, 1))));
+    */
 }
