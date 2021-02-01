@@ -38,23 +38,11 @@ fn adjacent(loc: Loc) -> [Loc; 6] {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Bug {
-    Queen,
-    Grasshopper,
-    Spider,
-    Ant,
-    Beetle,
-}
-
-impl Bug {
-    fn index(&self) -> usize {
-        match *self {
-            Bug::Queen => 0,
-            Bug::Grasshopper => 1,
-            Bug::Spider => 2,
-            Bug::Ant => 3,
-            Bug::Beetle => 4,
-        }
-    }
+    Queen = 0,
+    Grasshopper = 1,
+    Spider = 2,
+    Ant = 3,
+    Beetle = 4,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -256,7 +244,7 @@ impl Ord for Move {
         match *self {
             Move::Place(loc, bug) => {
                 if let Move::Place(loc2, bug2) = other {
-                    (loc, bug.index()).cmp(&(*loc2, bug2.index()))
+                    (loc, bug as u8).cmp(&(*loc2, *bug2 as u8))
                 } else {
                     Ordering::Less
                 }
@@ -296,7 +284,7 @@ impl minimax::Move for Move {
         match *self {
             Move::Place(loc, bug) => {
                 board.insert(loc, bug, board.to_move());
-                board.mut_remaining()[bug.index()] -= 1;
+                board.mut_remaining()[bug as usize] -= 1;
             }
             Move::Movement(start, end) => {
                 let tile = board.remove(start);
@@ -311,7 +299,7 @@ impl minimax::Move for Move {
         match *self {
             Move::Place(loc, bug) => {
                 board.remove(loc);
-                board.mut_remaining()[bug.index()] += 1;
+                board.mut_remaining()[bug as usize] += 1;
             }
             Move::Movement(start, end) => {
                 let tile = board.remove(end);
