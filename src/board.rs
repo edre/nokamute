@@ -5,7 +5,14 @@ use std::collections::{HashMap, HashSet};
 use std::default::Default;
 use std::fmt::{Display, Formatter, Result};
 
+// TODO AI shootout: https://jonthysell.com/2016/07/13/creating-an-ai-to-play-hive-with-mzinga-part-i/
+
 // TODO benchmarks: placement heavy starting from empty board; movement-heavy starting from full board
+
+// TODO minimax evaluator extensions:
+// * Transposition table (hashmap of zobrist hash to evaluation? alpha&beta values?)
+// * Iterative search (search to depth n, resort moves, search to depth n+1, until timeout)
+// * Parallel search (makes the previous 2 harder)
 
 // Ideas for board representation:
 // 1) Grid based: Keep a mostly empty grid with entries for what's in each cell.
