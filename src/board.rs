@@ -1,7 +1,5 @@
 extern crate minimax;
 
-#[cfg(test)]
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::default::Default;
@@ -38,8 +36,6 @@ pub type Id = u8;
 // Special value for nodes not adjacent to occupied tiles that haven't been
 // allocated their own node yet.
 const UNASSIGNED: Id = 0;
-#[cfg(test)]
-const ORIGIN: Id = 1;
 
 fn adjacent(loc: Loc) -> [Loc; 6] {
     let (x, y) = loc;
@@ -162,18 +158,6 @@ impl Board {
         tile
     }
 
-    #[cfg(test)]
-    fn insert_loc(&mut self, loc: Loc, bug: Bug, color: Color) {
-        let id = self.alloc(loc);
-        self.insert(id, bug, color);
-    }
-
-    #[cfg(test)]
-    fn remove_loc(&mut self, loc: Loc) -> Tile {
-        let id = self.alloc(loc);
-        self.remove(id)
-    }
-
     fn adjacent(&self, id: Id) -> &[Id; 6] {
         &self.nodes[id as usize].adj
     }
@@ -212,64 +196,6 @@ impl Board {
         }
         out
     }
-
-    #[cfg(test)]
-    fn fill_board(&mut self, locs: &[Loc], bug: Bug) {
-        for &loc in locs {
-            let id = self.alloc(loc);
-            self.insert(id, bug, Color::Black);
-        }
-    }
-
-    #[cfg(test)]
-    fn assert_placements(&self, moves: &[Option<Move>], expected: &[(Loc, Bug)]) {
-        let mut actual_pairs = Vec::new();
-        for m in moves.iter() {
-            if let Some(Move::Place(actual_id, actual_bug)) = m {
-                actual_pairs.push((self.loc(*actual_id), *actual_bug));
-            }
-        }
-        actual_pairs.sort();
-        let mut expected_pairs = Vec::new();
-        expected_pairs.extend(expected);
-        expected_pairs.sort();
-        assert_eq!(actual_pairs, expected_pairs);
-    }
-
-    #[cfg(test)]
-    fn assert_movements(&self, moves: &[Option<Move>], start: Loc, ends: &[Loc]) {
-        let mut actual_ends = Vec::new();
-        for m in moves.iter() {
-            if let Some(Move::Movement(actual_start, actual_end)) = m {
-                assert_eq!(self.loc(*actual_start), start);
-                actual_ends.push(self.loc(*actual_end));
-            }
-        }
-        actual_ends.sort();
-        let mut expected_ends = Vec::new();
-        expected_ends.extend(ends);
-        expected_ends.sort();
-        assert_eq!(actual_ends, expected_ends);
-    }
-}
-
-#[test]
-fn test_gen_placement() {
-    let mut board = Board::default();
-    for i in 1..5 {
-        board.remaining[0][i] = 0;
-        board.remaining[1][i] = 0;
-    }
-    board.insert(1, Bug::Queen, Color::Black);
-    board.insert(2, Bug::Queen, Color::White);
-    println!("{}", board);
-    let mut moves = [None; 100];
-    let mut n = 0;
-    board.generate_placements(&mut moves, &mut n);
-    board.assert_placements(
-        &moves[..n],
-        &[((-1, -1), Bug::Queen), ((-1, 0), Bug::Queen), ((0, 1), Bug::Queen)],
-    );
 }
 
 impl Default for Board {
@@ -367,44 +293,6 @@ pub enum Move {
     Place(Id, Bug),
     Movement(Id, Id),
     Pass,
-}
-
-// For reproducible tests.
-#[cfg(test)]
-impl Ord for Bug {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (*self as u8).cmp(&(*other as u8))
-    }
-}
-
-#[cfg(test)]
-impl Ord for Move {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match *self {
-            Move::Place(loc, bug) => {
-                if let Move::Place(loc2, bug2) = other {
-                    (loc, bug as u8).cmp(&(*loc2, *bug2 as u8))
-                } else {
-                    Ordering::Less
-                }
-            }
-            Move::Movement(start, end) => {
-                if let Move::Movement(start2, end2) = other {
-                    (start, end).cmp(&(*start2, *end2))
-                } else {
-                    Ordering::Greater
-                }
-            }
-            Move::Pass => Ordering::Less,
-        }
-    }
-}
-
-#[cfg(test)]
-impl PartialOrd for Move {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 impl minimax::Move for Move {
@@ -667,169 +555,6 @@ impl Board {
     }
 }
 
-#[test]
-fn test_cut_vertex() {
-    let mut board = Board::default();
-    //．．🐝🐝🐝🐝
-    // ．．．🐝．🐝🐝
-    //．．．．🐝🐝
-    board.fill_board(
-        &[(0, 0), (0, 1), (1, 0), (2, 1), (1, 2), (2, 2), (-1, 0), (-2, 0), (3, 1)],
-        Bug::Queen,
-    );
-    println!("{}", board);
-    fn is_cut_loc(b: &mut Board, loc: Loc) -> bool {
-        let id = b.alloc(loc);
-        b.is_cut_vertex(id)
-    }
-    // Line 1
-    assert!(is_cut_loc(&mut board, (-1, 0)));
-    assert!(!is_cut_loc(&mut board, (-2, 0)));
-    assert!(!is_cut_loc(&mut board, (0, 0)));
-    assert!(!is_cut_loc(&mut board, (1, 0)));
-    // Line 2
-    assert!(!is_cut_loc(&mut board, (0, 1)));
-    assert!(is_cut_loc(&mut board, (2, 1)));
-    assert!(!is_cut_loc(&mut board, (3, 1)));
-    // Line 3
-    assert!(!is_cut_loc(&mut board, (1, 2)));
-    assert!(!is_cut_loc(&mut board, (2, 2)));
-}
-
-#[test]
-fn test_slideable() {
-    let mut board = Board::default();
-    let x = board.alloc((0, 0));
-    // One neighbor.
-    board.insert_loc((0, 0), Bug::Queen, Color::Black);
-    board.insert_loc((1, 0), Bug::Queen, Color::Black);
-    assert_eq!(
-        [Some(board.alloc((0, -1))), Some(board.alloc((1, 1))), None, None],
-        board.slideable_adjacent(x, x)
-    );
-    // Two adjacent neighbors.
-    board.insert_loc((1, 1), Bug::Queen, Color::Black);
-    assert_eq!(
-        [Some(board.alloc((0, -1))), Some(board.alloc((0, 1))), None, None],
-        board.slideable_adjacent(x, x)
-    );
-    // Four adjacent neighbors.
-    board.insert_loc((0, 1), Bug::Queen, Color::Black);
-    board.insert_loc((-1, 0), Bug::Queen, Color::Black);
-    assert_eq!(
-        [Some(board.alloc((-1, -1))), Some(board.alloc((0, -1))), None, None],
-        board.slideable_adjacent(x, x)
-    );
-    // Five adjacent neighbors.
-    board.insert_loc((-1, -1), Bug::Queen, Color::Black);
-    assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
-    // 2 separated groups of neighbors.
-    board.remove_loc((0, 1));
-    assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
-    // 2 opposite single neighbors
-    board.remove_loc((1, 1));
-    board.remove_loc((-1, -1));
-    assert_eq!(
-        [
-            Some(board.alloc((-1, -1))),
-            Some(board.alloc((0, -1))),
-            Some(board.alloc((1, 1))),
-            Some(board.alloc((0, 1)))
-        ],
-        board.slideable_adjacent(x, x)
-    );
-}
-
-#[test]
-fn test_generate_jumps() {
-    let mut board = Board::default();
-    //．．．🦗🦗🦗．
-    // ．．🦗．．．
-    //．．．．．．
-    // ．🦗．．
-    board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
-    println!("{}", board);
-    let mut moves = [None; 6];
-    let mut n = 0;
-    board.generate_jumps(ORIGIN, &mut moves, &mut n);
-    board.assert_movements(&moves[..n], (0, 0), &[(0, 2), (3, 0)]);
-}
-
-#[test]
-fn test_generate_beetle() {
-    let mut board = Board::default();
-    board.fill_board(&[(0, 0), (1, 1)], Bug::Beetle);
-    println!("{}", board);
-    let mut moves = [None; 6];
-    let mut n = 0;
-    board.generate_walk1(ORIGIN, &mut moves, &mut n);
-    board.generate_walk_up(ORIGIN, &mut moves, &mut n);
-    board.assert_movements(&moves[..n], (0, 0), &[(0, 1), (1, 0), (1, 1)]);
-}
-
-#[test]
-fn test_generate_walk3() {
-    let mut board = Board::default();
-    //．．．🕷．．．．．
-    // ．．．🕷．🕷．．
-    //．．．🕷．．🕷．
-    // ．．．🕷🕷🕷
-    board.fill_board(
-        &[(-1, -1), (0, 0), (2, 0), (0, 1), (3, 1), (1, 2), (2, 2), (3, 2)],
-        Bug::Spider,
-    );
-    println!("{}", board);
-    let mut moves = [None; 6];
-    let mut n = 0;
-    let start = board.alloc((-1, -1));
-    board.generate_walk3(start, &mut moves, &mut n);
-    board.assert_movements(&moves[..n], (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
-
-    // ．．🕷．🕷．．
-    //．．🕷🕷．🕷．
-    // ．．🕷🕷🕷
-    board.remove_loc((-1, -1));
-    board.insert_loc((1, 1), Bug::Spider, Color::Black);
-    println!("{}", board);
-    moves = [None; 6];
-    n = 0;
-    let start = board.alloc((1, 1));
-    board.generate_walk3(start, &mut moves, &mut n);
-    board.assert_movements(&moves[..n], (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
-}
-
-#[test]
-fn test_generate_walk_all() {
-    let mut board = Board::default();
-    //．．．🐜．．．．
-    // ．．．🐜．．．
-    //．．．🐜．🐜．
-    // ．．．🐜🐜
-    board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
-    println!("{}", board);
-    let mut moves = [None; 20];
-    let mut n = 0;
-    let start = board.alloc((-1, -1));
-    board.generate_walk_all(start, &mut moves, &mut n);
-    board.assert_movements(
-        &moves[..n],
-        (-1, -1),
-        &[
-            (0, -1),
-            (-1, 0),
-            (1, 0),
-            (2, 0),
-            (-1, 1),
-            (3, 1),
-            (0, 2),
-            (3, 2),
-            (1, 3),
-            (2, 3),
-            (3, 3),
-        ],
-    );
-}
-
 pub struct Game;
 
 impl minimax::Game for Game {
@@ -894,29 +619,301 @@ impl minimax::Evaluator for DumbEvaluator {
     }
 }
 
-#[test]
-fn test_minimax() {
-    use minimax::strategies::negamax::{Negamax, Options};
-    use minimax::{Move, Strategy};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering;
 
-    // Find the winning move.
-    // ．．．🐝🕷．．
-    //．．🐜🐜🐝．．
-    // ．．．🦗🪲
-    let mut board = Board::default();
-    crate::Move::Place(board.alloc((0, 0)), Bug::Queen).apply(&mut board);
-    crate::Move::Place(board.alloc((1, 0)), Bug::Spider).apply(&mut board);
-    crate::Move::Place(board.alloc((-1, 1)), Bug::Ant).apply(&mut board);
-    crate::Move::Place(board.alloc((0, 1)), Bug::Ant).apply(&mut board);
-    crate::Move::Place(board.alloc((1, 2)), Bug::Grasshopper).apply(&mut board);
-    crate::Move::Place(board.alloc((1, 1)), Bug::Queen).apply(&mut board);
-    crate::Move::Place(board.alloc((2, 2)), Bug::Beetle).apply(&mut board);
-    crate::Move::Pass.apply(&mut board);
-    println!("{}", board);
-    let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: 1 });
-    let player = minimax::Player::Computer;
-    let m = strategy.choose_move(&mut board, player);
-    board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
+    const ORIGIN: Id = 1;
 
-    // TODO: Switch colors.
+    impl Board {
+        fn insert_loc(&mut self, loc: Loc, bug: Bug, color: Color) {
+            let id = self.alloc(loc);
+            self.insert(id, bug, color);
+        }
+
+        fn remove_loc(&mut self, loc: Loc) -> Tile {
+            let id = self.alloc(loc);
+            self.remove(id)
+        }
+
+        fn fill_board(&mut self, locs: &[Loc], bug: Bug) {
+            for &loc in locs {
+                let id = self.alloc(loc);
+                self.insert(id, bug, Color::Black);
+            }
+        }
+
+        fn assert_placements(&self, moves: &[Option<Move>], expected: &[(Loc, Bug)]) {
+            let mut actual_pairs = Vec::new();
+            for m in moves.iter() {
+                if let Some(Move::Place(actual_id, actual_bug)) = m {
+                    actual_pairs.push((self.loc(*actual_id), *actual_bug));
+                }
+            }
+            actual_pairs.sort();
+            let mut expected_pairs = Vec::new();
+            expected_pairs.extend(expected);
+            expected_pairs.sort();
+            assert_eq!(actual_pairs, expected_pairs);
+        }
+
+        fn assert_movements(&self, moves: &[Option<Move>], start: Loc, ends: &[Loc]) {
+            let mut actual_ends = Vec::new();
+            for m in moves.iter() {
+                if let Some(Move::Movement(actual_start, actual_end)) = m {
+                    assert_eq!(self.loc(*actual_start), start);
+                    actual_ends.push(self.loc(*actual_end));
+                }
+            }
+            actual_ends.sort();
+            let mut expected_ends = Vec::new();
+            expected_ends.extend(ends);
+            expected_ends.sort();
+            assert_eq!(actual_ends, expected_ends);
+        }
+    }
+
+    impl Ord for Bug {
+        fn cmp(&self, other: &Self) -> Ordering {
+            (*self as u8).cmp(&(*other as u8))
+        }
+    }
+
+    impl Ord for Move {
+        fn cmp(&self, other: &Self) -> Ordering {
+            match *self {
+                Move::Place(loc, bug) => {
+                    if let Move::Place(loc2, bug2) = other {
+                        (loc, bug as u8).cmp(&(*loc2, *bug2 as u8))
+                    } else {
+                        Ordering::Less
+                    }
+                }
+                Move::Movement(start, end) => {
+                    if let Move::Movement(start2, end2) = other {
+                        (start, end).cmp(&(*start2, *end2))
+                    } else {
+                        Ordering::Greater
+                    }
+                }
+                Move::Pass => Ordering::Less,
+            }
+        }
+    }
+
+    impl PartialOrd for Move {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    #[test]
+    fn test_gen_placement() {
+        let mut board = Board::default();
+        for i in 1..5 {
+            board.remaining[0][i] = 0;
+            board.remaining[1][i] = 0;
+        }
+        board.insert(1, Bug::Queen, Color::Black);
+        board.insert(2, Bug::Queen, Color::White);
+        println!("{}", board);
+        let mut moves = [None; 100];
+        let mut n = 0;
+        board.generate_placements(&mut moves, &mut n);
+        board.assert_placements(
+            &moves[..n],
+            &[((-1, -1), Bug::Queen), ((-1, 0), Bug::Queen), ((0, 1), Bug::Queen)],
+        );
+    }
+
+    #[test]
+    fn test_cut_vertex() {
+        let mut board = Board::default();
+        //．．🐝🐝🐝🐝
+        // ．．．🐝．🐝🐝
+        //．．．．🐝🐝
+        board.fill_board(
+            &[(0, 0), (0, 1), (1, 0), (2, 1), (1, 2), (2, 2), (-1, 0), (-2, 0), (3, 1)],
+            Bug::Queen,
+        );
+        println!("{}", board);
+        fn is_cut_loc(b: &mut Board, loc: Loc) -> bool {
+            let id = b.alloc(loc);
+            b.is_cut_vertex(id)
+        }
+        // Line 1
+        assert!(is_cut_loc(&mut board, (-1, 0)));
+        assert!(!is_cut_loc(&mut board, (-2, 0)));
+        assert!(!is_cut_loc(&mut board, (0, 0)));
+        assert!(!is_cut_loc(&mut board, (1, 0)));
+        // Line 2
+        assert!(!is_cut_loc(&mut board, (0, 1)));
+        assert!(is_cut_loc(&mut board, (2, 1)));
+        assert!(!is_cut_loc(&mut board, (3, 1)));
+        // Line 3
+        assert!(!is_cut_loc(&mut board, (1, 2)));
+        assert!(!is_cut_loc(&mut board, (2, 2)));
+    }
+
+    #[test]
+    fn test_slideable() {
+        let mut board = Board::default();
+        let x = board.alloc((0, 0));
+        // One neighbor.
+        board.insert_loc((0, 0), Bug::Queen, Color::Black);
+        board.insert_loc((1, 0), Bug::Queen, Color::Black);
+        assert_eq!(
+            [Some(board.alloc((0, -1))), Some(board.alloc((1, 1))), None, None],
+            board.slideable_adjacent(x, x)
+        );
+        // Two adjacent neighbors.
+        board.insert_loc((1, 1), Bug::Queen, Color::Black);
+        assert_eq!(
+            [Some(board.alloc((0, -1))), Some(board.alloc((0, 1))), None, None],
+            board.slideable_adjacent(x, x)
+        );
+        // Four adjacent neighbors.
+        board.insert_loc((0, 1), Bug::Queen, Color::Black);
+        board.insert_loc((-1, 0), Bug::Queen, Color::Black);
+        assert_eq!(
+            [Some(board.alloc((-1, -1))), Some(board.alloc((0, -1))), None, None],
+            board.slideable_adjacent(x, x)
+        );
+        // Five adjacent neighbors.
+        board.insert_loc((-1, -1), Bug::Queen, Color::Black);
+        assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
+        // 2 separated groups of neighbors.
+        board.remove_loc((0, 1));
+        assert_eq!([None, None, None, None], board.slideable_adjacent(x, x));
+        // 2 opposite single neighbors
+        board.remove_loc((1, 1));
+        board.remove_loc((-1, -1));
+        assert_eq!(
+            [
+                Some(board.alloc((-1, -1))),
+                Some(board.alloc((0, -1))),
+                Some(board.alloc((1, 1))),
+                Some(board.alloc((0, 1)))
+            ],
+            board.slideable_adjacent(x, x)
+        );
+    }
+
+    #[test]
+    fn test_generate_jumps() {
+        let mut board = Board::default();
+        //．．．🦗🦗🦗．
+        // ．．🦗．．．
+        //．．．．．．
+        // ．🦗．．
+        board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
+        println!("{}", board);
+        let mut moves = [None; 6];
+        let mut n = 0;
+        board.generate_jumps(ORIGIN, &mut moves, &mut n);
+        board.assert_movements(&moves[..n], (0, 0), &[(0, 2), (3, 0)]);
+    }
+
+    #[test]
+    fn test_generate_beetle() {
+        let mut board = Board::default();
+        board.fill_board(&[(0, 0), (1, 1)], Bug::Beetle);
+        println!("{}", board);
+        let mut moves = [None; 6];
+        let mut n = 0;
+        board.generate_walk1(ORIGIN, &mut moves, &mut n);
+        board.generate_walk_up(ORIGIN, &mut moves, &mut n);
+        board.assert_movements(&moves[..n], (0, 0), &[(0, 1), (1, 0), (1, 1)]);
+    }
+
+    #[test]
+    fn test_generate_walk3() {
+        let mut board = Board::default();
+        //．．．🕷．．．．．
+        // ．．．🕷．🕷．．
+        //．．．🕷．．🕷．
+        // ．．．🕷🕷🕷
+        board.fill_board(
+            &[(-1, -1), (0, 0), (2, 0), (0, 1), (3, 1), (1, 2), (2, 2), (3, 2)],
+            Bug::Spider,
+        );
+        println!("{}", board);
+        let mut moves = [None; 6];
+        let mut n = 0;
+        let start = board.alloc((-1, -1));
+        board.generate_walk3(start, &mut moves, &mut n);
+        board.assert_movements(&moves[..n], (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
+
+        // ．．🕷．🕷．．
+        //．．🕷🕷．🕷．
+        // ．．🕷🕷🕷
+        board.remove_loc((-1, -1));
+        board.insert_loc((1, 1), Bug::Spider, Color::Black);
+        println!("{}", board);
+        moves = [None; 6];
+        n = 0;
+        let start = board.alloc((1, 1));
+        board.generate_walk3(start, &mut moves, &mut n);
+        board.assert_movements(&moves[..n], (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
+    }
+
+    #[test]
+    fn test_generate_walk_all() {
+        let mut board = Board::default();
+        //．．．🐜．．．．
+        // ．．．🐜．．．
+        //．．．🐜．🐜．
+        // ．．．🐜🐜
+        board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
+        println!("{}", board);
+        let mut moves = [None; 20];
+        let mut n = 0;
+        let start = board.alloc((-1, -1));
+        board.generate_walk_all(start, &mut moves, &mut n);
+        board.assert_movements(
+            &moves[..n],
+            (-1, -1),
+            &[
+                (0, -1),
+                (-1, 0),
+                (1, 0),
+                (2, 0),
+                (-1, 1),
+                (3, 1),
+                (0, 2),
+                (3, 2),
+                (1, 3),
+                (2, 3),
+                (3, 3),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_minimax() {
+        use minimax::strategies::negamax::{Negamax, Options};
+        use minimax::{Move, Strategy};
+
+        // Find the winning move.
+        // ．．．🐝🕷．．
+        //．．🐜🐜🐝．．
+        // ．．．🦗🪲
+        let mut board = Board::default();
+        crate::Move::Place(board.alloc((0, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(board.alloc((1, 0)), Bug::Spider).apply(&mut board);
+        crate::Move::Place(board.alloc((-1, 1)), Bug::Ant).apply(&mut board);
+        crate::Move::Place(board.alloc((0, 1)), Bug::Ant).apply(&mut board);
+        crate::Move::Place(board.alloc((1, 2)), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place(board.alloc((1, 1)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(board.alloc((2, 2)), Bug::Beetle).apply(&mut board);
+        crate::Move::Pass.apply(&mut board);
+        println!("{}", board);
+        let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: 1 });
+        let player = minimax::Player::Computer;
+        let m = strategy.choose_move(&mut board, player);
+        board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
+
+        // TODO: Switch colors.
+    }
 }
