@@ -5,6 +5,8 @@ use std::convert::TryInto;
 use std::default::Default;
 use std::fmt::{Display, Formatter, Result};
 
+use crate::zobrist::ZOBRIST_TABLE;
+
 // TODO AI shootout: https://jonthysell.com/2016/07/13/creating-an-ai-to-play-hive-with-mzinga-part-i/
 
 // TODO benchmarks: placement heavy starting from empty board; movement-heavy starting from full board
@@ -14,19 +16,10 @@ use std::fmt::{Display, Formatter, Result};
 // * Iterative search (search to depth n, resort moves, search to depth n+1, until timeout)
 // * Parallel search (makes the previous 2 harder)
 
-// Ideas for board representation:
-// 1) Grid based: Keep a mostly empty grid with entries for what's in each cell.
-//      The grid will need to expand and/or translate if the hive gets too long or moves.
-// 2) Graph based: Each piece points to its neighbors.
-//      Recalculating connectedness seems complex.
-//      Even computing adjacent nodes may require walking all the way through the other pieces...
-// 3) Location based: Hashmap or other association from coordinates to piece.
-//      Don't need to resize the grid, doesn't take more space than necessary.
-// 4) Graph based with grid backup.
+// Board representation: Adjacency-list graph with grid backup.
 //      Dynamically allocate used and empty adjacent hexes with indexes.
 //      Compact adjacency list for each node. Generate new nodes when expanding.
 
-// Location-based model.
 // Hex coordinates. Grid connections plus one of the diagonals. First bug is at (0,0).
 pub type Loc = (i8, i8);
 
@@ -54,8 +47,8 @@ pub enum Bug {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Color {
-    Black,
-    White,
+    Black = 0,
+    White = 1,
 }
 
 // A tile on the board.
@@ -64,6 +57,16 @@ struct Tile {
     bug: Bug,
     color: Color,
     underneath: Option<Box<Tile>>,
+}
+
+impl Tile {
+    fn height(&self) -> u32 {
+        if let Some(next) = &self.underneath {
+            1 + next.height()
+        } else {
+            0
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -82,6 +85,16 @@ pub struct Board {
     remaining: [[u8; 5]; 2],
     queens: [Id; 2],
     move_num: u16,
+    zobrist_hash: u64,
+    zobrist_history: Vec<u64>,
+}
+
+fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
+    // Put the id in the high bits, to keep cache locality for the likely unused high ids.
+    let hash = ZOBRIST_TABLE[(id as usize) << 4 | (bug as usize) << 1 | (color as usize)];
+    // I don't really want to multiply the table by another factor of 7, so
+    // just realign the existing random bits.
+    hash.rotate_left(height)
 }
 
 impl Board {
@@ -141,8 +154,9 @@ impl Board {
             self.alloc_surrounding(id);
             None
         };
-        self.nodes[id as usize].tile =
-            Some(Tile { bug: bug, color: color, underneath: underneath });
+        let tile = Tile { bug: bug, color: color, underneath: underneath };
+        self.zobrist_hash ^= zobrist(id, bug, color, tile.height());
+        self.nodes[id as usize].tile = Some(tile);
 
         if bug == Bug::Queen {
             self.queens[self.move_num as usize & 1] = id;
@@ -152,6 +166,7 @@ impl Board {
     // Asserts that there is something there.
     fn remove(&mut self, id: Id) -> Tile {
         let mut tile = self.nodes[id as usize].tile.take().unwrap();
+        self.zobrist_hash ^= zobrist(id, tile.bug, tile.color, tile.height());
         if let Some(stack) = tile.underneath.take() {
             self.nodes[id as usize].tile = Some(*stack);
         }
@@ -211,6 +226,8 @@ impl Default for Board {
             remaining: [[1, 3, 2, 3, 2], [1, 3, 2, 3, 2]],
             queens: [UNASSIGNED; 2],
             move_num: 0,
+            zobrist_hash: 0,
+            zobrist_history: Vec::new(),
         };
         // Pre-allocate starting moves.
         board.alloc((0, 0));
@@ -310,9 +327,11 @@ impl minimax::Move for Move {
             Move::Pass => {}
         }
         board.move_num += 1;
+        board.zobrist_history.push(board.zobrist_hash);
     }
     fn undo(&self, board: &mut Board) {
         board.move_num -= 1;
+        board.zobrist_history.pop();
         match *self {
             Move::Place(id, bug) => {
                 board.remove(id);
@@ -591,7 +610,12 @@ impl minimax::Game for Game {
 
     fn get_winner(board: &Board) -> Option<minimax::Winner> {
         let queens_surrounded = board.queens_surrounded();
-        if queens_surrounded == [6, 6] {
+        let n = board.zobrist_history.len();
+        if n > 5 && board.zobrist_history[n - 5] == board.zobrist_hash {
+            // Draw by stalemate.
+            Some(minimax::Winner::Draw)
+        } else if queens_surrounded == [6, 6] {
+            // Draw by simultaneous queen surrounding.
             Some(minimax::Winner::Draw)
         } else if queens_surrounded[board.move_num as usize & 1] == 6 {
             Some(minimax::Winner::Competitor(minimax::Player::Computer))
@@ -888,6 +912,37 @@ mod tests {
                 (3, 3),
             ],
         );
+    }
+
+    #[test]
+    fn test_winner() {
+        use minimax::{Game, Move};
+
+        // Draw by stalemate
+        let mut board = Board::default();
+        let x1 = board.alloc((-1, -1));
+        let x2 = board.alloc((-1, 0));
+        let y1 = board.alloc((1, 1));
+        let y2 = board.alloc((1, 0));
+        crate::Move::Place(ORIGIN, Bug::Spider).apply(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
+        crate::Move::Place(x1, Bug::Queen).apply(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
+        crate::Move::Place(y1, Bug::Queen).apply(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
+        crate::Move::Movement(x1, x2).apply(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
+        crate::Move::Movement(y1, y2).apply(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
+        crate::Move::Movement(x2, x1).apply(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
+        crate::Move::Movement(y2, y1).apply(&mut board);
+        // This is the first repeat of a board position, a slightly aggressive
+        // interpretation of chess stalemate rules.
+        assert_eq!(Some(minimax::Winner::Draw), self::Game::get_winner(&board));
+        // Undo reverts zobrist and history.
+        crate::Move::Movement(y2, y1).undo(&mut board);
+        assert_eq!(None, self::Game::get_winner(&board));
     }
 
     #[test]
