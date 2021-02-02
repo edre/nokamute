@@ -106,8 +106,12 @@ impl Board {
         }
     }
 
-    fn loc(&self, id: Id) -> Loc {
+    pub fn loc(&self, id: Id) -> Loc {
         self.id_to_loc[id as usize]
+    }
+
+    pub fn id(&mut self, loc: Loc) -> Id {
+        self.alloc(loc)
     }
 
     // Allocate a new node, and link it to its neighbors.
