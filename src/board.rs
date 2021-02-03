@@ -1,5 +1,6 @@
 extern crate minimax;
 
+use std::cmp::min;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::default::Default;
@@ -401,7 +402,7 @@ impl Board {
         }
     }
 
-    // TODO: Linear algorithm to find all cut vertexes:
+    // Linear algorithm to find all cut vertexes.
     // Algorithm explanation: https://web.archive.org/web/20180830110222/https://www.eecs.wsu.edu/~holder/courses/CptS223/spr08/slides/graphapps.pdf
     // Example code: https://cp-algorithms.com/graph/cutpoints.html
     //
@@ -410,27 +411,59 @@ impl Board {
     // Adding a tile just adds a leaf to one of its neighbors
     // Removing a tile means recomputing a path to the root for any children of the removed node.
     // Hmm, maybe not. DFS iteration order is important.
-    fn is_cut_vertex(&self, id: Id) -> bool {
-        let mut visited = NodeSet::new();
-        visited.set(id);
-        // Start searching from one arbitrary neighbor.
-        // This should never be called on a disconnected node.
-        let start: Id =
-            *self.adjacent(id).iter().filter(|adj| self.get(**adj).is_some()).next().unwrap();
-        let mut queue = vec![start];
-        while let Some(node) = queue.pop() {
-            if visited.get(node) {
-                continue;
-            }
-            visited.set(node);
-            for &adj in self.adjacent(node).iter() {
-                if self.get(adj).is_some() {
-                    queue.push(adj);
+    fn find_cut_vertexes(&self) -> NodeSet {
+        struct State<'a> {
+            board: &'a Board,
+            visited: NodeSet,
+            immovable: NodeSet,
+            // Visitation number in DFS traversal.
+            num: [u8; 256],
+            // Lowest-numbered node reachable using DFS edges and then at most
+            // one back edge.
+            low: [u8; 256],
+            visit_num: u8,
+        }
+        let mut state = State {
+            board: self,
+            visited: NodeSet::new(),
+            immovable: NodeSet::new(),
+            num: [0; 256],
+            low: [0; 256],
+            visit_num: 1,
+        };
+        fn dfs(state: &mut State, id: Id, parent: Id) {
+            state.visited.set(id);
+            state.num[id as usize] = state.visit_num;
+            state.low[id as usize] = state.visit_num;
+            state.visit_num += 1;
+            let mut children = 0;
+            for &adj in state.board.adjacent(id) {
+                if state.board.get(adj).is_none() {
+                    continue;
+                }
+                if adj == parent {
+                    continue;
+                }
+                if state.visited.get(adj) {
+                    state.low[id as usize] = min(state.low[id as usize], state.num[adj as usize]);
+                } else {
+                    dfs(state, adj, id);
+                    state.low[id as usize] = min(state.low[id as usize], state.low[adj as usize]);
+                    if state.low[adj as usize] >= state.num[id as usize] && parent != UNASSIGNED {
+                        state.immovable.set(id);
+                    }
+                    children += 1;
                 }
             }
+            if parent == UNASSIGNED && children > 1 {
+                state.immovable.set(id);
+            }
         }
-        // It's a cut vertex if we didn't visit all of the original neighbors.
-        !self.adjacent(id).iter().all(|adj| self.get(*adj).is_none() || visited.get(*adj))
+
+        let start: Id =
+            (0..).zip(self.nodes.iter()).filter(|(_, x)| x.tile.is_some()).next().unwrap().0;
+        dfs(&mut state, start, UNASSIGNED);
+        state.immovable
     }
 
     // For a position on the outside (whether occupied or not), find all
@@ -554,6 +587,7 @@ impl Board {
     }
 
     fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
+        let immovable = self.find_cut_vertexes();
         for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
             if let Some(tile) = &node.tile {
                 if tile.color != self.to_move() {
@@ -561,7 +595,7 @@ impl Board {
                 }
                 if tile.underneath.is_some() {
                     self.generate_stack_walking(id, moves, n);
-                } else if !self.is_cut_vertex(id) {
+                } else if !immovable.get(id) {
                     match tile.bug {
                         Bug::Queen => self.generate_walk1(id, moves, n),
                         Bug::Grasshopper => self.generate_jumps(id, moves, n),
@@ -598,7 +632,7 @@ impl minimax::Game for Game {
             board.generate_placements(moves, &mut n);
 
             if !board.queen_required() {
-                // For moveable pieces, generate all legal moves.
+                // For movable pieces, generate all legal moves.
                 board.generate_movements(moves, &mut n);
             }
         }
@@ -766,22 +800,23 @@ mod tests {
             Bug::Queen,
         );
         println!("{}", board);
-        fn is_cut_loc(b: &mut Board, loc: Loc) -> bool {
-            let id = b.alloc(loc);
-            b.is_cut_vertex(id)
-        }
+        let cuts = board.find_cut_vertexes();
+        let mut is_cut_loc = |loc: Loc| {
+            let id = board.id(loc);
+            cuts.get(id)
+        };
         // Line 1
-        assert!(is_cut_loc(&mut board, (-1, 0)));
-        assert!(!is_cut_loc(&mut board, (-2, 0)));
-        assert!(!is_cut_loc(&mut board, (0, 0)));
-        assert!(!is_cut_loc(&mut board, (1, 0)));
+        assert!(is_cut_loc((-1, 0)));
+        assert!(!is_cut_loc((-2, 0)));
+        assert!(!is_cut_loc((0, 0)));
+        assert!(!is_cut_loc((1, 0)));
         // Line 2
-        assert!(!is_cut_loc(&mut board, (0, 1)));
-        assert!(is_cut_loc(&mut board, (2, 1)));
-        assert!(!is_cut_loc(&mut board, (3, 1)));
+        assert!(!is_cut_loc((0, 1)));
+        assert!(is_cut_loc((2, 1)));
+        assert!(!is_cut_loc((3, 1)));
         // Line 3
-        assert!(!is_cut_loc(&mut board, (1, 2)));
-        assert!(!is_cut_loc(&mut board, (2, 2)));
+        assert!(!is_cut_loc((1, 2)));
+        assert!(!is_cut_loc((2, 2)));
     }
 
     #[test]
