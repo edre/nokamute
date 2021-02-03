@@ -46,8 +46,22 @@ pub enum Bug {
     Beetle = 4,
 }
 
+impl Bug {
+    pub fn codepoint(&self) -> char {
+        match *self {
+            Bug::Queen => '\u{1f41d}',       // HONEYBEE
+            Bug::Grasshopper => '\u{1f997}', // CRICKET
+            Bug::Spider => '\u{1f577}',      // SPIDER
+            Bug::Ant => '\u{1f41c}',         // ANT
+            Bug::Beetle => '\u{1fab2}',      // BEETLE
+                                              //Bug::Ladybug => '\u{1f41e}'', // LADY BEETLE
+                                              //Bug::Mosquito => '\u{1f99f}', // MOSQUITO
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
-enum Color {
+pub enum Color {
     Black = 0,
     White = 1,
 }
@@ -99,7 +113,7 @@ fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
 }
 
 impl Board {
-    fn to_move(&self) -> Color {
+    pub fn to_move(&self) -> Color {
         if self.move_num % 2 == 0 {
             Color::Black
         } else {
@@ -243,13 +257,13 @@ impl Default for Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}", self.fancy_fmt())
+        write!(f, "{}", self.fancy_fmt(&[]))
     }
 }
 
 impl Board {
     fn bounding_box(&self) -> (i8, i8, i8, i8) {
-        if self.nodes.len() == 3 {
+        if self.nodes.iter().all(|node| node.tile.is_none()) {
             return (0, 1, 0, 1);
         }
         let mut minx = i8::MAX;
@@ -267,7 +281,7 @@ impl Board {
         (minx, maxx - minx + 1, miny, maxy - miny + 1)
     }
 
-    fn fancy_fmt(&self) -> String {
+    pub fn fancy_fmt(&self, highlights: &[Id]) -> String {
         let mut out = String::new();
         let (startx, dx, starty, dy) = self.bounding_box();
         for y in starty - 1..starty + dy + 1 {
@@ -281,20 +295,19 @@ impl Board {
             }
 
             for x in startx - 1..startx + dx + 1 {
-                if let Some(tile) = self.get(*self.loc_to_id.get(&(x, y)).unwrap_or(&UNASSIGNED)) {
+                let id = *self.loc_to_id.get(&(x, y)).unwrap_or(&UNASSIGNED);
+                if let Some(index) = highlights.iter().position(|&x| x == id) {
+                    // Manual 2-byte space padding.
+                    out.push(if index > 9 { ((index / 10) + 48) as u8 as char } else { ' ' });
+                    out.push(((index % 10) + 48) as u8 as char);
+                    continue;
+                }
+                if let Some(tile) = self.get(id) {
                     if tile.color == Color::White {
                         // Invert terminal background color for white pieces.
                         out.push_str("\x1b[3m");
                     }
-                    out.push(match tile.bug {
-                        Bug::Queen => '\u{1f41d}',       // HONEYBEE
-                        Bug::Grasshopper => '\u{1f997}', // CRICKET
-                        Bug::Spider => '\u{1f577}',      // SPIDER
-                        Bug::Ant => '\u{1f41c}',         // ANT
-                        Bug::Beetle => '\u{1fab2}',      // BEETLE
-                                                          //Bug::Ladybug => '\u{1f41e}'', // LADY BEETLE
-                                                          //Bug::Mosquito => '\u{1f99f}', // MOSQUITO
-                    });
+                    out.push(tile.bug.codepoint());
                     if tile.color == Color::White {
                         // Reset coloring.
                         out.push_str("\x1b[m");
@@ -608,6 +621,14 @@ impl Board {
                     }
                 }
             }
+        }
+    }
+
+    pub fn player_to_move(&self) -> minimax::Player {
+        if self.move_num & 1 == 0 {
+            minimax::Player::Computer
+        } else {
+            minimax::Player::Opponent
         }
     }
 }

@@ -1,5 +1,5 @@
 mod board;
-pub use board::{Board, Bug, DumbEvaluator, Loc, Move};
+pub use board::*;
 mod strategies;
 pub use strategies::*;
 mod zobrist;
