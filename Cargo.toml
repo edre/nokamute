@@ -5,7 +5,7 @@ authors = ["Eric Roshan-Eisner <ede@alum.mit.edu>"]
 edition = "2018"
 
 [dependencies]
-minimax = { git = "https://github.com/edre/minimax-rs", rev = "5529dd5" }
+minimax = { git = "https://github.com/edre/minimax-rs", rev = "fd8e4d9" }
 rand = "0.4.*"
 
 [dev-dependencies]
