@@ -1,5 +1,5 @@
 use hive;
-use minimax::{Game, Move, Negamax, Options, Strategy};
+use minimax::{Game, Move, Strategy};
 use std::io::{self, BufRead, Write};
 
 fn read_line(prompt: &str) -> String {
@@ -157,7 +157,10 @@ fn main() {
                     depth = num;
                 }
             }
-            let mut strategy = Negamax::<hive::BasicEvaluator>::new(Options { max_depth: depth });
+            let mut strategy =
+                hive::IterativeSearch::<hive::BasicEvaluator>::new(hive::IterativeOptions {
+                    max_depth: depth,
+                });
             if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);
                 m.apply(&mut board);
