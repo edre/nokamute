@@ -1,6 +1,7 @@
 use hive;
 use minimax::{Game, Move, Strategy};
 use std::io::{self, BufRead, Write};
+use std::time::Duration;
 
 fn read_line(prompt: &str) -> String {
     print!("{}", prompt);
@@ -151,20 +152,23 @@ fn main() {
         let line = read_line(": ");
 
         if line.starts_with("ai") {
-            let mut depth = 4;
+            let mut depth = None;
             for arg in line.split(' ').skip(1) {
                 if let Ok(num) = arg.parse::<usize>() {
-                    depth = num;
+                    depth = Some(num);
                 }
             }
-            let mut strategy =
-                hive::IterativeSearch::<hive::BasicEvaluator>::new(hive::IterativeOptions {
-                    max_depth: depth,
-                });
+            let opts = if let Some(d) = depth {
+                hive::IterativeOptions::with_max_depth(d)
+            } else {
+                hive::IterativeOptions::with_timeout(Duration::new(2, 0))
+            };
+            let mut strategy = hive::IterativeSearch::<hive::BasicEvaluator>::new(opts);
             if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);
                 m.apply(&mut board);
             }
+            println!("{}", strategy.stats());
         } else if line.starts_with("move") {
             if let Some(m) = input_movement(&board, &moves[..n]) {
                 history.push(m);

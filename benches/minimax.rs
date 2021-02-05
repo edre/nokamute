@@ -11,7 +11,7 @@ fn empty_board_depth3(b: &mut Bencher) {
     b.iter(|| {
         let mut board = Board::default();
         let mut strategy =
-            IterativeSearch::<hive::BasicEvaluator>::new(IterativeOptions { max_depth: 3 });
+            IterativeSearch::<hive::BasicEvaluator>::new(IterativeOptions::with_max_depth(3));
         let m = strategy.choose_move(&mut board);
         assert!(m.is_some());
     });
@@ -41,7 +41,7 @@ fn full_board_depth1(b: &mut Bencher) {
         hive::Move::Place(board.id((5, 5)), Bug::Ant).apply(&mut board);
         hive::Move::Pass.apply(&mut board);
         let mut strategy =
-            IterativeSearch::<hive::BasicEvaluator>::new(IterativeOptions { max_depth: 1 });
+            IterativeSearch::<hive::BasicEvaluator>::new(IterativeOptions::with_max_depth(1));
         let m = strategy.choose_move(&mut board);
         assert!(m.is_some());
     });
