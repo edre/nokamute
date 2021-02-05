@@ -1064,5 +1064,22 @@ mod tests {
             let m = strategy.choose_move(&mut board);
             board.assert_movements(&[m], (-1, 1), &[(2, 1)]);
         }
+
+	// Find queen escape.
+	//．．🕷🐝🐝．
+	// ．．🦗🕷．
+	let mut board = Board::default();
+	crate::Move::Place(board.alloc((0,0)), Bug::Queen).apply(&mut board);
+	crate::Move::Place(board.alloc((1,0)), Bug::Queen).apply(&mut board);
+	crate::Move::Place(board.alloc((1,1)), Bug::Spider).apply(&mut board);
+	crate::Move::Place(board.alloc((0,1)), Bug::Grasshopper).apply(&mut board);
+	crate::Move::Place(board.alloc((-1,0)), Bug::Spider).apply(&mut board);
+	crate::Move::Pass.apply(&mut board);
+	println!("{}", board);
+	for depth in 0..3 {
+	    let mut strategy = Negamax::<BasicEvaluator>::new(Options { max_depth: depth });
+	    let m = strategy.choose_move(&mut board);
+            board.assert_movements(&[m], (0, 0), &[(0, -1)]);
+	}
     }
 }
