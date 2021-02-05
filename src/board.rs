@@ -641,14 +641,14 @@ impl minimax::Game for Game {
                 n += 1;
             }
         } else {
-            // Find placeable positions.
-            board.generate_placements(moves, &mut n);
-
             // Once queen has been placed, pieces may move.
             if board.get_remaining()[Bug::Queen as usize] == 0 {
                 // For movable pieces, generate all legal moves.
                 board.generate_movements(moves, &mut n);
             }
+
+            // Find placeable positions.
+            board.generate_placements(moves, &mut n);
         }
 
         if n == 0 {
