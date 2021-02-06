@@ -318,6 +318,12 @@ impl Board {
                     out.push('\u{ff0e}');
                 }
             }
+
+            // Stagger rows the other way to make the space look rectangular.
+            for _ in 0..(y - starty + 1) / 2 {
+                out.push('\u{ff0e}');
+            }
+
             out.push('\n');
         }
         out
