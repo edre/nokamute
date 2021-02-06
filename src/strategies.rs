@@ -128,13 +128,13 @@ where
 
         let mut moves = [None; 200];
         let n = E::G::generate_moves(s, &mut moves);
+        let mut s_clone = s.clone();
 
         // Initial sort is random.
         self.rng.shuffle(&mut moves[..n]);
 
         for depth in 0..=self.opts.max_depth.unwrap_or(50) {
             let mut best = Evaluation::Worst;
-            let mut s_clone = s.clone();
             let mut tagged_moves = Vec::with_capacity(n);
             for m in moves[..n].iter().map(|m| m.unwrap()) {
                 // determine value for this move
