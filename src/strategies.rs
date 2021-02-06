@@ -21,6 +21,11 @@ fn timeout_signal(dur: Duration) -> Arc<AtomicBool> {
     signal
 }
 
+pub trait Zobrist {
+    // Hash of the game position.
+    fn zobrist_hash(&self) -> u64;
+}
+
 /// Options to use for the iterative search engine.
 pub struct IterativeOptions {
     max_depth: Option<usize>,
@@ -69,7 +74,8 @@ impl<E: Evaluator> IterativeSearch<E> {
     pub fn stats(&self) -> String {
         let throughput =
             (self.nodes_explored + self.next_depth_nodes) as f64 / self.wall_time.as_secs_f64();
-        format!("Depth {} exploring {} nodes.\nPartial exploration of next depth explored {} nodes.\n{:.02} nodes/sec", self.max_depth, self.nodes_explored, self.next_depth_nodes, throughput)
+        format!("Depth {} exploring {} nodes.\nPartial exploration of next depth explored {} nodes.\n{:.02} nodes/sec",
+		self.max_depth, self.nodes_explored, self.next_depth_nodes, throughput)
     }
 
     // Recursively compute negamax on the game state. Returns None if it hits the timeout.
@@ -77,8 +83,10 @@ impl<E: Evaluator> IterativeSearch<E> {
         &mut self, s: &mut <E::G as Game>::S, depth: usize, mut alpha: Evaluation, beta: Evaluation,
     ) -> Option<Evaluation>
     where
-        <<E as Evaluator>::G as Game>::M: Copy,
+        <E::G as Game>::S: Zobrist,
+        <E::G as Game>::M: Copy,
     {
+        s.zobrist_hash(); // Test that we plumbed the traits correctly.
         if self.timeout.load(Ordering::Relaxed) {
             return None;
         }
@@ -110,7 +118,7 @@ impl<E: Evaluator> IterativeSearch<E> {
 
 impl<E: Evaluator> Strategy<E::G> for IterativeSearch<E>
 where
-    <E::G as Game>::S: Clone,
+    <E::G as Game>::S: Clone + Zobrist,
     <E::G as Game>::M: Copy,
 {
     fn choose_move(&mut self, s: &<E::G as Game>::S) -> Option<<E::G as Game>::M> {

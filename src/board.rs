@@ -6,16 +6,8 @@ use std::convert::TryInto;
 use std::default::Default;
 use std::fmt::{Display, Formatter, Result};
 
+use crate::strategies::Zobrist;
 use crate::zobrist::ZOBRIST_TABLE;
-
-// TODO AI shootout: https://jonthysell.com/2016/07/13/creating-an-ai-to-play-hive-with-mzinga-part-i/
-
-// TODO benchmarks: placement heavy starting from empty board; movement-heavy starting from full board
-
-// TODO minimax evaluator extensions:
-// * Transposition table (hashmap of zobrist hash to evaluation? alpha&beta values?)
-// * Iterative search (search to depth n, resort moves, search to depth n+1, until timeout)
-// * Parallel search (makes the previous 2 harder)
 
 // Board representation: Adjacency-list graph with grid backup.
 //      Dynamically allocate used and empty adjacent hexes with indexes.
@@ -111,6 +103,12 @@ fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
     // just realign the existing random bits.
     // Also include the color to move hash.
     hash.rotate_left(height) ^ 0xa6c11b626b105b7c
+}
+
+impl Zobrist for Board {
+    fn zobrist_hash(&self) -> u64 {
+        self.zobrist_hash
+    }
 }
 
 impl Board {
