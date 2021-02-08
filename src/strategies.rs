@@ -109,7 +109,11 @@ impl<E: Evaluator> IterativeSearch<E> {
             best = max(best, value);
             alpha = max(alpha, value);
             if alpha >= beta {
-                break;
+                // Standard algorithm is to return alpha here, but when
+                // alpha==beta that leads to confusing the best move with the
+                // partially explored worse moves in the top level move
+                // sorting.
+                return Some(Evaluation::Best);
             }
         }
         Some(best)
