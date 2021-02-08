@@ -83,6 +83,16 @@ struct Node {
     tile: Option<Tile>,
 }
 
+impl Node {
+    fn height(&self) -> u32 {
+        if let Some(tile) = &self.tile {
+            tile.height() + 1
+        } else {
+            0
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Board {
     // Indexed by Id.
@@ -516,9 +526,41 @@ impl Board {
         out
     }
 
-    // From any bug on top of a stack. Walk or jump down in any direction.
+    // Find all walkable tiles where either the source or the dest is on the hive.
+    // Unlike what the original rules say (where a beetle on the hive is
+    // unrestricted), climbing bugs need to slide into/out of the higher of
+    // source or dest heights.
+    // https://www.boardgamegeek.com/thread/332467
+    fn slidable_adjacent_beetle(&self, id: Id) -> ([Id; 6], usize) {
+        let self_height = self.nodes[id as usize].height() - 1;
+        let mut heights = [0; 6];
+        let neighbors = self.adjacent(id);
+        for i in 0..6 {
+            heights[i] = self.nodes[neighbors[i] as usize].height();
+        }
+
+        let mut n = 0;
+        let mut out = [UNASSIGNED; 6];
+        for i in 0..6 {
+            let barrier = std::cmp::max(self_height, heights[i]);
+            if barrier == 0 {
+                // Walking at height zero uses regular sliding rules.
+                continue;
+            }
+            if heights[(i + 1) % 6] > barrier && heights[(i + 5) % 6] > barrier {
+                // Piles on both sides are too high and we cannot pass through.
+                continue;
+            }
+            out[n] = neighbors[i];
+            n += 1;
+        }
+        (out, n)
+    }
+
+    // From any bug on top of a stack.
     fn generate_stack_walking(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        for &adj in self.adjacent(id).iter() {
+        let (ids, m) = self.slidable_adjacent_beetle(id);
+        for &adj in ids[..m].iter() {
             moves[*n] = Some(Move::Movement(id, adj));
             *n += 1;
         }
@@ -535,15 +577,6 @@ impl Board {
             }
             if dist > 1 {
                 moves[*n] = Some(Move::Movement(id, jump));
-                *n += 1;
-            }
-        }
-    }
-
-    fn generate_walk_up(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        for &adj in self.adjacent(id).iter() {
-            if self.get(adj).is_some() {
-                moves[*n] = Some(Move::Movement(id, adj));
                 *n += 1;
             }
         }
@@ -620,7 +653,7 @@ impl Board {
                         Bug::Ant => self.generate_walk_all(id, moves, n),
                         Bug::Beetle => {
                             self.generate_walk1(id, moves, n);
-                            self.generate_walk_up(id, moves, n);
+                            self.generate_stack_walking(id, moves, n);
                         }
                     }
                 }
@@ -937,13 +970,36 @@ mod tests {
     #[test]
     fn test_generate_beetle() {
         let mut board = Board::default();
-        board.fill_board(&[(0, 0), (1, 1)], Bug::Beetle);
+        board.fill_board(
+            &[
+                (0, 0),
+                (0, 0),
+                (-1, -1),
+                (-1, -1),
+                (0, 1),
+                (0, 1),
+                (0, -1),
+                (0, -1),
+                (0, -1),
+                (1, 0),
+                (1, 0),
+                (1, 1),
+                (1, 1),
+                (1, 1),
+            ],
+            Bug::Beetle,
+        );
+        // Stack heights:
+        //   2   3
+        //  0 (2) 2
+        //   2   3
+        // Can't move left (down) or right (up) because of blocking stacks.
+        // Can move onto all 4 blocking stacks.
         println!("{}", board);
         let mut moves = [None; 6];
         let mut n = 0;
-        board.generate_walk1(ORIGIN, &mut moves, &mut n);
-        board.generate_walk_up(ORIGIN, &mut moves, &mut n);
-        board.assert_movements(&moves[..n], (0, 0), &[(0, 1), (1, 0), (1, 1)]);
+        board.generate_stack_walking(ORIGIN, &mut moves, &mut n);
+        board.assert_movements(&moves[..n], (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
     }
 
     #[test]
