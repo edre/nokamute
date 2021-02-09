@@ -778,6 +778,11 @@ impl minimax::Game for Game {
         if board.move_num < 2 {
             // Special case for the first 2 moves:
             for (bug, _) in board.get_available_bugs().iter() {
+                if *bug == Bug::Queen {
+                    // To reduce draws, implement tournament rule where
+                    // you can't place your queen first.
+                    continue;
+                }
                 moves[n] = Some(Move::Place((board.move_num + 1) as Id, *bug));
                 n += 1;
             }
