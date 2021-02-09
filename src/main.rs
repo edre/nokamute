@@ -33,6 +33,7 @@ fn input_bug(options: &[hive::Bug]) -> Option<hive::Bug> {
         hive::Bug::Ant,
         hive::Bug::Beetle,
         hive::Bug::Mosquito,
+        hive::Bug::Ladybug,
     ] {
         if options.contains(&bug) {
             print!(
@@ -45,6 +46,7 @@ fn input_bug(options: &[hive::Bug]) -> Option<hive::Bug> {
                     hive::Bug::Ant => "ant",
                     hive::Bug::Beetle => "beetle",
                     hive::Bug::Mosquito => "mosquito",
+                    hive::Bug::Ladybug => "ladybug",
                 }
             );
         }
@@ -60,6 +62,7 @@ fn input_bug(options: &[hive::Bug]) -> Option<hive::Bug> {
         'a' => hive::Bug::Ant,
         'b' => hive::Bug::Beetle,
         'm' => hive::Bug::Mosquito,
+        'l' => hive::Bug::Ladybug,
         _ => {
             println!("Unrecognized bug.");
             return None;

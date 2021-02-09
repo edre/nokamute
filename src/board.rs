@@ -37,6 +37,7 @@ pub enum Bug {
     Ant = 3,
     Beetle = 4,
     Mosquito = 5,
+    Ladybug = 6,
 }
 
 impl Bug {
@@ -48,7 +49,7 @@ impl Bug {
             Bug::Ant => '\u{1f41c}',         // ANT
             Bug::Beetle => '\u{1fab2}',      // BEETLE
             Bug::Mosquito => '\u{1f99f}',    // MOSQUITO
-                                              //Bug::Ladybug => '\u{1f41e}'', // LADY BEETLE
+            Bug::Ladybug => '\u{1f41e}',     // LADY BEETLE
         }
     }
 }
@@ -100,7 +101,7 @@ pub struct Board {
     nodes: Vec<Node>,
     id_to_loc: Vec<Loc>,
     loc_to_id: HashMap<Loc, Id>,
-    remaining: [[u8; 6]; 2],
+    remaining: [[u8; 7]; 2],
     queens: [Id; 2],
     move_num: u16,
     zobrist_hash: u64,
@@ -206,15 +207,15 @@ impl Board {
         &self.nodes[id as usize].adj
     }
 
-    fn get_remaining(&self) -> &[u8; 6] {
+    fn get_remaining(&self) -> &[u8; 7] {
         &self.remaining[self.move_num as usize & 1]
     }
 
-    fn mut_remaining(&mut self) -> &mut [u8; 6] {
+    fn mut_remaining(&mut self) -> &mut [u8; 7] {
         &mut self.remaining[self.move_num as usize & 1]
     }
 
-    fn get_available_bugs(&self) -> [(Bug, u8); 6] {
+    fn get_available_bugs(&self) -> [(Bug, u8); 7] {
         let remaining = self.get_remaining();
         [
             (Bug::Queen, remaining[Bug::Queen as usize]),
@@ -223,6 +224,7 @@ impl Board {
             (Bug::Ant, remaining[Bug::Ant as usize]),
             (Bug::Beetle, remaining[Bug::Beetle as usize]),
             (Bug::Mosquito, remaining[Bug::Mosquito as usize]),
+            (Bug::Ladybug, remaining[Bug::Ladybug as usize]),
         ]
     }
 
@@ -242,7 +244,7 @@ impl Board {
         out
     }
 
-    fn new(remaining: [u8; 6]) -> Self {
+    fn new(remaining: [u8; 7]) -> Self {
         // Pre-allocate dummy unassigned Id to unused location.
         let fake_loc = (i8::MAX, i8::MAX);
         let mut loc_to_id = HashMap::new();
@@ -264,11 +266,11 @@ impl Board {
     }
 
     pub fn new_core_set() -> Self {
-        Self::new([1, 3, 2, 3, 2, 0])
+        Self::new([1, 3, 2, 3, 2, 0, 0])
     }
 
     pub fn new_expansions() -> Self {
-        Self::new([1, 3, 2, 3, 2, 1])
+        Self::new([1, 3, 2, 3, 2, 1, 1])
     }
 }
 
@@ -582,9 +584,12 @@ impl Board {
     // source or dest heights.
     // https://www.boardgamegeek.com/thread/332467
     fn slidable_adjacent_beetle<'a>(
-        &self, out: &'a mut [Id; 6], id: Id,
+        &self, out: &'a mut [Id; 6], orig: Id, id: Id,
     ) -> impl Iterator<Item = Id> + 'a {
-        let self_height = self.nodes[id as usize].height() - 1;
+        let mut self_height = self.nodes[id as usize].height();
+        if orig == id {
+            self_height -= 1;
+        }
         let mut heights = [0; 6];
         let neighbors = self.adjacent(id);
         for i in 0..6 {
@@ -612,7 +617,7 @@ impl Board {
     // From any bug on top of a stack.
     fn generate_stack_walking(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
         let mut buf = [UNASSIGNED; 6];
-        for adj in self.slidable_adjacent_beetle(&mut buf, id) {
+        for adj in self.slidable_adjacent_beetle(&mut buf, id, id) {
             moves[*n] = Some(Move::Movement(id, adj));
             *n += 1;
         }
@@ -685,8 +690,41 @@ impl Board {
         }
     }
 
+    fn generate_ladybug(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+        let mut buf1 = [UNASSIGNED; 6];
+        let mut buf2 = [UNASSIGNED; 6];
+        let mut step2 = NodeSet::new();
+        for s1 in self.slidable_adjacent_beetle(&mut buf1, id, id) {
+            if self.get(s1).is_some() {
+                for s2 in self.slidable_adjacent_beetle(&mut buf2, id, s1) {
+                    if self.get(s2).is_some() {
+                        step2.set(s2);
+                    }
+                }
+            }
+        }
+
+        let mut step3 = NodeSet::new();
+        for s2 in 0..self.nodes.len() as Id {
+            if step2.get(s2) && s2 != id {
+                for s3 in self.slidable_adjacent_beetle(&mut buf1, id, s2) {
+                    if self.get(s3).is_none() {
+                        step3.set(s3);
+                    }
+                }
+            }
+        }
+
+        for s3 in 0..self.nodes.len() as Id {
+            if step3.get(s3) {
+                moves[*n] = Some(Move::Movement(id, s3));
+                *n += 1;
+            }
+        }
+    }
+
     fn generate_mosquito(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        let mut targets = [false; 6];
+        let mut targets = [false; 7];
         for &adj in self.adjacent(id) {
             if let Some(tile) = self.get(adj) {
                 targets[tile.bug as usize] = true;
@@ -710,6 +748,9 @@ impl Board {
         }
         if targets[Bug::Beetle as usize] {
             self.generate_stack_walking(id, moves, n);
+        }
+        if targets[Bug::Ladybug as usize] {
+            self.generate_ladybug(id, moves, n);
         }
 
         // Some of these may have been generating the same moves, so sort and dedup.
@@ -751,9 +792,8 @@ impl Board {
                             self.generate_walk1(id, moves, n);
                             self.generate_stack_walking(id, moves, n);
                         }
-                        Bug::Mosquito => {
-                            self.generate_mosquito(id, moves, n);
-                        }
+                        Bug::Mosquito => self.generate_mosquito(id, moves, n),
+                        Bug::Ladybug => self.generate_ladybug(id, moves, n),
                     }
                 }
             }
@@ -843,9 +883,10 @@ impl minimax::Evaluator for BasicEvaluator {
                 Bug::Queen => 10,
                 Bug::Ant => 7,
                 Bug::Beetle => 6,
-                Bug::Grasshopper => 3,
+                Bug::Grasshopper => 4,
                 Bug::Spider => 3,
                 Bug::Mosquito => 0, // See below.
+                Bug::Ladybug => 5,
             }
         }
 
@@ -941,7 +982,7 @@ mod tests {
     #[test]
     fn test_gen_placement() {
         let mut board = Board::default();
-        for i in 1..6 {
+        for i in 1..7 {
             board.remaining[0][i] = 0;
             board.remaining[1][i] = 0;
         }
@@ -1181,6 +1222,26 @@ mod tests {
                 (2, 1),
                 (2, 2),
             ],
+        );
+    }
+
+    #[test]
+    fn test_generate_ladybug() {
+        let mut board = Board::default();
+        board.fill_board(&[(2, 3), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ladybug);
+        //．．．🐞．．．
+        // ．．🐞．🐞．．
+        //．．．🐞🐞．．
+        // ．．．🐞．．
+        println!("{}", board);
+        let mut moves = [None; 20];
+        let mut n = 0;
+        let start = board.alloc((2, 3));
+        board.generate_ladybug(start, &mut moves, &mut n);
+        board.assert_movements(
+            &moves[..n],
+            (2, 3),
+            &[(-1, 0), (1, 0), (2, 0), (-1, 1), (1, 1), (3, 1), (0, 2), (3, 2), (1, 3), (3, 3)],
         );
     }
 
