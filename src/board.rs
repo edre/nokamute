@@ -547,8 +547,9 @@ impl Board {
     // adjacent locations still connected to the hive that are slidable.
     // A slidable position has 2 empty slots next to an occupied slot.
     // For all 2^6 possibilities, there can be 0, 2, or 4 slidable neighbors.
-    fn slidable_adjacent(&self, origin: Id, id: Id) -> [Option<Id>; 4] {
-        let mut out = [None; 4];
+    fn slidable_adjacent<'a>(
+        &self, out: &'a mut [Id; 6], origin: Id, id: Id,
+    ) -> impl Iterator<Item = Id> + 'a {
         let mut n = 0;
         let neighbors = self.adjacent(id);
         // Each bit is whether neighbor is occupied.
@@ -566,13 +567,13 @@ impl Board {
 
         for neighbor in neighbors.iter() {
             if slidable & 1 != 0 {
-                out[n] = Some(*neighbor);
+                out[n] = *neighbor;
                 n += 1;
             }
             slidable >>= 1;
         }
 
-        out
+        out.iter().take(n).map(|x| *x)
     }
 
     // Find all walkable tiles where either the source or the dest is on the hive.
@@ -580,7 +581,9 @@ impl Board {
     // unrestricted), climbing bugs need to slide into/out of the higher of
     // source or dest heights.
     // https://www.boardgamegeek.com/thread/332467
-    fn slidable_adjacent_beetle(&self, id: Id) -> ([Id; 6], usize) {
+    fn slidable_adjacent_beetle<'a>(
+        &self, out: &'a mut [Id; 6], id: Id,
+    ) -> impl Iterator<Item = Id> + 'a {
         let self_height = self.nodes[id as usize].height() - 1;
         let mut heights = [0; 6];
         let neighbors = self.adjacent(id);
@@ -589,7 +592,6 @@ impl Board {
         }
 
         let mut n = 0;
-        let mut out = [UNASSIGNED; 6];
         for i in 0..6 {
             let barrier = std::cmp::max(self_height, heights[i]);
             if barrier == 0 {
@@ -603,13 +605,14 @@ impl Board {
             out[n] = neighbors[i];
             n += 1;
         }
-        (out, n)
+
+        out.iter().take(n).map(|x| *x)
     }
 
     // From any bug on top of a stack.
     fn generate_stack_walking(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        let (ids, m) = self.slidable_adjacent_beetle(id);
-        for &adj in ids[..m].iter() {
+        let mut buf = [UNASSIGNED; 6];
+        for adj in self.slidable_adjacent_beetle(&mut buf, id) {
             moves[*n] = Some(Move::Movement(id, adj));
             *n += 1;
         }
@@ -632,11 +635,10 @@ impl Board {
     }
 
     fn generate_walk1(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        for adj in self.slidable_adjacent(id, id).iter() {
-            if let &Some(node) = adj {
-                moves[*n] = Some(Move::Movement(id, node));
-                *n += 1;
-            }
+        let mut buf = [UNASSIGNED; 6];
+        for adj in self.slidable_adjacent(&mut buf, id, id) {
+            moves[*n] = Some(Move::Movement(id, adj));
+            *n += 1;
         }
     }
 
@@ -654,10 +656,9 @@ impl Board {
                 return;
             }
             path.push(id);
-            for adj in board.slidable_adjacent(orig, id).iter() {
-                if let Some(node) = *adj {
-                    dfs(node, orig, board, path, moves, n);
-                }
+            let mut buf = [UNASSIGNED; 6];
+            for adj in board.slidable_adjacent(&mut buf, orig, id) {
+                dfs(adj, orig, board, path, moves, n);
             }
             path.pop();
         }
@@ -668,6 +669,7 @@ impl Board {
     fn generate_walk_all(&self, orig: Id, moves: &mut [Option<Move>], n: &mut usize) {
         let mut visited = NodeSet::new();
         let mut queue = vec![orig];
+        let mut buf = [UNASSIGNED; 6];
         while let Some(node) = queue.pop() {
             if visited.get(node) {
                 continue;
@@ -677,10 +679,8 @@ impl Board {
                 moves[*n] = Some(Move::Movement(orig, node));
                 *n += 1;
             }
-            for adj in self.slidable_adjacent(orig, node).iter() {
-                if let Some(next) = adj {
-                    queue.push(*next);
-                }
+            for adj in self.slidable_adjacent(&mut buf, orig, node) {
+                queue.push(adj);
             }
         }
     }
@@ -991,43 +991,44 @@ mod tests {
     fn test_slidable() {
         let mut board = Board::default();
         let x = board.alloc((0, 0));
+        let mut buf = [UNASSIGNED; 6];
         // One neighbor.
         board.insert_loc((0, 0), Bug::Queen, Color::Black);
         board.insert_loc((1, 0), Bug::Queen, Color::Black);
         assert_eq!(
-            [Some(board.alloc((0, -1))), Some(board.alloc((1, 1))), None, None],
-            board.slidable_adjacent(x, x)
+            vec![board.alloc((0, -1)), board.alloc((1, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
         // Two adjacent neighbors.
         board.insert_loc((1, 1), Bug::Queen, Color::Black);
         assert_eq!(
-            [Some(board.alloc((0, -1))), Some(board.alloc((0, 1))), None, None],
-            board.slidable_adjacent(x, x)
+            vec![board.alloc((0, -1)), board.alloc((0, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
         // Four adjacent neighbors.
         board.insert_loc((0, 1), Bug::Queen, Color::Black);
         board.insert_loc((-1, 0), Bug::Queen, Color::Black);
         assert_eq!(
-            [Some(board.alloc((-1, -1))), Some(board.alloc((0, -1))), None, None],
-            board.slidable_adjacent(x, x)
+            vec![board.alloc((-1, -1)), board.alloc((0, -1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
         // Five adjacent neighbors.
         board.insert_loc((-1, -1), Bug::Queen, Color::Black);
-        assert_eq!([None, None, None, None], board.slidable_adjacent(x, x));
+        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>());
         // 2 separated groups of neighbors.
         board.remove_loc((0, 1));
-        assert_eq!([None, None, None, None], board.slidable_adjacent(x, x));
+        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>());
         // 2 opposite single neighbors
         board.remove_loc((1, 1));
         board.remove_loc((-1, -1));
         assert_eq!(
-            [
-                Some(board.alloc((-1, -1))),
-                Some(board.alloc((0, -1))),
-                Some(board.alloc((1, 1))),
-                Some(board.alloc((0, 1)))
+            vec![
+                board.alloc((-1, -1)),
+                board.alloc((0, -1)),
+                board.alloc((1, 1)),
+                board.alloc((0, 1))
             ],
-            board.slidable_adjacent(x, x)
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
     }
 
