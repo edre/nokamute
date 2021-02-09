@@ -1,6 +1,6 @@
 extern crate minimax;
 
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::default::Default;
@@ -36,6 +36,7 @@ pub enum Bug {
     Spider = 2,
     Ant = 3,
     Beetle = 4,
+    Mosquito = 5,
 }
 
 impl Bug {
@@ -46,8 +47,8 @@ impl Bug {
             Bug::Spider => '\u{1f577}',      // SPIDER
             Bug::Ant => '\u{1f41c}',         // ANT
             Bug::Beetle => '\u{1fab2}',      // BEETLE
+            Bug::Mosquito => '\u{1f99f}',    // MOSQUITO
                                               //Bug::Ladybug => '\u{1f41e}'', // LADY BEETLE
-                                              //Bug::Mosquito => '\u{1f99f}', // MOSQUITO
         }
     }
 }
@@ -99,7 +100,7 @@ pub struct Board {
     nodes: Vec<Node>,
     id_to_loc: Vec<Loc>,
     loc_to_id: HashMap<Loc, Id>,
-    remaining: [[u8; 5]; 2],
+    remaining: [[u8; 6]; 2],
     queens: [Id; 2],
     move_num: u16,
     zobrist_hash: u64,
@@ -205,15 +206,15 @@ impl Board {
         &self.nodes[id as usize].adj
     }
 
-    fn get_remaining(&self) -> &[u8; 5] {
+    fn get_remaining(&self) -> &[u8; 6] {
         &self.remaining[self.move_num as usize & 1]
     }
 
-    fn mut_remaining(&mut self) -> &mut [u8; 5] {
+    fn mut_remaining(&mut self) -> &mut [u8; 6] {
         &mut self.remaining[self.move_num as usize & 1]
     }
 
-    fn get_available_bugs(&self) -> [(Bug, u8); 5] {
+    fn get_available_bugs(&self) -> [(Bug, u8); 6] {
         let remaining = self.get_remaining();
         [
             (Bug::Queen, remaining[Bug::Queen as usize]),
@@ -221,6 +222,7 @@ impl Board {
             (Bug::Spider, remaining[Bug::Spider as usize]),
             (Bug::Ant, remaining[Bug::Ant as usize]),
             (Bug::Beetle, remaining[Bug::Beetle as usize]),
+            (Bug::Mosquito, remaining[Bug::Mosquito as usize]),
         ]
     }
 
@@ -239,10 +241,8 @@ impl Board {
         }
         out
     }
-}
 
-impl Default for Board {
-    fn default() -> Self {
+    fn new(remaining: [u8; 6]) -> Self {
         // Pre-allocate dummy unassigned Id to unused location.
         let fake_loc = (i8::MAX, i8::MAX);
         let mut loc_to_id = HashMap::new();
@@ -251,7 +251,7 @@ impl Default for Board {
             nodes: vec![Node { adj: [UNASSIGNED; 6], tile: None }],
             id_to_loc: vec![fake_loc],
             loc_to_id: loc_to_id,
-            remaining: [[1, 3, 2, 3, 2], [1, 3, 2, 3, 2]],
+            remaining: [remaining; 2],
             queens: [UNASSIGNED; 2],
             move_num: 0,
             zobrist_hash: 0,
@@ -261,6 +261,20 @@ impl Default for Board {
         board.alloc((0, 0));
         board.alloc((1, 0));
         board
+    }
+
+    pub fn new_core_set() -> Self {
+        Self::new([1, 3, 2, 3, 2, 0])
+    }
+
+    pub fn new_expansions() -> Self {
+        Self::new([1, 3, 2, 3, 2, 1])
+    }
+}
+
+impl Default for Board {
+    fn default() -> Self {
+        Self::new_expansions()
     }
 }
 
@@ -343,6 +357,41 @@ pub enum Move {
     Place(Id, Bug),
     Movement(Id, Id),
     Pass,
+}
+
+// For sorting and deduping mosquito generation.
+impl Ord for Bug {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (*self as u8).cmp(&(*other as u8))
+    }
+}
+
+impl Ord for Move {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match *self {
+            Move::Place(loc, bug) => {
+                if let Move::Place(loc2, bug2) = other {
+                    (loc, bug as u8).cmp(&(*loc2, *bug2 as u8))
+                } else {
+                    Ordering::Less
+                }
+            }
+            Move::Movement(start, end) => {
+                if let Move::Movement(start2, end2) = other {
+                    (start, end).cmp(&(*start2, *end2))
+                } else {
+                    Ordering::Greater
+                }
+            }
+            Move::Pass => Ordering::Less,
+        }
+    }
+}
+
+impl PartialOrd for Move {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl minimax::Move for Move {
@@ -636,6 +685,53 @@ impl Board {
         }
     }
 
+    fn generate_mosquito(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+        let mut targets = [false; 6];
+        for &adj in self.adjacent(id) {
+            if let Some(tile) = self.get(adj) {
+                targets[tile.bug as usize] = true;
+            }
+        }
+
+        let start = *n;
+        if targets[Bug::Ant as usize] {
+            self.generate_walk_all(id, moves, n);
+        } else {
+            // Avoid adding strictly duplicative moves to the ant.
+            if targets[Bug::Queen as usize] || targets[Bug::Beetle as usize] {
+                self.generate_walk1(id, moves, n);
+            }
+            if targets[Bug::Spider as usize] {
+                self.generate_walk3(id, moves, n);
+            }
+        }
+        if targets[Bug::Grasshopper as usize] {
+            self.generate_jumps(id, moves, n);
+        }
+        if targets[Bug::Beetle as usize] {
+            self.generate_stack_walking(id, moves, n);
+        }
+
+        // Some of these may have been generating the same moves, so sort and dedup.
+        moves[start..*n].sort();
+        // slice::partition_dedup does this, but it's currently nightly-only.
+        let mut r = start + 1;
+        let mut w = r;
+        while r < *n {
+            if moves[w - 1] == moves[r] {
+                r += 1;
+            } else {
+                moves.swap(r, w);
+                r += 1;
+                w += 1;
+            }
+        }
+        while w < *n {
+            *n -= 1;
+            moves[*n] = None;
+        }
+    }
+
     fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
         let immovable = self.find_cut_vertexes();
         for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
@@ -654,6 +750,9 @@ impl Board {
                         Bug::Beetle => {
                             self.generate_walk1(id, moves, n);
                             self.generate_stack_walking(id, moves, n);
+                        }
+                        Bug::Mosquito => {
+                            self.generate_mosquito(id, moves, n);
                         }
                     }
                 }
@@ -746,6 +845,7 @@ impl minimax::Evaluator for BasicEvaluator {
                 Bug::Beetle => 6,
                 Bug::Grasshopper => 3,
                 Bug::Spider => 3,
+                Bug::Mosquito => 0, // See below.
             }
         }
 
@@ -758,7 +858,21 @@ impl minimax::Evaluator for BasicEvaluator {
                 if tile.underneath.is_none() && immovable.get(id) {
                     continue;
                 }
-                let mut bug_score = MOVABLE_BUG_FACTOR * value(tile.bug);
+                let mut bug_score = value(tile.bug);
+                if tile.bug == Bug::Mosquito {
+                    // Mosquitos are valued as they can currently move.
+                    if tile.underneath.is_some() {
+                        bug_score = value(Bug::Beetle);
+                    } else {
+                        bug_score = node
+                            .adj
+                            .iter()
+                            .map(|&id| board.get(id).map(|tile| value(tile.bug) % 9).unwrap_or(0))
+                            .max()
+                            .unwrap_or(0);
+                    }
+                }
+                bug_score *= MOVABLE_BUG_FACTOR;
                 if tile.color != board.to_move() {
                     bug_score = -bug_score;
                 }
@@ -773,7 +887,6 @@ impl minimax::Evaluator for BasicEvaluator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cmp::Ordering;
 
     const ORIGIN: Id = 1;
 
@@ -825,44 +938,10 @@ mod tests {
         }
     }
 
-    impl Ord for Bug {
-        fn cmp(&self, other: &Self) -> Ordering {
-            (*self as u8).cmp(&(*other as u8))
-        }
-    }
-
-    impl Ord for Move {
-        fn cmp(&self, other: &Self) -> Ordering {
-            match *self {
-                Move::Place(loc, bug) => {
-                    if let Move::Place(loc2, bug2) = other {
-                        (loc, bug as u8).cmp(&(*loc2, *bug2 as u8))
-                    } else {
-                        Ordering::Less
-                    }
-                }
-                Move::Movement(start, end) => {
-                    if let Move::Movement(start2, end2) = other {
-                        (start, end).cmp(&(*start2, *end2))
-                    } else {
-                        Ordering::Greater
-                    }
-                }
-                Move::Pass => Ordering::Less,
-            }
-        }
-    }
-
-    impl PartialOrd for Move {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
     #[test]
     fn test_gen_placement() {
         let mut board = Board::default();
-        for i in 1..5 {
+        for i in 1..6 {
             board.remaining[0][i] = 0;
             board.remaining[1][i] = 0;
         }
@@ -1061,6 +1140,45 @@ mod tests {
                 (1, 3),
                 (2, 3),
                 (3, 3),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_generate_mosquito() {
+        let mut board = Board::default();
+        board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
+        let mut moves = [None; 20];
+        let mut n = 0;
+        board.generate_mosquito(ORIGIN, &mut moves, &mut n);
+        // Mosquito on mosquito can't move at all.
+        board.assert_movements(&moves[..n], (0, 0), &[]);
+
+        //．．🦟🦗．
+        // ．🐜🪲．
+        board.insert_loc((0, 1), Bug::Ant, Color::Black);
+        board.insert_loc((1, 1), Bug::Beetle, Color::Black);
+        board.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
+        println!("{}", board);
+        moves = [None; 20];
+        n = 0;
+        board.generate_mosquito(ORIGIN, &mut moves, &mut n);
+        board.assert_movements(
+            &moves[..n],
+            (0, 0),
+            &[
+                (-1, 0),
+                (-1, 1),
+                (0, -1),
+                (0, 1),
+                (0, 2),
+                (1, -1),
+                (1, 0),
+                (1, 1),
+                (1, 2),
+                (2, 0),
+                (2, 1),
+                (2, 2),
             ],
         );
     }

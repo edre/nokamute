@@ -9,7 +9,7 @@ use minimax::{Game, Move, Strategy};
 
 fn empty_board_depth3(b: &mut Bencher) {
     b.iter(|| {
-        let mut board = Board::default();
+        let mut board = Board::new_core_set();
         let mut strategy =
             IterativeSearch::<hive::BasicEvaluator>::new(IterativeOptions::with_max_depth(3));
         let m = strategy.choose_move(&mut board);
@@ -19,14 +19,14 @@ fn empty_board_depth3(b: &mut Bencher) {
 
 fn full_board_depth1(b: &mut Bencher) {
     b.iter(|| {
-        let mut board = Board::default();
+        let mut board = Board::new_core_set();
         // From some game I found online, subbed out some expansion pieces.
         hive::Move::Place(board.id((4, 0)), Bug::Queen).apply(&mut board);
         hive::Move::Place(board.id((1, 1)), Bug::Ant).apply(&mut board);
         hive::Move::Place(board.id((5, 0)), Bug::Ant).apply(&mut board);
         hive::Move::Place(board.id((3, 1)), Bug::Spider).apply(&mut board); //Ladybug
         hive::Move::Place(board.id((0, 1)), Bug::Ant).apply(&mut board);
-        hive::Move::Place(board.id((6, 1)), Bug::Beetle).apply(&mut board); //Mosquito
+        hive::Move::Place(board.id((6, 1)), Bug::Mosquito).apply(&mut board);
         hive::Move::Place(board.id((4, 1)), Bug::Spider).apply(&mut board); //Pillbug
         hive::Move::Place(board.id((7, 1)), Bug::Beetle).apply(&mut board);
         hive::Move::Place(board.id((0, 2)), Bug::Spider).apply(&mut board);
