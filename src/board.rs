@@ -1,6 +1,6 @@
 extern crate minimax;
 
-use std::cmp::{min, Ordering};
+use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::default::Default;
@@ -29,7 +29,7 @@ fn adjacent(loc: Loc) -> [Loc; 6] {
     [(x - 1, y - 1), (x, y - 1), (x + 1, y), (x + 1, y + 1), (x, y + 1), (x - 1, y)]
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Bug {
     Queen = 0,
     Grasshopper = 1,
@@ -297,10 +297,10 @@ impl Board {
         let mut maxy = i8::MIN;
         for (id, loc) in (0..).zip(self.id_to_loc.iter()) {
             if self.get(id).is_some() {
-                minx = std::cmp::min(minx, loc.0);
-                maxx = std::cmp::max(maxx, loc.0);
-                miny = std::cmp::min(miny, loc.1);
-                maxy = std::cmp::max(maxy, loc.1);
+                minx = min(minx, loc.0);
+                maxx = max(maxx, loc.0);
+                miny = min(miny, loc.1);
+                maxy = max(maxy, loc.1);
             }
         }
         (minx, maxx - minx + 1, miny, maxy - miny + 1)
@@ -354,46 +354,11 @@ impl Board {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Move {
     Place(Id, Bug),
     Movement(Id, Id),
     Pass,
-}
-
-// For sorting and deduping mosquito generation.
-impl Ord for Bug {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (*self as u8).cmp(&(*other as u8))
-    }
-}
-
-impl Ord for Move {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match *self {
-            Move::Place(loc, bug) => {
-                if let Move::Place(loc2, bug2) = other {
-                    (loc, bug as u8).cmp(&(*loc2, *bug2 as u8))
-                } else {
-                    Ordering::Less
-                }
-            }
-            Move::Movement(start, end) => {
-                if let Move::Movement(start2, end2) = other {
-                    (start, end).cmp(&(*start2, *end2))
-                } else {
-                    Ordering::Greater
-                }
-            }
-            Move::Pass => Ordering::Less,
-        }
-    }
-}
-
-impl PartialOrd for Move {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 impl minimax::Move for Move {
@@ -598,7 +563,7 @@ impl Board {
 
         let mut n = 0;
         for i in 0..6 {
-            let barrier = std::cmp::max(self_height, heights[i]);
+            let barrier = max(self_height, heights[i]);
             if barrier == 0 {
                 // Walking at height zero uses regular sliding rules.
                 continue;
