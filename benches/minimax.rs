@@ -27,12 +27,12 @@ fn full_board_depth1(b: &mut Bencher) {
         hive::Move::Place(board.id((3, 1)), Bug::Ladybug).apply(&mut board);
         hive::Move::Place(board.id((0, 1)), Bug::Ant).apply(&mut board);
         hive::Move::Place(board.id((6, 1)), Bug::Mosquito).apply(&mut board);
-        hive::Move::Place(board.id((4, 1)), Bug::Spider).apply(&mut board); //Pillbug
+        hive::Move::Place(board.id((4, 1)), Bug::Pillbug).apply(&mut board);
         hive::Move::Place(board.id((7, 1)), Bug::Beetle).apply(&mut board);
         hive::Move::Place(board.id((0, 2)), Bug::Spider).apply(&mut board);
         hive::Move::Place(board.id((-1, 2)), Bug::Ant).apply(&mut board);
         hive::Move::Place(board.id((4, 3)), Bug::Spider).apply(&mut board);
-        hive::Move::Place(board.id((2, 2)), Bug::Spider).apply(&mut board); //Pillbug
+        hive::Move::Place(board.id((2, 2)), Bug::Pillbug).apply(&mut board);
         hive::Move::Place(board.id((4, 4)), Bug::Beetle).apply(&mut board);
         hive::Move::Place(board.id((3, 2)), Bug::Queen).apply(&mut board);
         hive::Move::Place(board.id((3, 2)), Bug::Beetle).apply(&mut board);

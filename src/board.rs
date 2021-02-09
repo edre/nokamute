@@ -38,6 +38,7 @@ pub enum Bug {
     Beetle = 4,
     Mosquito = 5,
     Ladybug = 6,
+    Pillbug = 7,
 }
 
 impl Bug {
@@ -50,6 +51,7 @@ impl Bug {
             Bug::Beetle => '\u{1fab2}',      // BEETLE
             Bug::Mosquito => '\u{1f99f}',    // MOSQUITO
             Bug::Ladybug => '\u{1f41e}',     // LADY BEETLE
+            Bug::Pillbug => '\u{1f48a}',     // PILL, either that or MICROBE
         }
     }
 }
@@ -101,11 +103,13 @@ pub struct Board {
     nodes: Vec<Node>,
     id_to_loc: Vec<Loc>,
     loc_to_id: HashMap<Loc, Id>,
-    remaining: [[u8; 7]; 2],
+    remaining: [[u8; 8]; 2],
     queens: [Id; 2],
     move_num: u16,
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
+    // History of move destinations.
+    move_history: Vec<Id>,
 }
 
 fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
@@ -207,15 +211,15 @@ impl Board {
         &self.nodes[id as usize].adj
     }
 
-    fn get_remaining(&self) -> &[u8; 7] {
+    fn get_remaining(&self) -> &[u8; 8] {
         &self.remaining[self.move_num as usize & 1]
     }
 
-    fn mut_remaining(&mut self) -> &mut [u8; 7] {
+    fn mut_remaining(&mut self) -> &mut [u8; 8] {
         &mut self.remaining[self.move_num as usize & 1]
     }
 
-    fn get_available_bugs(&self) -> [(Bug, u8); 7] {
+    fn get_available_bugs(&self) -> [(Bug, u8); 8] {
         let remaining = self.get_remaining();
         [
             (Bug::Queen, remaining[Bug::Queen as usize]),
@@ -225,6 +229,7 @@ impl Board {
             (Bug::Beetle, remaining[Bug::Beetle as usize]),
             (Bug::Mosquito, remaining[Bug::Mosquito as usize]),
             (Bug::Ladybug, remaining[Bug::Ladybug as usize]),
+            (Bug::Pillbug, remaining[Bug::Pillbug as usize]),
         ]
     }
 
@@ -244,7 +249,7 @@ impl Board {
         out
     }
 
-    fn new(remaining: [u8; 7]) -> Self {
+    fn new(remaining: [u8; 8]) -> Self {
         // Pre-allocate dummy unassigned Id to unused location.
         let fake_loc = (i8::MAX, i8::MAX);
         let mut loc_to_id = HashMap::new();
@@ -258,6 +263,7 @@ impl Board {
             move_num: 0,
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
+            move_history: Vec::new(),
         };
         // Pre-allocate starting moves.
         board.alloc((0, 0));
@@ -266,11 +272,11 @@ impl Board {
     }
 
     pub fn new_core_set() -> Self {
-        Self::new([1, 3, 2, 3, 2, 0, 0])
+        Self::new([1, 3, 2, 3, 2, 0, 0, 0])
     }
 
     pub fn new_expansions() -> Self {
-        Self::new([1, 3, 2, 3, 2, 1, 1])
+        Self::new([1, 3, 2, 3, 2, 1, 1, 1])
     }
 }
 
@@ -364,23 +370,27 @@ pub enum Move {
 impl minimax::Move for Move {
     type G = Game;
     fn apply(&self, board: &mut Board) {
-        match *self {
+        let dest = match *self {
             Move::Place(id, bug) => {
                 board.insert(id, bug, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
+                id
             }
             Move::Movement(start, end) => {
                 let tile = board.remove(start);
                 board.insert(end, tile.bug, tile.color);
+                end
             }
-            Move::Pass => {}
-        }
+            Move::Pass => UNASSIGNED,
+        };
         board.move_num += 1;
         board.zobrist_history.push(board.zobrist_hash);
+        board.move_history.push(dest);
     }
     fn undo(&self, board: &mut Board) {
         board.move_num -= 1;
         board.zobrist_history.pop();
+        board.move_history.pop();
         match *self {
             Move::Place(id, bug) => {
                 board.remove(id);
@@ -688,20 +698,53 @@ impl Board {
         }
     }
 
+    fn generate_throws(
+        &self, immovable: &NodeSet, id: Id, moves: &mut [Option<Move>], n: &mut usize,
+    ) {
+        let mut starts = [UNASSIGNED; 6];
+        let mut num_starts = 0;
+        let mut ends = [UNASSIGNED; 6];
+        let mut num_ends = 0;
+        let mut buf = [UNASSIGNED; 6];
+        for adj in self.slidable_adjacent_beetle(&mut buf, UNASSIGNED, id) {
+            match self.nodes[adj as usize].height() {
+                0 => {
+                    ends[num_ends] = adj;
+                    num_ends += 1;
+                }
+                1 => {
+                    if !immovable.get(adj) {
+                        starts[num_starts] = adj;
+                        num_starts += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        for &start in starts[..num_starts].iter() {
+            for &end in ends[..num_ends].iter() {
+                moves[*n] = Some(Move::Movement(start, end));
+                *n += 1;
+            }
+        }
+    }
+
     fn generate_mosquito(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        let mut targets = [false; 7];
+        let mut targets = [false; 8];
         for &adj in self.adjacent(id) {
             if let Some(tile) = self.get(adj) {
                 targets[tile.bug as usize] = true;
             }
         }
 
-        let start = *n;
         if targets[Bug::Ant as usize] {
             self.generate_walk_all(id, moves, n);
         } else {
             // Avoid adding strictly duplicative moves to the ant.
-            if targets[Bug::Queen as usize] || targets[Bug::Beetle as usize] {
+            if targets[Bug::Queen as usize]
+                || targets[Bug::Beetle as usize]
+                || targets[Bug::Pillbug as usize]
+            {
                 self.generate_walk1(id, moves, n);
             }
             if targets[Bug::Spider as usize] {
@@ -717,29 +760,16 @@ impl Board {
         if targets[Bug::Ladybug as usize] {
             self.generate_ladybug(id, moves, n);
         }
-
-        // Some of these may have been generating the same moves, so sort and dedup.
-        moves[start..*n].sort();
-        // slice::partition_dedup does this, but it's currently nightly-only.
-        let mut r = start + 1;
-        let mut w = r;
-        while r < *n {
-            if moves[w - 1] == moves[r] {
-                r += 1;
-            } else {
-                moves.swap(r, w);
-                r += 1;
-                w += 1;
-            }
-        }
-        while w < *n {
-            *n -= 1;
-            moves[*n] = None;
-        }
     }
 
     fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
-        let immovable = self.find_cut_vertexes();
+        let mut immovable = self.find_cut_vertexes();
+        if let Some(moved) = self.move_history.last() {
+            // Can't move pieces that were moved on the opponent's turn.
+            immovable.set(*moved);
+        }
+        let mut dedup = false;
+        let start = *n;
         for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
             if let Some(tile) = &node.tile {
                 if tile.color != self.to_move() {
@@ -747,20 +777,60 @@ impl Board {
                 }
                 if tile.underneath.is_some() {
                     self.generate_stack_walking(id, moves, n);
-                } else if !immovable.get(id) {
-                    match tile.bug {
-                        Bug::Queen => self.generate_walk1(id, moves, n),
-                        Bug::Grasshopper => self.generate_jumps(id, moves, n),
-                        Bug::Spider => self.generate_walk3(id, moves, n),
-                        Bug::Ant => self.generate_walk_all(id, moves, n),
-                        Bug::Beetle => {
-                            self.generate_walk1(id, moves, n);
-                            self.generate_stack_walking(id, moves, n);
-                        }
-                        Bug::Mosquito => self.generate_mosquito(id, moves, n),
-                        Bug::Ladybug => self.generate_ladybug(id, moves, n),
-                    }
+                    // Don't let mosquito on stack use pillbug ability.
+                    // Although the rules don't seem to specify either way.
+                    continue;
                 }
+                // Check for throw ability before movability, as pinned pillbugs can still throw.
+                if tile.bug == Bug::Pillbug
+                    || (tile.bug == Bug::Mosquito
+                        && node.adj.iter().any(|&adj| {
+                            self.get(adj).map(|tile| tile.bug == Bug::Pillbug).unwrap_or(false)
+                        }))
+                {
+                    self.generate_throws(&immovable, id, moves, n);
+                    dedup = true;
+                }
+                if immovable.get(id) {
+                    continue;
+                }
+                match tile.bug {
+                    Bug::Queen => self.generate_walk1(id, moves, n),
+                    Bug::Grasshopper => self.generate_jumps(id, moves, n),
+                    Bug::Spider => self.generate_walk3(id, moves, n),
+                    Bug::Ant => self.generate_walk_all(id, moves, n),
+                    Bug::Beetle => {
+                        self.generate_walk1(id, moves, n);
+                        self.generate_stack_walking(id, moves, n);
+                    }
+                    Bug::Mosquito => {
+                        self.generate_mosquito(id, moves, n);
+                        dedup = true;
+                    }
+                    Bug::Ladybug => self.generate_ladybug(id, moves, n),
+                    Bug::Pillbug => self.generate_walk1(id, moves, n),
+                }
+            }
+        }
+
+        if dedup {
+            // Mosquitos and pillbugs can create duplicate moves, so sort and dedup.
+            moves[start..*n].sort_unstable();
+            // slice::partition_dedup does this, but it's currently nightly-only.
+            let mut r = start + 1;
+            let mut w = r;
+            while r < *n {
+                if moves[w - 1] == moves[r] {
+                    r += 1;
+                } else {
+                    moves.swap(r, w);
+                    r += 1;
+                    w += 1;
+                }
+            }
+            while w < *n {
+                *n -= 1;
+                moves[*n] = None;
             }
         }
     }
@@ -857,6 +927,7 @@ impl minimax::Evaluator for BasicEvaluator {
                 Bug::Spider => 3,
                 Bug::Mosquito => 0, // See below.
                 Bug::Ladybug => 5,
+                Bug::Pillbug => 4,
             }
         }
 
@@ -866,10 +937,20 @@ impl minimax::Evaluator for BasicEvaluator {
 
         for (id, node) in (0..).zip(board.nodes.iter()) {
             if let Some(ref tile) = node.tile {
-                if tile.underneath.is_none() && immovable.get(id) {
+                let mut bug_score = value(tile.bug);
+                if tile.bug == Bug::Pillbug
+                    && node.adj.iter().any(|&adj| {
+                        board
+                            .get(adj)
+                            .map(|tile2| tile2.bug == Bug::Queen && tile2.color == tile.color)
+                            .unwrap_or(false)
+                    })
+                {
+                    // Pillbugs get a bonus if adjacent to matching queen.
+                    bug_score += 9;
+                } else if tile.underneath.is_none() && immovable.get(id) {
                     continue;
                 }
-                let mut bug_score = value(tile.bug);
                 if tile.bug == Bug::Mosquito {
                     // Mosquitos are valued as they can currently move.
                     if tile.underneath.is_some() {
@@ -937,8 +1018,9 @@ mod tests {
             let mut actual_ends = Vec::new();
             for m in moves.iter() {
                 if let Some(Move::Movement(actual_start, actual_end)) = m {
-                    assert_eq!(self.loc(*actual_start), start);
-                    actual_ends.push(self.loc(*actual_end));
+                    if self.loc(*actual_start) == start {
+                        actual_ends.push(self.loc(*actual_end));
+                    }
                 }
             }
             actual_ends.sort();
@@ -952,7 +1034,7 @@ mod tests {
     #[test]
     fn test_gen_placement() {
         let mut board = Board::default();
-        for i in 1..7 {
+        for i in 1..8 {
             board.remaining[0][i] = 0;
             board.remaining[1][i] = 0;
         }
@@ -1160,7 +1242,7 @@ mod tests {
     fn test_generate_mosquito() {
         let mut board = Board::default();
         board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
-        let mut moves = [None; 20];
+        let mut moves = [None; 200];
         let mut n = 0;
         board.generate_mosquito(ORIGIN, &mut moves, &mut n);
         // Mosquito on mosquito can't move at all.
@@ -1172,9 +1254,10 @@ mod tests {
         board.insert_loc((1, 1), Bug::Beetle, Color::Black);
         board.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
         println!("{}", board);
-        moves = [None; 20];
+        moves = [None; 200];
         n = 0;
-        board.generate_mosquito(ORIGIN, &mut moves, &mut n);
+        // Dedup happens in generate_movements.
+        board.generate_movements(&mut moves, &mut n);
         board.assert_movements(
             &moves[..n],
             (0, 0),
@@ -1213,6 +1296,45 @@ mod tests {
             (2, 3),
             &[(-1, 0), (1, 0), (2, 0), (-1, 1), (1, 1), (3, 1), (0, 2), (3, 2), (1, 3), (3, 3)],
         );
+    }
+
+    #[test]
+    fn test_generate_throws() {
+        let mut board = Board::default();
+        board.fill_board(&[(1, 1), (0, 0), (0, 0), (2, 2), (2, 2), (0, 1), (1, 2)], Bug::Pillbug);
+        // ．．💊．．．
+        //．．💊💊．．
+        // ．．💊💊．
+        println!("{}", board);
+        let mut moves = [None; 20];
+        let mut n = 0;
+        let start = board.alloc((1, 1));
+        let immovable = NodeSet::new();
+        board.generate_throws(&immovable, start, &mut moves, &mut n);
+        assert_eq!(4, n);
+        board.assert_movements(&moves[..2], (1, 2), &[(1, 0), (2, 1)]);
+        board.assert_movements(&moves[2..n], (0, 1), &[(1, 0), (2, 1)]);
+
+        // Create a level-2 gate to prevent one piece from being thrown.
+        board.remove_loc((0, 0));
+        board.insert_loc((0, 1), Bug::Pillbug, Color::Black);
+        moves = [None; 20];
+        n = 0;
+        board.generate_throws(&immovable, start, &mut moves, &mut n);
+        assert_eq!(2, n);
+        board.assert_movements(&moves[..n], (0, 0), &[(1, 0), (2, 1)]);
+
+        // Create a level-2 gate to prevent one destination to being thrown to.
+        board.insert_loc((1, 0), Bug::Pillbug, Color::Black);
+        board.insert_loc((1, 0), Bug::Pillbug, Color::Black);
+        board.remove_loc((0, 1));
+        board.remove_loc((0, 1));
+        board.remove_loc((1, 2));
+        moves = [None; 20];
+        n = 0;
+        board.generate_throws(&immovable, start, &mut moves, &mut n);
+        assert_eq!(2, n);
+        board.assert_movements(&moves[..n], (0, 0), &[(0, 1), (1, 2)]);
     }
 
     #[test]
