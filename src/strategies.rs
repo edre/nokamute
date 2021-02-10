@@ -92,18 +92,26 @@ impl<M: Default> TranspositionTable<M> {
 
 /// Options to use for the iterative search engine.
 pub struct IterativeOptions {
-    max_depth: Option<usize>,
-    max_time: Option<Duration>,
+    max_depth: usize,
+    max_time: Duration,
     table_size: usize,
 }
 
+impl Default for IterativeOptions {
+    fn default() -> Self {
+        IterativeOptions { max_depth: 2, max_time: Duration::default(), table_size: 1000 }
+    }
+}
+
 impl IterativeOptions {
-    pub fn with_timeout(dur: Duration) -> Self {
-        IterativeOptions { max_depth: None, max_time: Some(dur), table_size: 1000 }
+    pub fn with_timeout(mut self, dur: Duration) -> Self {
+        self.max_time = dur;
+        self
     }
 
-    pub fn with_max_depth(depth: usize) -> Self {
-        IterativeOptions { max_depth: Some(depth), max_time: None, table_size: 1000 }
+    pub fn with_max_depth(mut self, depth: usize) -> Self {
+        self.max_depth = depth;
+        self
     }
 
     pub fn with_table_size(mut self, size: usize) -> Self {
@@ -113,13 +121,16 @@ impl IterativeOptions {
 }
 
 pub struct IterativeSearch<E: Evaluator> {
-    opts: IterativeOptions,
+    // These are public so that they can be changed for each move, while
+    // reusing the table state between runs.
+    pub max_depth: usize,
+    pub max_time: Duration,
     timeout: Arc<AtomicBool>,
     transposition_table: TranspositionTable<<<E as Evaluator>::G as Game>::M>,
     _eval: PhantomData<E>,
     // Runtime stats
     // Maximum depth used to produce the move.
-    max_depth: u8,
+    actual_depth: u8,
     // Nodes explored up to this depth.
     nodes_explored: usize,
     // Nodes explored past this depth, and thus this is thrown away work.
@@ -135,15 +146,16 @@ where
     pub fn new(opts: IterativeOptions) -> IterativeSearch<E> {
         let table = TranspositionTable::new(opts.table_size);
         IterativeSearch {
-            opts: opts,
+            max_depth: opts.max_depth,
+            max_time: opts.max_time,
             timeout: Arc::new(AtomicBool::new(false)),
             transposition_table: table,
             _eval: PhantomData,
-            max_depth: 0,
+            actual_depth: 0,
             nodes_explored: 0,
             next_depth_nodes: 0,
             table_hits: 0,
-            wall_time: Duration::new(0, 0),
+            wall_time: Duration::default(),
         }
     }
 
@@ -151,7 +163,7 @@ where
         let throughput =
             (self.nodes_explored + self.next_depth_nodes) as f64 / self.wall_time.as_secs_f64();
         format!("Depth {} exploring {} nodes.\nPartial exploration of next depth explored {} nodes.\n{} transposition table hits.\n{:.02} nodes/sec",
-		self.max_depth, self.nodes_explored, self.next_depth_nodes, self.table_hits, throughput)
+		self.actual_depth, self.nodes_explored, self.next_depth_nodes, self.table_hits, throughput)
     }
 
     // Recursively compute negamax on the game state. Returns None if it hits the timeout.
@@ -255,21 +267,21 @@ where
         // Reset stats.
         self.nodes_explored = 0;
         self.next_depth_nodes = 0;
-        self.max_depth = 0;
+        self.actual_depth = 0;
         self.table_hits = 0;
         let start_time = Instant::now();
         // Start timer if configured.
-        self.timeout = if let Some(max_time) = self.opts.max_time {
-            timeout_signal(max_time)
-        } else {
+        self.timeout = if self.max_time == Duration::new(0, 0) {
             Arc::new(AtomicBool::new(false))
+        } else {
+            timeout_signal(self.max_time)
         };
 
         let root_hash = s.zobrist_hash();
         let mut s_clone = s.clone();
         let mut best_move = None;
 
-        for depth in 0..=self.opts.max_depth.unwrap_or(50) as u8 {
+        for depth in 0..self.max_depth as u8 {
             if self.negamax(&mut s_clone, depth + 1, Evaluation::Worst, Evaluation::Best).is_none()
             {
                 // Timeout. Return the best move from the previous depth.
@@ -278,7 +290,7 @@ where
             let entry = self.transposition_table.lookup(root_hash).unwrap();
             best_move = Some(entry.best_move);
 
-            self.max_depth = max(self.max_depth, depth);
+            self.actual_depth = max(self.actual_depth, depth);
             self.nodes_explored += self.next_depth_nodes;
             self.next_depth_nodes = 0;
         }

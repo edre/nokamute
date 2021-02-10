@@ -139,6 +139,9 @@ fn input_placement(board: &hive::Board, moves: &[Option<hive::Move>]) -> Option<
 fn main() {
     let mut board = hive::Board::default();
     let mut history = Vec::<hive::Move>::new();
+    let mut strategy = hive::IterativeSearch::<hive::BasicEvaluator>::new(
+        hive::IterativeOptions::default().with_table_size(200_000),
+    );
     loop {
         if let Some(winner) = hive::Game::get_winner(&board) {
             if winner == minimax::Winner::Draw {
@@ -167,13 +170,13 @@ fn main() {
                     depth = Some(num);
                 }
             }
-            let opts = if let Some(d) = depth {
-                hive::IterativeOptions::with_max_depth(d)
+            if let Some(d) = depth {
+                strategy.max_depth = d;
+                strategy.max_time = Duration::new(30, 0);
             } else {
-                hive::IterativeOptions::with_timeout(Duration::new(2, 0))
+                strategy.max_depth = 50;
+                strategy.max_time = Duration::new(5, 0);
             }
-            .with_table_size(200_000);
-            let mut strategy = hive::IterativeSearch::<hive::BasicEvaluator>::new(opts);
             if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);
                 m.apply(&mut board);
