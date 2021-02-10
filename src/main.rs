@@ -171,7 +171,8 @@ fn main() {
                 hive::IterativeOptions::with_max_depth(d)
             } else {
                 hive::IterativeOptions::with_timeout(Duration::new(2, 0))
-            };
+            }
+            .with_table_size(200_000);
             let mut strategy = hive::IterativeSearch::<hive::BasicEvaluator>::new(opts);
             if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);

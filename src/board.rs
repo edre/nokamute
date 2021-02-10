@@ -367,6 +367,12 @@ pub enum Move {
     Pass,
 }
 
+impl Default for Move {
+    fn default() -> Move {
+        Move::Pass
+    }
+}
+
 impl minimax::Move for Move {
     type G = Game;
     fn apply(&self, board: &mut Board) {
