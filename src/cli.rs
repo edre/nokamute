@@ -1,4 +1,3 @@
-use crate::board;
 use crate::board::{Board, Bug, Id};
 use crate::strategies::*;
 use minimax::{Game, Move, Strategy};
@@ -75,12 +74,12 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
     })
 }
 
-fn input_movement(board: &Board, moves: &[Option<board::Move>]) -> Option<board::Move> {
+fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate::Move> {
     let mut starts =
         moves
             .iter()
             .filter_map(|m| {
-                if let Some(board::Move::Movement(start, _)) = m {
+                if let Some(crate::Move::Movement(start, _)) = m {
                     Some(*start)
                 } else {
                     None
@@ -98,7 +97,7 @@ fn input_movement(board: &Board, moves: &[Option<board::Move>]) -> Option<board:
     let mut ends = moves
         .iter()
         .filter_map(|m| {
-            if let Some(board::Move::Movement(start2, end)) = m {
+            if let Some(crate::Move::Movement(start2, end)) = m {
                 if start == *start2 {
                     Some(*end)
                 } else {
@@ -113,14 +112,14 @@ fn input_movement(board: &Board, moves: &[Option<board::Move>]) -> Option<board:
     ends.dedup();
     let end = input_id(board, "Move to where? ", &ends)?;
 
-    Some(board::Move::Movement(start, end))
+    Some(crate::Move::Movement(start, end))
 }
 
-fn input_placement(board: &Board, moves: &[Option<board::Move>]) -> Option<board::Move> {
+fn input_placement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate::Move> {
     let mut places = moves
         .iter()
         .filter_map(
-            |m| if let Some(board::Move::Place(place, _)) = m { Some(*place) } else { None },
+            |m| if let Some(crate::Move::Place(place, _)) = m { Some(*place) } else { None },
         )
         .collect::<Vec<_>>();
     places.sort();
@@ -133,21 +132,21 @@ fn input_placement(board: &Board, moves: &[Option<board::Move>]) -> Option<board
 
     let bugs = moves
         .iter()
-        .filter_map(|m| if let Some(board::Move::Place(_, bug)) = m { Some(*bug) } else { None })
+        .filter_map(|m| if let Some(crate::Move::Place(_, bug)) = m { Some(*bug) } else { None })
         .collect::<Vec<_>>();
     let bug = input_bug(&bugs)?;
 
-    Some(board::Move::Place(place, bug))
+    Some(crate::Move::Place(place, bug))
 }
 
 pub fn terminal_game_interface() {
     let mut board = Board::default();
-    let mut history = Vec::<board::Move>::new();
-    let mut strategy = IterativeSearch::<board::BasicEvaluator>::new(
+    let mut history = Vec::<crate::Move>::new();
+    let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
         IterativeOptions::default().with_table_size(200_000),
     );
     loop {
-        if let Some(winner) = board::Game::get_winner(&board) {
+        if let Some(winner) = crate::Game::get_winner(&board) {
             if winner == minimax::Winner::Draw {
                 println!("{}Game over. Draw.", board);
             } else {
@@ -157,10 +156,10 @@ pub fn terminal_game_interface() {
         }
         // Precompute possible moves.
         let mut moves = [None; 200];
-        let n = board::Game::generate_moves(&mut board, &mut moves);
-        if moves[0] == Some(board::Move::Pass) {
+        let n = crate::Game::generate_moves(&mut board, &mut moves);
+        if moves[0] == Some(crate::Move::Pass) {
             // Auto-pass if there are no valid moves.
-            board::Move::Pass.apply(&mut board);
+            crate::Move::Pass.apply(&mut board);
             continue;
         }
 
