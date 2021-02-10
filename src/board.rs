@@ -414,20 +414,20 @@ impl minimax::Move for Move {
 
 // Useful utility.
 pub(crate) struct NodeSet {
-    table: [bool; 256],
+    table: [u32; 8],
 }
 
 impl NodeSet {
     fn new() -> NodeSet {
-        NodeSet { table: [false; 256] }
+        NodeSet { table: [0; 8] }
     }
 
     fn set(&mut self, id: Id) {
-        self.table[id as usize] = true;
+        self.table[id as usize & 0x7] |= 1 << (id as u32 >> 3);
     }
 
     pub(crate) fn get(&self, id: Id) -> bool {
-        self.table[id as usize]
+        (self.table[id as usize & 0x7] >> (id as u32 >> 3)) & 1 != 0
     }
 }
 
