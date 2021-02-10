@@ -281,7 +281,7 @@ where
         let mut s_clone = s.clone();
         let mut best_move = None;
 
-        for depth in 0..self.max_depth as u8 {
+        for depth in 0..=self.max_depth as u8 {
             if self.negamax(&mut s_clone, depth + 1, Evaluation::Worst, Evaluation::Best).is_none()
             {
                 // Timeout. Return the best move from the previous depth.
