@@ -23,6 +23,9 @@ pub type Id = u8;
 // allocated their own node yet.
 const UNASSIGNED: Id = 0;
 
+// Ids for tiles that are currently under other pieces.
+type UnderId = u8;
+
 fn adjacent(loc: Loc) -> [Loc; 6] {
     let (x, y) = loc;
     // In clockwise order
@@ -63,44 +66,26 @@ pub enum Color {
 }
 
 // A tile on the board.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) struct Tile {
     pub(crate) bug: Bug,
     pub(crate) color: Color,
-    pub(crate) underneath: Option<Box<Tile>>,
+    pub(crate) underneath: Option<UnderId>,
 }
 
-impl Tile {
-    fn height(&self) -> u32 {
-        if let Some(next) = &self.underneath {
-            1 + next.height()
-        } else {
-            0
-        }
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) struct Node {
     // Adjacency list.
     pub(crate) adj: [Id; 6],
     pub(crate) tile: Option<Tile>,
 }
 
-impl Node {
-    fn height(&self) -> u32 {
-        if let Some(tile) = &self.tile {
-            tile.height() + 1
-        } else {
-            0
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Board {
     // Indexed by Id.
     pub(crate) nodes: Vec<Node>,
+    // Tiles that are under other tiles.
+    underworld: [Option<Tile>; 8],
     id_to_loc: Vec<Loc>,
     loc_to_id: HashMap<Loc, Id>,
     remaining: [[u8; 8]; 2],
@@ -180,18 +165,32 @@ impl Board {
         self.nodes[id as usize].tile.as_ref()
     }
 
+    fn insert_underworld(&mut self, tile: Tile) -> UnderId {
+        for i in 0..self.underworld.len() {
+            if self.underworld[i].is_none() {
+                self.underworld[i] = Some(tile);
+                return i as UnderId;
+            }
+        }
+        unreachable!("underworld overflowed");
+    }
+
+    fn remove_underworld(&mut self, id: UnderId) -> Option<Tile> {
+        self.underworld[id as usize].take()
+    }
+
     fn insert(&mut self, id: Id, bug: Bug, color: Color) {
         // BUG: some exploration hit index out of bounds here, indexing id before it was allocated.
         let underneath = if let Some(prev) = self.nodes[id as usize].tile.take() {
-            Some(Box::new(prev))
+            Some(self.insert_underworld(prev))
         } else {
             // Potentially newly occupied node. Ensure all surrounding nodes get allocated.
             self.alloc_surrounding(id);
             None
         };
         let tile = Tile { bug: bug, color: color, underneath: underneath };
-        self.zobrist_hash ^= zobrist(id, bug, color, tile.height());
         self.nodes[id as usize].tile = Some(tile);
+        self.zobrist_hash ^= zobrist(id, bug, color, self.height(id));
 
         if bug == Bug::Queen {
             self.queens[self.move_num as usize & 1] = id;
@@ -200,12 +199,23 @@ impl Board {
 
     // Asserts that there is something there.
     fn remove(&mut self, id: Id) -> Tile {
+        let height = self.height(id);
         let mut tile = self.nodes[id as usize].tile.take().unwrap();
-        self.zobrist_hash ^= zobrist(id, tile.bug, tile.color, tile.height());
         if let Some(stack) = tile.underneath.take() {
-            self.nodes[id as usize].tile = Some(*stack);
+            self.nodes[id as usize].tile = self.remove_underworld(stack);
         }
+        self.zobrist_hash ^= zobrist(id, tile.bug, tile.color, height);
         tile
+    }
+
+    fn height(&self, id: Id) -> u32 {
+        let mut height = 0;
+        let mut tile: Option<&Tile> = self.nodes[id as usize].tile.as_ref();
+        while let Some(t) = tile {
+            height += 1;
+            tile = t.underneath.map(|uid| self.underworld[uid as usize].as_ref().unwrap());
+        }
+        height
     }
 
     fn adjacent(&self, id: Id) -> &[Id; 6] {
@@ -257,6 +267,7 @@ impl Board {
         loc_to_id.insert(fake_loc, 0);
         let mut board = Board {
             nodes: vec![Node { adj: [UNASSIGNED; 6], tile: None }],
+            underworld: [None; 8],
             id_to_loc: vec![fake_loc],
             loc_to_id: loc_to_id,
             remaining: [remaining; 2],
@@ -568,14 +579,14 @@ impl Board {
     fn slidable_adjacent_beetle<'a>(
         &self, out: &'a mut [Id; 6], orig: Id, id: Id,
     ) -> impl Iterator<Item = Id> + 'a {
-        let mut self_height = self.nodes[id as usize].height();
+        let mut self_height = self.height(id);
         if orig == id {
             self_height -= 1;
         }
         let mut heights = [0; 6];
         let neighbors = self.adjacent(id);
         for i in 0..6 {
-            heights[i] = self.nodes[neighbors[i] as usize].height();
+            heights[i] = self.height(neighbors[i]);
         }
 
         let mut n = 0;
@@ -714,7 +725,7 @@ impl Board {
         let mut num_ends = 0;
         let mut buf = [UNASSIGNED; 6];
         for adj in self.slidable_adjacent_beetle(&mut buf, UNASSIGNED, id) {
-            match self.nodes[adj as usize].height() {
+            match self.height(adj) {
                 0 => {
                     ends[num_ends] = adj;
                     num_ends += 1;
