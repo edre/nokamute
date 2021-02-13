@@ -180,7 +180,6 @@ impl Board {
     }
 
     fn insert(&mut self, id: Id, bug: Bug, color: Color) {
-        // BUG: some exploration hit index out of bounds here, indexing id before it was allocated.
         let underneath = if let Some(prev) = self.nodes[id as usize].tile.take() {
             Some(self.insert_underworld(prev))
         } else {
