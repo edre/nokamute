@@ -205,6 +205,9 @@ impl Board {
             self.nodes[id as usize].tile = self.remove_underworld(stack);
         }
         self.zobrist_hash ^= zobrist(id, tile.bug, tile.color, height);
+        if tile.bug == Bug::Queen {
+            self.queens[self.move_num as usize & 1] = UNASSIGNED;
+        }
         tile
     }
 
