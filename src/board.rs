@@ -783,7 +783,8 @@ impl Board {
 
     fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
         let mut immovable = self.find_cut_vertexes();
-        if let Some(moved) = self.move_history.last() {
+        let stunned = self.move_history.last();
+        if let Some(moved) = stunned {
             // Can't move pieces that were moved on the opponent's turn.
             immovable.set(*moved);
         }
@@ -801,12 +802,13 @@ impl Board {
                     continue;
                 }
                 // Check for throw ability before movability, as pinned pillbugs can still throw.
-                if tile.bug == Bug::Pillbug
+                let pillbug_powers = tile.bug == Bug::Pillbug
                     || (tile.bug == Bug::Mosquito
                         && node.adj.iter().any(|&adj| {
                             self.get(adj).map(|tile| tile.bug == Bug::Pillbug).unwrap_or(false)
-                        }))
-                {
+                        }));
+                // However pillbugs just thrown cannot throw.
+                if pillbug_powers && stunned != Some(&id) {
                     self.generate_throws(&immovable, id, moves, n);
                     dedup = true;
                 }
