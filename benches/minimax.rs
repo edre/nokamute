@@ -2,13 +2,14 @@ extern crate easybench;
 extern crate hive;
 extern crate minimax;
 
-use hive::{Board, Bug, IterativeOptions, IterativeSearch};
-use minimax::{Game, Move, Strategy};
+use hive::{Board, Bug};
+use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 
 fn empty_board_depth(depth: usize) {
     let mut board = Board::default();
-    let options = IterativeOptions::default().with_max_depth(depth).with_table_size(2000);
+    let options = IterativeOptions::new().with_table_byte_size(16000);
     let mut strategy = IterativeSearch::<hive::BasicEvaluator>::new(options);
+    strategy.set_max_depth(depth);
     let m = strategy.choose_move(&mut board);
     assert!(m.is_some());
 }
@@ -35,8 +36,9 @@ fn full_board_depth(depth: usize) {
     hive::Move::Pass.apply(&mut board);
     hive::Move::Place(board.id((5, 5)), Bug::Ant).apply(&mut board);
     hive::Move::Pass.apply(&mut board);
-    let options = IterativeOptions::default().with_max_depth(depth).with_table_size(200);
+    let options = IterativeOptions::new().with_table_byte_size(16000);
     let mut strategy = IterativeSearch::<hive::BasicEvaluator>::new(options);
+    strategy.set_max_depth(depth);
     let m = strategy.choose_move(&mut board);
     assert!(m.is_some());
 }

@@ -6,7 +6,6 @@ use std::convert::TryInto;
 use std::default::Default;
 use std::fmt::{Display, Formatter, Result};
 
-use crate::strategies::Zobrist;
 use crate::zobrist::ZOBRIST_TABLE;
 
 // Board representation: Adjacency-list graph with grid backup.
@@ -106,7 +105,7 @@ fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
     hash.rotate_left(height) ^ 0xa6c11b626b105b7c
 }
 
-impl Zobrist for Board {
+impl minimax::Zobrist for Board {
     fn zobrist_hash(&self) -> u64 {
         self.zobrist_hash
     }

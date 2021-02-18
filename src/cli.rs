@@ -1,6 +1,5 @@
 use crate::board::{Board, Bug, Id};
-use crate::strategies::*;
-use minimax::{Game, Move, Strategy};
+use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
 
@@ -175,14 +174,12 @@ pub fn terminal_game_interface() {
             // moves in the transition table may be referring to boards where
             // nodes were explored in another order.
             let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
-                IterativeOptions::default().with_table_size(200_000),
+                IterativeOptions::new().with_table_byte_size(8_000_000),
             );
             if let Some(d) = depth {
-                strategy.max_depth = d;
-                strategy.max_time = Duration::new(30, 0);
+                strategy.set_max_depth(d);
             } else {
-                strategy.max_depth = 50;
-                strategy.max_time = Duration::new(5, 0);
+                strategy.set_timeout(Duration::from_secs(5));
             }
             if let Some(m) = strategy.choose_move(&mut board) {
                 history.push(m);

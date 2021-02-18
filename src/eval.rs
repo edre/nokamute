@@ -7,7 +7,7 @@ pub struct DumbEvaluator;
 impl minimax::Evaluator for DumbEvaluator {
     type G = Game;
     fn evaluate(_: &Board) -> minimax::Evaluation {
-        minimax::Evaluation::Score(0)
+        0
     }
 }
 
@@ -17,13 +17,13 @@ pub struct BasicEvaluator;
 impl minimax::Evaluator for BasicEvaluator {
     type G = Game;
     fn evaluate(board: &Board) -> minimax::Evaluation {
-        const QUEEN_FACTOR: i64 = 20;
-        const MOVABLE_BUG_FACTOR: i64 = 1;
+        const QUEEN_FACTOR: i32 = 20;
+        const MOVABLE_BUG_FACTOR: i32 = 1;
 
         let queens_surrounded = board.queens_surrounded();
         let immovable = board.find_cut_vertexes();
 
-        fn value(bug: Bug) -> i64 {
+        fn value(bug: Bug) -> i32 {
             // Mostly made up. All I know is that ants are good.
             match bug {
                 Bug::Queen => 10,
@@ -37,8 +37,8 @@ impl minimax::Evaluator for BasicEvaluator {
             }
         }
 
-        let mut score: i64 = queens_surrounded[1 - board.to_move() as usize] as i64
-            - queens_surrounded[board.to_move() as usize] as i64;
+        let mut score = queens_surrounded[1 - board.to_move() as usize] as i32
+            - queens_surrounded[board.to_move() as usize] as i32;
         score *= QUEEN_FACTOR;
 
         for (id, node) in (0..).zip(board.nodes.iter()) {
@@ -78,7 +78,7 @@ impl minimax::Evaluator for BasicEvaluator {
             }
         }
 
-        minimax::Evaluation::Score(score)
+        score as minimax::Evaluation
     }
 }
 
@@ -88,8 +88,7 @@ mod tests {
 
     #[test]
     fn test_minimax() {
-        use minimax::strategies::negamax::{Negamax, Options};
-        use minimax::{Move, Strategy};
+        use minimax::{Move, Negamax, Strategy};
 
         // Find the winning move.
         // ．．．🐝🕷．．
@@ -106,11 +105,11 @@ mod tests {
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..2 {
-            let mut strategy = Negamax::<DumbEvaluator>::new(Options { max_depth: depth });
+            let mut strategy = Negamax::<DumbEvaluator>::with_max_depth(depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement(board.id((-1, 1)), board.id((2, 1)))), m);
 
-            let mut strategy = Negamax::<BasicEvaluator>::new(Options { max_depth: depth });
+            let mut strategy = Negamax::<BasicEvaluator>::with_max_depth(depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement(board.id((-1, 1)), board.id((2, 1)))), m);
         }
@@ -127,7 +126,7 @@ mod tests {
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..3 {
-            let mut strategy = Negamax::<BasicEvaluator>::new(Options { max_depth: depth });
+            let mut strategy = Negamax::<BasicEvaluator>::with_max_depth(depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement(board.id((0, 0)), board.id((0, -1)))), m);
         }
