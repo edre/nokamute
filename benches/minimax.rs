@@ -7,7 +7,7 @@ use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 
 fn empty_board_depth(depth: usize) {
     let mut board = Board::default();
-    let options = IterativeOptions::new().with_table_byte_size(16000);
+    let options = IterativeOptions::new().with_table_byte_size(16000).with_null_window_search(true);
     let mut strategy = IterativeSearch::<hive::BasicEvaluator>::new(options);
     strategy.set_max_depth(depth);
     let m = strategy.choose_move(&mut board);
@@ -36,7 +36,7 @@ fn full_board_depth(depth: usize) {
     hive::Move::Pass.apply(&mut board);
     hive::Move::Place(board.id((5, 5)), Bug::Ant).apply(&mut board);
     hive::Move::Pass.apply(&mut board);
-    let options = IterativeOptions::new().with_table_byte_size(16000);
+    let options = IterativeOptions::new().with_table_byte_size(16000).with_null_window_search(true);
     let mut strategy = IterativeSearch::<hive::BasicEvaluator>::new(options);
     strategy.set_max_depth(depth);
     let m = strategy.choose_move(&mut board);

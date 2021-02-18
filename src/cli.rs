@@ -174,7 +174,9 @@ pub fn terminal_game_interface() {
             // moves in the transition table may be referring to boards where
             // nodes were explored in another order.
             let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
-                IterativeOptions::new().with_table_byte_size(8_000_000),
+                IterativeOptions::new()
+                    .with_table_byte_size(8_000_000)
+                    .with_null_window_search(true),
             );
             if let Some(d) = depth {
                 strategy.set_max_depth(d);
