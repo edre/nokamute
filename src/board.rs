@@ -291,6 +291,26 @@ impl Board {
     pub fn new_expansions() -> Self {
         Self::new([1, 3, 2, 3, 2, 1, 1, 1])
     }
+
+    // New board from UHP GameTypeString, e.g. "Base+MLP"
+    pub fn new_from_game_type(game_type: &str) -> Option<Self> {
+        let mut starting = [1, 3, 2, 3, 2, 0, 0, 0];
+        let mut toks = game_type.split('+');
+        if toks.next()? != "Base" {
+            return None;
+        }
+        if let Some(exts) = toks.next() {
+            for ext in exts.chars() {
+                match ext {
+                    'M' => starting[Bug::Mosquito as usize] = 1,
+                    'L' => starting[Bug::Ladybug as usize] = 1,
+                    'P' => starting[Bug::Pillbug as usize] = 1,
+                    _ => return None,
+                }
+            }
+        }
+        Some(Board::new(starting))
+    }
 }
 
 impl Default for Board {
@@ -868,14 +888,16 @@ impl minimax::Game for Game {
 
         if board.move_num < 2 {
             // Special case for the first 2 moves:
-            for (bug, _) in board.get_available_bugs().iter() {
+            for (bug, num_left) in board.get_available_bugs().iter() {
                 if *bug == Bug::Queen {
                     // To reduce draws, implement tournament rule where
                     // you can't place your queen first.
                     continue;
                 }
-                moves[n] = Some(Move::Place((board.move_num + 1) as Id, *bug));
-                n += 1;
+                if *num_left > 0 {
+                    moves[n] = Some(Move::Place((board.move_num + 1) as Id, *bug));
+                    n += 1;
+                }
             }
         } else {
             // Once queen has been placed, pieces may move.
