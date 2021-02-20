@@ -1,5 +1,5 @@
 [package]
-name = "hive"
+name = "nokamute"
 version = "0.1.0"
 authors = ["Eric Roshan-Eisner <ede@alum.mit.edu>"]
 edition = "2018"
