@@ -17,7 +17,7 @@ use std::hash::Hasher;
 pub type Loc = (i8, i8);
 
 // Persistent id of a location.
-pub type Id = u8;
+pub(crate) type Id = u8;
 
 // Special value for nodes not adjacent to occupied tiles that haven't been
 // allocated their own node yet.
@@ -465,7 +465,7 @@ impl Default for Move {
 }
 
 impl minimax::Move for Move {
-    type G = Game;
+    type G = Rules;
     fn apply(&self, board: &mut Board) {
         let dest = match *self {
             Move::Place(loc, bug) => {
@@ -942,9 +942,9 @@ impl Board {
     }
 }
 
-pub struct Game;
+pub struct Rules;
 
-impl minimax::Game for Game {
+impl minimax::Game for Rules {
     type S = Board;
     type M = Move;
 
@@ -1375,23 +1375,23 @@ mod tests {
         let y1 = (1, 1);
         let y2 = (1, 0);
         crate::Move::Place((0, 0), Bug::Spider).apply(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Place(x1, Bug::Queen).apply(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Place(y1, Bug::Queen).apply(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Movement(x1, x2).apply(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Movement(y1, y2).apply(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Movement(x2, x1).apply(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Movement(y2, y1).apply(&mut board);
         // This is the first repeat of a board position, a slightly aggressive
         // interpretation of chess stalemate rules.
-        assert_eq!(Some(minimax::Winner::Draw), self::Game::get_winner(&board));
+        assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
         // Undo reverts zobrist and history.
         crate::Move::Movement(y2, y1).undo(&mut board);
-        assert_eq!(None, self::Game::get_winner(&board));
+        assert_eq!(None, Rules::get_winner(&board));
     }
 }

@@ -230,6 +230,7 @@ impl UhpBoard {
 mod tests {
     extern crate rand;
     use super::*;
+    use crate::Rules;
     use minimax::Game;
     use rand::Rng;
 
@@ -242,7 +243,7 @@ mod tests {
             let mut depth = 0;
             for _ in 0..20 {
                 depth += 1;
-                let n = crate::Game::generate_moves(&b.board, &mut moves);
+                let n = Rules::generate_moves(&b.board, &mut moves);
                 let m = moves[rng.gen_range(0, n)].unwrap();
                 let move_string = b.to_move_string(m);
                 assert_eq!(
@@ -254,7 +255,7 @@ mod tests {
                     b.board
                 );
                 b.apply(m).unwrap();
-                if crate::Game::get_winner(&b.board).is_some() {
+                if Rules::get_winner(&b.board).is_some() {
                     break;
                 }
             }

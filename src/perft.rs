@@ -1,14 +1,14 @@
 extern crate rand;
 
 use crate::uhp_client::UhpClient;
-use crate::Board;
+use crate::{Board, Rules};
 use minimax::{Game, Move};
 use rand::Rng;
 use std::time::Instant;
 
 fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
     let mut moves = [None; 200];
-    let n = crate::Game::generate_moves(b, &mut moves);
+    let n = Rules::generate_moves(b, &mut moves);
     if depth <= 1 {
         return n as u64;
     }
@@ -47,14 +47,14 @@ pub fn perft_debug(engine_cmd: &[String], game_type: &str, depth: usize) {
         }
         let mut stack = Vec::new();
         for _ in 0..depth {
-            let n = crate::Game::generate_moves(&board, &mut moves);
+            let n = Rules::generate_moves(&board, &mut moves);
             let m = moves[rng.gen_range(0, n)].unwrap();
             m.apply(&mut board);
             engine.apply(m).unwrap();
             stack.push(m);
         }
         // Check for discrepancies.
-        let n = crate::Game::generate_moves(&board, &mut moves);
+        let n = Rules::generate_moves(&board, &mut moves);
         let engine_moves = engine.generate_moves().unwrap();
         if n != engine_moves.len() {
             println!("game log: {}", engine.game_log());

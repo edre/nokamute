@@ -1,4 +1,4 @@
-use crate::board::{Board, Bug, Loc};
+use crate::board::{Board, Bug, Loc, Rules};
 use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
@@ -113,7 +113,7 @@ pub fn terminal_game_interface() {
         IterativeOptions::new().with_table_byte_size(8_000_000).with_null_window_search(true),
     );
     loop {
-        if let Some(winner) = crate::Game::get_winner(&board) {
+        if let Some(winner) = Rules::get_winner(&board) {
             if winner == minimax::Winner::Draw {
                 println!("{}Game over. Draw.", board);
             } else {
@@ -123,7 +123,7 @@ pub fn terminal_game_interface() {
         }
         // Precompute possible moves.
         let mut moves = [None; 200];
-        let n = crate::Game::generate_moves(&mut board, &mut moves);
+        let n = Rules::generate_moves(&mut board, &mut moves);
         if moves[0] == Some(crate::Move::Pass) {
             // Auto-pass if there are no valid moves.
             crate::Move::Pass.apply(&mut board);

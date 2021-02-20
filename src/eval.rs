@@ -5,7 +5,7 @@ use minimax;
 pub struct DumbEvaluator;
 
 impl minimax::Evaluator for DumbEvaluator {
-    type G = Game;
+    type G = Rules;
     fn evaluate(_: &Board) -> minimax::Evaluation {
         0
     }
@@ -15,7 +15,7 @@ impl minimax::Evaluator for DumbEvaluator {
 pub struct BasicEvaluator;
 
 impl minimax::Evaluator for BasicEvaluator {
-    type G = Game;
+    type G = Rules;
     fn evaluate(board: &Board) -> minimax::Evaluation {
         const QUEEN_FACTOR: i32 = 20;
         const MOVABLE_BUG_FACTOR: i32 = 1;
