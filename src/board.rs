@@ -1,7 +1,8 @@
+extern crate fnv;
 extern crate minimax;
 
+use fnv::FnvHashMap;
 use std::cmp::{max, min};
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::default::Default;
 use std::fmt::{Display, Formatter, Result};
@@ -128,7 +129,7 @@ pub struct Board {
     // Tiles that are under other tiles.
     underworld: [Option<Tile>; 8],
     id_to_loc: Vec<Loc>,
-    loc_to_id: HashMap<Loc, Id>,
+    loc_to_id: FnvHashMap<Loc, Id>,
     remaining: [[u8; 8]; 2],
     queens: [Id; 2],
     move_num: u16,
@@ -306,7 +307,7 @@ impl Board {
     fn new(remaining: [u8; 8]) -> Self {
         // Pre-allocate dummy unassigned Id to unused location.
         let fake_loc = (i8::MAX, i8::MAX);
-        let mut loc_to_id = HashMap::new();
+        let mut loc_to_id = FnvHashMap::default();
         loc_to_id.insert(fake_loc, 0);
         let mut board = Board {
             nodes: vec![Node { adj: [UNASSIGNED; 6], tile: None }],
