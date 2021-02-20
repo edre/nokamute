@@ -1,4 +1,4 @@
-use crate::board::{Board, Bug, Id};
+use crate::board::{Board, Bug, Loc};
 use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
@@ -9,7 +9,7 @@ fn read_line(prompt: &str) -> String {
     io::stdin().lock().lines().next().unwrap().unwrap()
 }
 
-fn input_id(board: &Board, prompt: &str, options: &[Id]) -> Option<Id> {
+fn input_loc(board: &Board, prompt: &str, options: &[Loc]) -> Option<Loc> {
     println!("{}", board.fancy_fmt(options));
     let line = read_line(prompt);
     let index = if let Ok(num) = line.parse::<usize>() {
@@ -59,7 +59,7 @@ fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate:
         println!("No movements available.");
         return None;
     }
-    let start = input_id(board, "Move which bug? ", &starts)?;
+    let start = input_loc(board, "Move which bug? ", &starts)?;
 
     let mut ends = moves
         .iter()
@@ -77,7 +77,7 @@ fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate:
         .collect::<Vec<_>>();
     ends.sort();
     ends.dedup();
-    let end = input_id(board, "Move to where? ", &ends)?;
+    let end = input_loc(board, "Move to where? ", &ends)?;
 
     Some(crate::Move::Movement(start, end))
 }
@@ -95,7 +95,7 @@ fn input_placement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate
         println!("No placements available.");
         return None;
     }
-    let place = input_id(board, "Place new bug where? ", &places)?;
+    let place = input_loc(board, "Place new bug where? ", &places)?;
 
     let bugs = moves
         .iter()

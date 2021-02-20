@@ -100,16 +100,16 @@ impl UhpBoard {
             if tokens.len() != 1 {
                 return Err(UhpError::InvalidMove(move_string.to_owned()));
             }
-            return Ok(crate::Move::Place(1, bug)); // Place at ORIGIN.
+            return Ok(crate::Move::Place((0, 0), bug)); // Place at origin.
         }
         if tokens.len() != 2 {
             return Err(UhpError::InvalidMove(move_string.to_owned()));
         }
         let end: Id = self.to_id(tokens[1])?;
         Ok(if start == UNASSIGNED {
-            crate::Move::Place(end, bug)
+            crate::Move::Place(self.board.loc(end), bug)
         } else {
-            crate::Move::Movement(start, end)
+            crate::Move::Movement(self.board.loc(start), self.board.loc(end))
         })
     }
 
@@ -123,7 +123,8 @@ impl UhpBoard {
                 bug_name(self.board.to_move(), bug, self.next_bug_num(bug))
             }
             crate::Move::Movement(start, _) => {
-                self.id_to_name_stack.get(&start).unwrap().last().unwrap().clone()
+                let id = self.board.id(start);
+                self.id_to_name_stack.get(&id).unwrap().last().unwrap().clone()
             }
             crate::Move::Pass => return "pass".to_owned(),
         };
@@ -132,11 +133,11 @@ impl UhpBoard {
         }
         move_string.push(' ');
 
-        let end: Id = match m {
-            crate::Move::Place(id, _) => id,
+        let end = self.board.id(match m {
+            crate::Move::Place(loc, _) => loc,
             crate::Move::Movement(_, end) => end,
             crate::Move::Pass => unreachable!(),
-        };
+        });
         if let Some(name) = self.id_to_name_stack.get(&end).map(|stack| stack.last()).flatten() {
             move_string.push_str(name);
             return move_string;
@@ -166,13 +167,16 @@ impl UhpBoard {
 
     pub(crate) fn apply(&mut self, m: crate::Move) -> Result<()> {
         match m {
-            crate::Move::Place(id, bug) => {
+            crate::Move::Place(loc, bug) => {
+                let id = self.board.id(loc);
                 let color = self.board.to_move();
                 let name = bug_name(color, bug, self.next_bug_num(bug));
                 self.name_to_id.insert(name.clone(), id);
                 self.id_to_name_stack.insert(id, vec![name]);
             }
-            crate::Move::Movement(start, end) => {
+            crate::Move::Movement(start_loc, end_loc) => {
+                let start = self.board.id(start_loc);
+                let end = self.board.id(end_loc);
                 let name = self.id_to_name_stack.get_mut(&start).unwrap().pop().unwrap();
                 self.name_to_id.insert(name.clone(), end);
                 self.id_to_name_stack.entry(end).or_insert_with(|| Vec::new()).push(name);
@@ -187,11 +191,14 @@ impl UhpBoard {
     pub(crate) fn undo(&mut self) {
         let m = self.move_history.pop().unwrap();
         match m {
-            crate::Move::Place(id, _) => {
+            crate::Move::Place(loc, _) => {
+                let id = self.board.id(loc);
                 let name = self.id_to_name_stack.get_mut(&id).unwrap().pop().unwrap();
                 self.name_to_id.insert(name, UNASSIGNED);
             }
-            crate::Move::Movement(start, end) => {
+            crate::Move::Movement(start_loc, end_loc) => {
+                let start = self.board.id(start_loc);
+                let end = self.board.id(end_loc);
                 let name = self.id_to_name_stack.get_mut(&end).unwrap().pop().unwrap();
                 self.name_to_id.insert(name.clone(), start);
                 self.id_to_name_stack.entry(start).or_insert_with(|| Vec::new()).push(name);

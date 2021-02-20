@@ -166,8 +166,8 @@ impl Board {
         self.id_to_loc[id as usize]
     }
 
-    pub fn id(&mut self, loc: Loc) -> Id {
-        self.alloc(loc)
+    pub fn id(&self, loc: Loc) -> Id {
+        *self.loc_to_id.get(&loc).unwrap()
     }
 
     // Allocate a new node, and link it to its neighbors.
@@ -387,7 +387,7 @@ impl Board {
         (minx, maxx - minx + 1, miny, maxy - miny + 1)
     }
 
-    pub fn fancy_fmt(&self, highlights: &[Id]) -> String {
+    pub fn fancy_fmt(&self, highlights: &[Loc]) -> String {
         let mut out = String::new();
         let (startx, dx, starty, dy) = self.bounding_box();
         for y in starty - 1..starty + dy + 1 {
@@ -402,7 +402,7 @@ impl Board {
 
             for x in startx - 1..startx + dx + 1 {
                 let id = *self.loc_to_id.get(&(x, y)).unwrap_or(&UNASSIGNED);
-                if let Some(index) = highlights.iter().position(|&x| x == id) {
+                if let Some(index) = highlights.iter().position(|&loc| loc == (x, y)) {
                     // Manual 2-byte space padding.
                     out.push(if index > 9 { ((index / 10) + 48) as u8 as char } else { ' ' });
                     out.push(((index % 10) + 48) as u8 as char);
@@ -437,8 +437,8 @@ impl Board {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Move {
-    Place(Id, Bug),
-    Movement(Id, Id),
+    Place(Loc, Bug),
+    Movement(Loc, Loc),
     Pass,
 }
 
@@ -452,15 +452,18 @@ impl minimax::Move for Move {
     type G = Game;
     fn apply(&self, board: &mut Board) {
         let dest = match *self {
-            Move::Place(id, bug) => {
+            Move::Place(loc, bug) => {
+                let id = board.alloc(loc);
                 board.insert(id, bug, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
                 id
             }
             Move::Movement(start, end) => {
-                let tile = board.remove(start);
-                board.insert(end, tile.bug, tile.color);
-                end
+                let start_id = board.alloc(start);
+                let end_id = board.alloc(end);
+                let tile = board.remove(start_id);
+                board.insert(end_id, tile.bug, tile.color);
+                end_id
             }
             Move::Pass => UNASSIGNED,
         };
@@ -468,18 +471,22 @@ impl minimax::Move for Move {
         board.zobrist_history.push(board.zobrist_hash);
         board.move_history.push(dest);
     }
+
     fn undo(&self, board: &mut Board) {
         board.move_num -= 1;
         board.zobrist_history.pop();
         board.move_history.pop();
         match *self {
-            Move::Place(id, bug) => {
+            Move::Place(loc, bug) => {
+                let id = board.id(loc);
                 board.remove(id);
                 board.mut_remaining()[bug as usize] += 1;
             }
             Move::Movement(start, end) => {
-                let tile = board.remove(end);
-                board.insert(start, tile.bug, tile.color);
+                let start_id = board.alloc(start);
+                let end_id = board.alloc(end);
+                let tile = board.remove(end_id);
+                board.insert(start_id, tile.bug, tile.color);
             }
             Move::Pass => {}
         }
@@ -529,7 +536,7 @@ impl Board {
                         continue;
                     }
                     if *num_left > 0 {
-                        moves[*n] = Some(Move::Place(id, *bug));
+                        moves[*n] = Some(Move::Place(self.loc(id), *bug));
                         *n += 1;
                     }
                 }
@@ -674,7 +681,7 @@ impl Board {
     fn generate_stack_walking(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
         let mut buf = [UNASSIGNED; 6];
         for adj in self.slidable_adjacent_beetle(&mut buf, id, id) {
-            moves[*n] = Some(Move::Movement(id, adj));
+            moves[*n] = Some(Move::Movement(self.loc(id), self.loc(adj)));
             *n += 1;
         }
     }
@@ -689,7 +696,7 @@ impl Board {
                 dist += 1;
             }
             if dist > 1 {
-                moves[*n] = Some(Move::Movement(id, jump));
+                moves[*n] = Some(Move::Movement(self.loc(id), self.loc(jump)));
                 *n += 1;
             }
         }
@@ -698,7 +705,7 @@ impl Board {
     fn generate_walk1(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
         let mut buf = [UNASSIGNED; 6];
         for adj in self.slidable_adjacent(&mut buf, id, id) {
-            moves[*n] = Some(Move::Movement(id, adj));
+            moves[*n] = Some(Move::Movement(self.loc(id), self.loc(adj)));
             *n += 1;
         }
     }
@@ -712,7 +719,7 @@ impl Board {
                 return;
             }
             if path.len() == 3 {
-                moves[*n] = Some(Move::Movement(orig, id));
+                moves[*n] = Some(Move::Movement(board.loc(orig), board.loc(id)));
                 *n += 1;
                 return;
             }
@@ -737,7 +744,7 @@ impl Board {
             }
             visited.set(node);
             if node != orig {
-                moves[*n] = Some(Move::Movement(orig, node));
+                moves[*n] = Some(Move::Movement(self.loc(orig), self.loc(node)));
                 *n += 1;
             }
             for adj in self.slidable_adjacent(&mut buf, orig, node) {
@@ -773,7 +780,7 @@ impl Board {
 
         for s3 in 0..self.nodes.len() as Id {
             if step3.get(s3) {
-                moves[*n] = Some(Move::Movement(id, s3));
+                moves[*n] = Some(Move::Movement(self.loc(id), self.loc(s3)));
                 *n += 1;
             }
         }
@@ -804,7 +811,7 @@ impl Board {
         }
         for &start in starts[..num_starts].iter() {
             for &end in ends[..num_ends].iter() {
-                moves[*n] = Some(Move::Movement(start, end));
+                moves[*n] = Some(Move::Movement(self.loc(start), self.loc(end)));
                 *n += 1;
             }
         }
@@ -937,7 +944,7 @@ impl minimax::Game for Game {
                     continue;
                 }
                 if *num_left > 0 {
-                    moves[n] = Some(Move::Place((board.move_num + 1) as Id, *bug));
+                    moves[n] = Some(Move::Place((board.move_num as i8, 0), *bug));
                     n += 1;
                 }
             }
@@ -1008,7 +1015,7 @@ mod tests {
             let mut actual_pairs = Vec::new();
             for m in moves.iter() {
                 if let Some(Move::Place(actual_id, actual_bug)) = m {
-                    actual_pairs.push((self.loc(*actual_id), *actual_bug));
+                    actual_pairs.push((*actual_id, *actual_bug));
                 }
             }
             actual_pairs.sort();
@@ -1022,8 +1029,8 @@ mod tests {
             let mut actual_ends = Vec::new();
             for m in moves.iter() {
                 if let Some(Move::Movement(actual_start, actual_end)) = m {
-                    if self.loc(*actual_start) == start {
-                        actual_ends.push(self.loc(*actual_end));
+                    if *actual_start == start {
+                        actual_ends.push(*actual_end);
                     }
                 }
             }
@@ -1066,7 +1073,7 @@ mod tests {
         );
         println!("{}", board);
         let cuts = board.find_cut_vertexes();
-        let mut is_cut_loc = |loc: Loc| {
+        let is_cut_loc = |loc: Loc| {
             let id = board.id(loc);
             cuts.get(id)
         };
@@ -1193,7 +1200,7 @@ mod tests {
         println!("{}", board);
         let mut moves = [None; 6];
         let mut n = 0;
-        let start = board.alloc((-1, -1));
+        let start = board.id((-1, -1));
         board.generate_walk3(start, &mut moves, &mut n);
         board.assert_movements(&moves[..n], (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
 
@@ -1205,7 +1212,7 @@ mod tests {
         println!("{}", board);
         moves = [None; 6];
         n = 0;
-        let start = board.alloc((1, 1));
+        let start = board.id((1, 1));
         board.generate_walk3(start, &mut moves, &mut n);
         board.assert_movements(&moves[..n], (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
     }
@@ -1221,7 +1228,7 @@ mod tests {
         println!("{}", board);
         let mut moves = [None; 20];
         let mut n = 0;
-        let start = board.alloc((-1, -1));
+        let start = board.id((-1, -1));
         board.generate_walk_all(start, &mut moves, &mut n);
         board.assert_movements(
             &moves[..n],
@@ -1293,7 +1300,7 @@ mod tests {
         println!("{}", board);
         let mut moves = [None; 20];
         let mut n = 0;
-        let start = board.alloc((2, 3));
+        let start = board.id((2, 3));
         board.generate_ladybug(start, &mut moves, &mut n);
         board.assert_movements(
             &moves[..n],
@@ -1312,8 +1319,8 @@ mod tests {
         println!("{}", board);
         let mut moves = [None; 20];
         let mut n = 0;
-        let start = board.alloc((1, 1));
         let immovable = NodeSet::new();
+        let start = board.id((1, 1));
         board.generate_throws(&immovable, start, &mut moves, &mut n);
         assert_eq!(4, n);
         board.assert_movements(&moves[..2], (1, 2), &[(1, 0), (2, 1)]);
@@ -1347,11 +1354,11 @@ mod tests {
 
         // Draw by stalemate
         let mut board = Board::default();
-        let x1 = board.alloc((-1, -1));
-        let x2 = board.alloc((-1, 0));
-        let y1 = board.alloc((1, 1));
-        let y2 = board.alloc((1, 0));
-        crate::Move::Place(ORIGIN, Bug::Spider).apply(&mut board);
+        let x1 = (-1, -1);
+        let x2 = (-1, 0);
+        let y1 = (1, 1);
+        let y2 = (1, 0);
+        crate::Move::Place((0, 0), Bug::Spider).apply(&mut board);
         assert_eq!(None, self::Game::get_winner(&board));
         crate::Move::Place(x1, Bug::Queen).apply(&mut board);
         assert_eq!(None, self::Game::get_winner(&board));

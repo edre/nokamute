@@ -95,40 +95,40 @@ mod tests {
         //．．🐜🐜🐝．．
         // ．．．🦗🪲
         let mut board = Board::default();
-        crate::Move::Place(board.id((0, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(board.id((1, 0)), Bug::Spider).apply(&mut board);
-        crate::Move::Place(board.id((-1, 1)), Bug::Ant).apply(&mut board);
-        crate::Move::Place(board.id((0, 1)), Bug::Ant).apply(&mut board);
-        crate::Move::Place(board.id((1, 2)), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place(board.id((1, 1)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(board.id((2, 2)), Bug::Beetle).apply(&mut board);
+        crate::Move::Place((0, 0), Bug::Queen).apply(&mut board);
+        crate::Move::Place((1, 0), Bug::Spider).apply(&mut board);
+        crate::Move::Place((-1, 1), Bug::Ant).apply(&mut board);
+        crate::Move::Place((0, 1), Bug::Ant).apply(&mut board);
+        crate::Move::Place((1, 2), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place((1, 1), Bug::Queen).apply(&mut board);
+        crate::Move::Place((2, 2), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..2 {
             let mut strategy = Negamax::<DumbEvaluator>::with_max_depth(depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(board.id((-1, 1)), board.id((2, 1)))), m);
+            assert_eq!(Some(crate::Move::Movement((-1, 1), (2, 1))), m);
 
             let mut strategy = Negamax::<BasicEvaluator>::with_max_depth(depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(board.id((-1, 1)), board.id((2, 1)))), m);
+            assert_eq!(Some(crate::Move::Movement((-1, 1), (2, 1))), m);
         }
 
         // Find queen escape.
         //．．🕷🐝🐝．
         // ．．🦗🕷．
         let mut board = Board::default();
-        crate::Move::Place(board.id((0, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(board.id((1, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(board.id((1, 1)), Bug::Spider).apply(&mut board);
-        crate::Move::Place(board.id((0, 1)), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place(board.id((-1, 0)), Bug::Spider).apply(&mut board);
+        crate::Move::Place((0, 0), Bug::Queen).apply(&mut board);
+        crate::Move::Place((1, 0), Bug::Queen).apply(&mut board);
+        crate::Move::Place((1, 1), Bug::Spider).apply(&mut board);
+        crate::Move::Place((0, 1), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place((-1, 0), Bug::Spider).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..3 {
             let mut strategy = Negamax::<BasicEvaluator>::with_max_depth(depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(board.id((0, 0)), board.id((0, -1)))), m);
+            assert_eq!(Some(crate::Move::Movement((0, 0), (0, -1))), m);
         }
     }
 }
