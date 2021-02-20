@@ -20,7 +20,7 @@ pub type Id = u8;
 
 // Special value for nodes not adjacent to occupied tiles that haven't been
 // allocated their own node yet.
-const UNASSIGNED: Id = 0;
+pub(crate) const UNASSIGNED: Id = 0;
 
 // Ids for tiles that are currently under other pieces.
 type UnderId = u8;
@@ -54,6 +54,48 @@ impl Bug {
             Bug::Mosquito => '\u{1f99f}',    // MOSQUITO
             Bug::Ladybug => '\u{1f41e}',     // LADY BEETLE
             Bug::Pillbug => '\u{1f48a}',     // PILL, either that or MICROBE
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match *self {
+            Bug::Queen => "queen",
+            Bug::Grasshopper => "grasshopper",
+            Bug::Spider => "spider",
+            Bug::Ant => "ant",
+            Bug::Beetle => "beetle",
+            Bug::Mosquito => "mosquito",
+            Bug::Ladybug => "ladybug",
+            Bug::Pillbug => "pillbug",
+        }
+    }
+
+    pub fn iter_all() -> impl Iterator<Item = Self> {
+        [
+            Bug::Queen,
+            Bug::Grasshopper,
+            Bug::Spider,
+            Bug::Ant,
+            Bug::Beetle,
+            Bug::Mosquito,
+            Bug::Ladybug,
+            Bug::Pillbug,
+        ]
+        .iter()
+        .map(|x| *x)
+    }
+
+    pub fn from_char(c: char) -> Option<Bug> {
+        match c.to_ascii_lowercase() {
+            'q' => Some(Bug::Queen),
+            'g' => Some(Bug::Grasshopper),
+            's' => Some(Bug::Spider),
+            'a' => Some(Bug::Ant),
+            'b' => Some(Bug::Beetle),
+            'm' => Some(Bug::Mosquito),
+            'l' => Some(Bug::Ladybug),
+            'p' => Some(Bug::Pillbug),
+            _ => None,
         }
     }
 }
@@ -219,11 +261,11 @@ impl Board {
         height
     }
 
-    fn adjacent(&self, id: Id) -> &[Id; 6] {
+    pub(crate) fn adjacent(&self, id: Id) -> &[Id; 6] {
         &self.nodes[id as usize].adj
     }
 
-    fn get_remaining(&self) -> &[u8; 8] {
+    pub(crate) fn get_remaining(&self) -> &[u8; 8] {
         &self.remaining[self.move_num as usize & 1]
     }
 
@@ -231,7 +273,7 @@ impl Board {
         &mut self.remaining[self.move_num as usize & 1]
     }
 
-    fn get_available_bugs(&self) -> [(Bug, u8); 8] {
+    pub(crate) fn get_available_bugs(&self) -> [(Bug, u8); 8] {
         let remaining = self.get_remaining();
         [
             (Bug::Queen, remaining[Bug::Queen as usize]),

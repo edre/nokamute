@@ -26,51 +26,19 @@ fn input_id(board: &Board, prompt: &str, options: &[Id]) -> Option<Id> {
 }
 
 fn input_bug(options: &[Bug]) -> Option<Bug> {
-    for &bug in &[
-        Bug::Queen,
-        Bug::Grasshopper,
-        Bug::Spider,
-        Bug::Ant,
-        Bug::Beetle,
-        Bug::Mosquito,
-        Bug::Ladybug,
-        Bug::Pillbug,
-    ] {
+    for bug in Bug::iter_all() {
         if options.contains(&bug) {
-            print!(
-                "{}:{}, ",
-                bug.codepoint(),
-                match bug {
-                    Bug::Queen => "queen",
-                    Bug::Grasshopper => "grasshopper",
-                    Bug::Spider => "spider",
-                    Bug::Ant => "ant",
-                    Bug::Beetle => "beetle",
-                    Bug::Mosquito => "mosquito",
-                    Bug::Ladybug => "ladybug",
-                    Bug::Pillbug => "pillbug",
-                }
-            );
+            print!("{}:{}, ", bug.codepoint(), bug.name());
         }
     }
     println!("");
 
     let line = read_line("Which bug? ");
-    Some(match line.chars().next().unwrap_or('?') {
-        'q' => Bug::Queen,
-        'g' => Bug::Grasshopper,
-        'h' => Bug::Grasshopper,
-        's' => Bug::Spider,
-        'a' => Bug::Ant,
-        'b' => Bug::Beetle,
-        'm' => Bug::Mosquito,
-        'l' => Bug::Ladybug,
-        'p' => Bug::Pillbug,
-        _ => {
-            println!("Unrecognized bug.");
-            return None;
-        }
-    })
+    let bug = Bug::from_char(line.chars().next().unwrap_or('?'));
+    if bug.is_none() {
+        println!("Unrecognized bug.");
+    }
+    bug
 }
 
 fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate::Move> {

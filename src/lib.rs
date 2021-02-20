@@ -6,4 +6,6 @@ mod eval;
 pub use eval::*;
 mod perft;
 pub use perft::*;
+mod uhp_client;
+mod uhp_util;
 mod zobrist;

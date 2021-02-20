@@ -2,7 +2,7 @@ extern crate easybench;
 extern crate minimax;
 extern crate nokamute;
 
-use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
+use minimax::{IterativeOptions, IterativeSearch, Move, Strategy};
 use nokamute::{Board, Bug};
 
 fn empty_board_depth(depth: usize) {
@@ -43,26 +43,8 @@ fn full_board_depth(depth: usize) {
     assert!(m.is_some());
 }
 
-fn random_walk() {
-    // Simple deterministic RNG.
-    let mut rand = 12345u32;
-    let mut board = Board::default();
-    for _ in 0..300 {
-        if nokamute::Game::get_winner(&board).is_some() {
-            break;
-        }
-        let mut moves = [None; 200];
-        let n = nokamute::Game::generate_moves(&board, &mut moves);
-        // Iterate RNG
-        rand = rand.wrapping_mul(101).wrapping_add(1);
-        let m = moves[rand as usize % n].unwrap();
-        m.apply(&mut board);
-    }
-}
-
 fn main() {
     // TODO: cmd line selection, for perf record
     println!("empty board 5: {}", easybench::bench(|| empty_board_depth(5)));
     println!("full board 3:  {}", easybench::bench(|| full_board_depth(2)));
-    println!("random walk:   {}", easybench::bench(random_walk));
 }
