@@ -109,6 +109,9 @@ fn input_placement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate
 pub fn terminal_game_interface() {
     let mut board = Board::default();
     let mut history = Vec::<crate::Move>::new();
+    let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
+        IterativeOptions::new().with_table_byte_size(8_000_000).with_null_window_search(true),
+    );
     loop {
         if let Some(winner) = crate::Game::get_winner(&board) {
             if winner == minimax::Winner::Draw {
@@ -137,15 +140,6 @@ pub fn terminal_game_interface() {
                     depth = Some(num);
                 }
             }
-            // Reusing the same strategy across moves is unfortunately
-            // incompatible with Board's lazy id allocation. The ids in the
-            // moves in the transition table may be referring to boards where
-            // nodes were explored in another order.
-            let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
-                IterativeOptions::new()
-                    .with_table_byte_size(8_000_000)
-                    .with_null_window_search(true),
-            );
             if let Some(d) = depth {
                 strategy.set_max_depth(d);
             } else {

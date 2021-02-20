@@ -3,11 +3,11 @@ extern crate minimax;
 
 use fnv::FnvHashMap;
 use std::cmp::{max, min};
+use std::collections::hash_map::DefaultHasher;
 use std::convert::TryInto;
 use std::default::Default;
 use std::fmt::{Display, Formatter, Result};
-
-use crate::zobrist::ZOBRIST_TABLE;
+use std::hash::Hasher;
 
 // Board representation: Adjacency-list graph with grid backup.
 //      Dynamically allocate used and empty adjacent hexes with indexes.
@@ -133,19 +133,13 @@ pub struct Board {
     remaining: [[u8; 8]; 2],
     queens: [Id; 2],
     move_num: u16,
+    // Dynamically allocate zobrist values for the ids we have by hashing
+    // their locations.
+    zobrist_table: Vec<u64>,
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
     // History of move destinations.
     move_history: Vec<Id>,
-}
-
-fn zobrist(id: Id, bug: Bug, color: Color, height: u32) -> u64 {
-    // Put the id in the high bits, to keep cache locality for the likely unused high ids.
-    let hash = ZOBRIST_TABLE[(id as usize) << 4 | (bug as usize) << 1 | (color as usize)];
-    // I don't really want to multiply the table by another factor of 7, so
-    // just realign the existing random bits.
-    // Also include the color to move hash.
-    hash.rotate_left(height) ^ 0xa6c11b626b105b7c
 }
 
 impl minimax::Zobrist for Board {
@@ -171,6 +165,25 @@ impl Board {
         *self.loc_to_id.get(&loc).unwrap()
     }
 
+    fn zobrist(&self, id: Id, bug: Bug, color: Color, height: u32) -> u64 {
+        let hash = self.zobrist_table[(id as usize) << 1 | (color as usize)];
+        // I don't really want to multiply the table by another factor of 7*8, so
+        // just realign the existing random bits.
+        // Also include the color to move hash.
+        hash.rotate_left((height << 3) | bug as u32) ^ 0xa6c11b626b105b7c
+    }
+
+    // Hash the loc to produce 128 bits of zobrist lookup table.
+    fn hash_loc(loc: Loc) -> [u64; 2] {
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u8(loc.0 as u8);
+        hasher.write_u8(loc.1 as u8);
+        let hash1 = hasher.finish();
+        hasher.write_u64(0x73399349585d196e);
+        let hash2 = hasher.finish();
+        [hash1, hash2]
+    }
+
     // Allocate a new node, and link it to its neighbors.
     fn alloc(&mut self, loc: Loc) -> Id {
         if let Some(id) = self.loc_to_id.get(&loc) {
@@ -189,6 +202,7 @@ impl Board {
             }
         }
         self.nodes.push(node);
+        self.zobrist_table.extend(&Board::hash_loc(loc));
         new_id
     }
 
@@ -231,7 +245,7 @@ impl Board {
         };
         let tile = Tile { bug: bug, color: color, underneath: underneath };
         self.nodes[id as usize].tile = Some(tile);
-        self.zobrist_hash ^= zobrist(id, bug, color, self.height(id));
+        self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
 
         if bug == Bug::Queen {
             self.queens[self.move_num as usize & 1] = id;
@@ -245,7 +259,7 @@ impl Board {
         if let Some(stack) = tile.underneath.take() {
             self.nodes[id as usize].tile = self.remove_underworld(stack);
         }
-        self.zobrist_hash ^= zobrist(id, tile.bug, tile.color, height);
+        self.zobrist_hash ^= self.zobrist(id, tile.bug, tile.color, height);
         if tile.bug == Bug::Queen {
             self.queens[self.move_num as usize & 1] = UNASSIGNED;
         }
@@ -317,6 +331,7 @@ impl Board {
             remaining: [remaining; 2],
             queens: [UNASSIGNED; 2],
             move_num: 0,
+            zobrist_table: vec![0, 0],
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
             move_history: Vec::new(),
