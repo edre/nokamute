@@ -33,6 +33,7 @@ fn bug_name(color: Color, bug: Bug, number: u8) -> String {
 pub(crate) enum UhpError {
     IoError(std::io::Error),
     UnknownPiece(String),
+    InvalidGameString(String),
     InvalidMove(String),
 }
 
@@ -206,6 +207,30 @@ impl UhpBoard {
             crate::Move::Pass => {}
         }
         m.undo(&mut self.board);
+    }
+
+    pub(crate) fn from_game_string(s: &str) -> Result<Self> {
+        let mut toks = s.split(';');
+        let game_type = toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
+        let mut board = UhpBoard::new(game_type);
+        // We don't actually care about the game state, but
+        // we'll just treat this like a game type if it's
+        if toks.next().is_none() {
+            return Ok(board);
+        }
+        // Don't care about turn string either, although it would say which
+        // bug moved first?
+        toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
+        // The rest are move strings.
+        for move_string in toks {
+            let m = board.from_move_string(move_string)?;
+            board.apply(m)?;
+        }
+        Ok(board)
+    }
+
+    pub(crate) fn to_inner(self) -> Board {
+        self.board
     }
 
     pub(crate) fn game_log(&mut self) -> String {

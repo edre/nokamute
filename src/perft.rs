@@ -1,15 +1,23 @@
 extern crate rand;
 
 use crate::uhp_client::UhpClient;
+use crate::uhp_util::UhpBoard;
 use crate::{Board, Rules};
 use minimax::{Game, Move};
 use rand::Rng;
 use std::time::Instant;
 
 fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+    if Rules::get_winner(b).is_some() {
+        // Apparently perft rules only count positions at the target depth.
+        return 0;
+    }
     let mut moves = [None; 200];
     let n = Rules::generate_moves(b, &mut moves);
-    if depth <= 1 {
+    if depth == 1 {
         return n as u64;
     }
     let mut count = 0;
@@ -21,16 +29,18 @@ fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
     count
 }
 
-pub fn perft(game_type: &str) {
-    println!("{}", game_type);
-    println!("depth\tcount\ttime\tkn/s");
-    for depth in 2.. {
+pub fn perft(game_string: &str) {
+    println!("{}", game_string);
+    let mut b = UhpBoard::from_game_string(game_string).unwrap().to_inner();
+    let multiplier = if b.move_num < 2 { 6 } else { 1 };
+    println!("{}depth\tcount\ttime\tkn/s", b);
+    for depth in 0.. {
         let start = Instant::now();
-        let mut b = Board::new_from_game_type(game_type).unwrap();
         let count = perft_recurse(&mut b, depth);
         let dur = start.elapsed();
         let rate = count as f64 / dur.as_secs_f64();
-        println!("{}\t{}\t{:?}\t{}kn/s", depth, count * 6, dur, rate as usize / 1000);
+        let display_count = if depth < 2 { count } else { count * multiplier };
+        println!("{}\t{}\t{:?}\t{}", depth, display_count, dur, rate as usize / 1000);
     }
 }
 

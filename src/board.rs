@@ -132,7 +132,7 @@ pub struct Board {
     loc_to_id: FnvHashMap<Loc, Id>,
     remaining: [[u8; 8]; 2],
     queens: [Id; 2],
-    move_num: u16,
+    pub(crate) move_num: u16,
     // Dynamically allocate zobrist values for the ids we have by hashing
     // their locations.
     zobrist_table: Vec<u64>,
