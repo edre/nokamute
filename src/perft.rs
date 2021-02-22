@@ -1,10 +1,12 @@
 extern crate rand;
+extern crate rayon;
 
 use crate::uhp_client::UhpClient;
 use crate::uhp_util::UhpBoard;
 use crate::{Board, Rules};
 use minimax::{Game, Move};
 use rand::Rng;
+use rayon::prelude::*;
 use std::time::Instant;
 
 fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
@@ -19,14 +21,27 @@ fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
     let n = Rules::generate_moves(b, &mut moves);
     if depth == 1 {
         return n as u64;
+    } else if depth < 4 {
+        // Serial exploration of leafy nodes, to avoid excessive cloning.
+        let mut count = 0;
+        for m in moves[..n].iter().map(|x| x.unwrap()) {
+            m.apply(b);
+            count += perft_recurse(b, depth - 1);
+            m.undo(b);
+        }
+        count
+    } else {
+        moves[..n]
+            .into_par_iter()
+            .with_max_len(1)
+            .map(|m| {
+                let mut b2 = b.clone();
+                m.unwrap().apply(&mut b2);
+                perft_recurse(&mut b2, depth - 1)
+                // no reason to undo
+            })
+            .sum()
     }
-    let mut count = 0;
-    for m in moves[..n].iter().map(|x| x.unwrap()) {
-        m.apply(b);
-        count += perft_recurse(b, depth - 1);
-        m.undo(b);
-    }
-    count
 }
 
 pub fn perft(game_string: &str) {

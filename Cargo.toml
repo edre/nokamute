@@ -8,6 +8,7 @@ edition = "2018"
 fnv = "^1.0"
 minimax = { git = "https://github.com/edre/minimax-rs", rev = "2e649f3" }
 rand = "0.4.*"
+rayon = "^1.5"
 
 [dev-dependencies]
 easybench = "1.1.0"
