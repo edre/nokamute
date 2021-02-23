@@ -960,8 +960,15 @@ impl minimax::Game for Rules {
                     continue;
                 }
                 if *num_left > 0 {
-                    moves[n] = Some(Move::Place((board.move_num as i8, 0), *bug));
-                    n += 1;
+                    if board.move_num == 0 {
+                        moves[n] = Some(Move::Place((board.move_num as i8, 0), *bug));
+                        n += 1;
+                    } else {
+                        for &loc in adjacent((0, 0)).iter() {
+                            moves[n] = Some(Move::Place(loc, *bug));
+                            n += 1;
+                        }
+                    }
                 }
             }
         } else {

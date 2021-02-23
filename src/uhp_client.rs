@@ -1,8 +1,11 @@
+use crate::player::Player;
 use crate::uhp_util::{Result, UhpBoard, UhpError};
 
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Drop;
+use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::Duration;
 
 pub(crate) struct UhpClient {
     proc: Child,
@@ -50,6 +53,7 @@ impl UhpClient {
         let mut command = "newgame ".to_owned();
         command.push_str(game_type);
         self.command(&command)?;
+        self.board = UhpBoard::new(game_type);
         Ok(())
     }
 
@@ -86,6 +90,16 @@ impl UhpClient {
     pub(crate) fn game_log(&mut self) -> String {
         self.board.game_log()
     }
+
+    pub(crate) fn best_move(&mut self, timeout: Duration) -> Result<crate::Move> {
+        let secs = timeout.as_secs();
+        let h = secs / 3600;
+        let m = secs % 3600 / 60;
+        let s = secs % 60;
+        let move_string =
+            self.command(&format!("bestmove time {:02}:{:02}:{:02}", h, m, s))?.pop().unwrap();
+        self.board.from_move_string(&move_string)
+    }
 }
 
 impl Drop for UhpClient {
@@ -93,5 +107,37 @@ impl Drop for UhpClient {
         if let Err(err) = self.proc.kill() {
             println!("{}", err);
         }
+    }
+}
+
+pub(crate) struct UhpPlayer {
+    client: UhpClient,
+    cmd: String,
+}
+
+impl UhpPlayer {
+    pub(crate) fn new(cmd: &str) -> Result<Self> {
+        Ok(UhpPlayer {
+            client: UhpClient::new(&[cmd.to_owned()])?,
+            cmd: Path::new(cmd).file_name().unwrap().to_str().unwrap().to_string(),
+        })
+    }
+}
+
+impl Player for UhpPlayer {
+    fn name(&self) -> String {
+        self.cmd.clone()
+    }
+
+    fn new_game(&mut self, game_type: &str) {
+        self.client.new_game(game_type).unwrap();
+    }
+
+    fn play_move(&mut self, m: crate::Move) {
+        self.client.apply(m).unwrap();
+    }
+
+    fn generate_move(&mut self) -> crate::Move {
+        self.client.best_move(Duration::from_secs(5)).unwrap()
     }
 }

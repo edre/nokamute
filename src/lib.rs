@@ -6,5 +6,7 @@ mod eval;
 pub use eval::*;
 mod perft;
 pub use perft::*;
+mod player;
+pub use player::*;
 mod uhp_client;
 mod uhp_util;

@@ -47,15 +47,13 @@ fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
 pub fn perft(game_string: &str) {
     println!("{}", game_string);
     let mut b = UhpBoard::from_game_string(game_string).unwrap().to_inner();
-    let multiplier = if b.move_num < 2 { 6 } else { 1 };
     println!("{}depth\tcount\ttime\tkn/s", b);
     for depth in 0.. {
         let start = Instant::now();
         let count = perft_recurse(&mut b, depth);
         let dur = start.elapsed();
         let rate = count as f64 / dur.as_secs_f64();
-        let display_count = if depth < 2 { count } else { count * multiplier };
-        println!("{}\t{}\t{:?}\t{}", depth, display_count, dur, rate as usize / 1000);
+        println!("{}\t{}\t{:?}\t{}", depth, count, dur, rate as usize / 1000);
     }
 }
 

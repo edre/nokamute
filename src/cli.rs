@@ -1,4 +1,5 @@
-use crate::board::{Board, Bug, Loc, Rules};
+use crate::player::Player;
+use crate::{Board, Bug, Loc, Rules};
 use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
@@ -104,6 +105,50 @@ fn input_placement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate
     let bug = input_bug(&bugs)?;
 
     Some(crate::Move::Place(place, bug))
+}
+
+pub(crate) struct CliPlayer {
+    board: Board,
+}
+
+impl CliPlayer {
+    pub(crate) fn new() -> Self {
+        Self { board: Board::default() }
+    }
+}
+
+impl Player for CliPlayer {
+    fn name(&self) -> String {
+        "human".to_owned()
+    }
+
+    fn new_game(&mut self, game_type: &str) {
+        self.board = Board::new_from_game_type(game_type).unwrap();
+    }
+
+    fn play_move(&mut self, m: crate::Move) {
+        m.apply(&mut self.board);
+    }
+
+    fn generate_move(&mut self) -> crate::Move {
+        let mut moves = [None; 200];
+        let n = Rules::generate_moves(&self.board, &mut moves);
+        if moves[0] == Some(crate::Move::Pass) {
+            return crate::Move::Pass;
+        }
+        loop {
+            let line = read_line("move or place: ");
+            if line.starts_with("move") {
+                if let Some(m) = input_movement(&self.board, &moves[..n]) {
+                    break m;
+                }
+            } else if line.starts_with("place") {
+                if let Some(m) = input_placement(&self.board, &moves[..n]) {
+                    break m;
+                }
+            }
+        }
+    }
 }
 
 pub fn terminal_game_interface() {

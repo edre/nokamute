@@ -9,10 +9,6 @@ pub(crate) struct UhpBoard {
     // Reverse map for pieces in play.
     id_to_name_stack: HashMap<Id, Vec<String>>,
     move_history: Vec<crate::Move>,
-    // Locations in UHP are a direction relative to existing pieces.
-    // The placement of the second piece determines how our board is oriented
-    // relative to the UHP board.
-    // TODO: rotation_offset: usize,
 }
 
 fn bug_name(color: Color, bug: Bug, number: u8) -> String {
