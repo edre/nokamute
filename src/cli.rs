@@ -155,8 +155,10 @@ pub fn terminal_game_interface() {
     let mut board = Board::default();
     let mut history = Vec::<crate::Move>::new();
     let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
-        IterativeOptions::new().with_table_byte_size(8_000_000).with_null_window_search(true),
+        IterativeOptions::new().with_table_byte_size(32_000_000).with_null_window_search(true),
     );
+    let mut prev_pv = Vec::new();
+    let mut prev_pv_board = Board::default();
     loop {
         if let Some(winner) = Rules::get_winner(&board) {
             if winner == minimax::Winner::Draw {
@@ -191,6 +193,8 @@ pub fn terminal_game_interface() {
                 strategy.set_timeout(Duration::from_secs(5));
             }
             if let Some(m) = strategy.choose_move(&mut board) {
+                prev_pv_board = board.clone();
+                prev_pv = strategy.principal_variation().to_vec();
                 history.push(m);
                 m.apply(&mut board);
             }
@@ -209,10 +213,21 @@ pub fn terminal_game_interface() {
             if let Some(m) = history.pop() {
                 m.undo(&mut board);
             }
+        } else if line.starts_with("pv") {
+            for (i, m) in prev_pv.iter().enumerate() {
+                m.apply(&mut prev_pv_board);
+                if i > 0 {
+                    print!("Principal variation depth {}\n{}", i, prev_pv_board);
+                }
+            }
+            for m in prev_pv.iter().rev() {
+                m.undo(&mut prev_pv_board);
+            }
+            println!("Current board:");
         } else if line.starts_with("q") || line.starts_with("exit") {
             break;
         } else {
-            println!("commands: ai, move, place, undo, quit");
+            println!("commands: ai, pv, move, place, undo, quit");
         }
     }
 }
