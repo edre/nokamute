@@ -44,9 +44,16 @@ fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
     }
 }
 
+fn standard_games(game_string: &str) -> &str {
+    match game_string {
+	"beetle_gate" => "Base+MLP;InProgress;White[5];wB1;bB1 -wB1;wQ wB1-;bQ /bB1;wB2 wQ-;bQ /wB1;wB2 wQ;bB1 bQ",
+	_ => game_string,
+    }
+}
+
 pub fn perft(game_string: &str) {
     println!("{}", game_string);
-    let mut b = UhpBoard::from_game_string(game_string).unwrap().to_inner();
+    let mut b = UhpBoard::from_game_string(standard_games(game_string)).unwrap().to_inner();
     println!("{}depth\tcount\ttime\tkn/s", b);
     for depth in 0.. {
         let start = Instant::now();
@@ -60,7 +67,7 @@ pub fn perft(game_string: &str) {
 pub fn perft_debug(engine_cmd: &[String], game_type: &str, depth: usize) {
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     engine.new_game(game_type).unwrap();
-    let mut board = Board::new_from_game_type(game_type).unwrap();
+    let mut board = Board::new_from_game_type(standard_games(game_type)).unwrap();
     // Generate random positions at the given depth, and compare output.
     let mut rng = rand::thread_rng();
     let mut moves = [None; 200];
