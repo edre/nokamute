@@ -52,8 +52,9 @@ fn standard_games(game_string: &str) -> &str {
 }
 
 pub fn perft(game_string: &str) {
+    let game_string = standard_games(game_string);
     println!("{}", game_string);
-    let mut b = UhpBoard::from_game_string(standard_games(game_string)).unwrap().to_inner();
+    let mut b = UhpBoard::from_game_string(game_string).unwrap().to_inner();
     println!("{}depth\tcount\ttime\tkn/s", b);
     for depth in 0.. {
         let start = Instant::now();
@@ -64,10 +65,11 @@ pub fn perft(game_string: &str) {
     }
 }
 
-pub fn perft_debug(engine_cmd: &[String], game_type: &str, depth: usize) {
+pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
+    let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();
-    engine.new_game(game_type).unwrap();
-    let mut board = Board::new_from_game_type(standard_games(game_type)).unwrap();
+    engine.new_game(game_string).unwrap();
+    let mut board = UhpBoard::from_game_string(game_string).unwrap().to_inner();
     // Generate random positions at the given depth, and compare output.
     let mut rng = rand::thread_rng();
     let mut moves = [None; 200];
