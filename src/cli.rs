@@ -42,18 +42,11 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
     bug
 }
 
-fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate::Move> {
-    let mut starts =
-        moves
-            .iter()
-            .filter_map(|m| {
-                if let Some(crate::Move::Movement(start, _)) = m {
-                    Some(*start)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
+    let mut starts = moves
+        .iter()
+        .filter_map(|m| if let crate::Move::Movement(start, _) = m { Some(*start) } else { None })
+        .collect::<Vec<_>>();
     starts.sort();
     starts.dedup();
     if starts.is_empty() {
@@ -65,7 +58,7 @@ fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate:
     let mut ends = moves
         .iter()
         .filter_map(|m| {
-            if let Some(crate::Move::Movement(start2, end)) = m {
+            if let crate::Move::Movement(start2, end) = m {
                 if start == *start2 {
                     Some(*end)
                 } else {
@@ -83,12 +76,10 @@ fn input_movement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate:
     Some(crate::Move::Movement(start, end))
 }
 
-fn input_placement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate::Move> {
+fn input_placement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
     let mut places = moves
         .iter()
-        .filter_map(
-            |m| if let Some(crate::Move::Place(place, _)) = m { Some(*place) } else { None },
-        )
+        .filter_map(|m| if let crate::Move::Place(place, _) = m { Some(*place) } else { None })
         .collect::<Vec<_>>();
     places.sort();
     places.dedup();
@@ -100,7 +91,7 @@ fn input_placement(board: &Board, moves: &[Option<crate::Move>]) -> Option<crate
 
     let bugs = moves
         .iter()
-        .filter_map(|m| if let Some(crate::Move::Place(_, bug)) = m { Some(*bug) } else { None })
+        .filter_map(|m| if let crate::Move::Place(_, bug) = m { Some(*bug) } else { None })
         .collect::<Vec<_>>();
     let bug = input_bug(&bugs)?;
 
@@ -131,19 +122,19 @@ impl Player for CliPlayer {
     }
 
     fn generate_move(&mut self) -> crate::Move {
-        let mut moves = [None; 200];
-        let n = Rules::generate_moves(&self.board, &mut moves);
-        if moves[0] == Some(crate::Move::Pass) {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&self.board, &mut moves);
+        if moves[0] == crate::Move::Pass {
             return crate::Move::Pass;
         }
         loop {
             let line = read_line("move or place: ");
             if line.starts_with("move") {
-                if let Some(m) = input_movement(&self.board, &moves[..n]) {
+                if let Some(m) = input_movement(&self.board, &moves) {
                     break m;
                 }
             } else if line.starts_with("place") {
-                if let Some(m) = input_placement(&self.board, &moves[..n]) {
+                if let Some(m) = input_placement(&self.board, &moves) {
                     break m;
                 }
             }
@@ -169,9 +160,9 @@ pub fn terminal_game_interface() {
             break;
         }
         // Precompute possible moves.
-        let mut moves = [None; 200];
-        let n = Rules::generate_moves(&mut board, &mut moves);
-        if moves[0] == Some(crate::Move::Pass) {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&mut board, &mut moves);
+        if moves[0] == crate::Move::Pass {
             // Auto-pass if there are no valid moves.
             crate::Move::Pass.apply(&mut board);
             continue;
@@ -200,12 +191,12 @@ pub fn terminal_game_interface() {
             }
             println!("{}", strategy.stats());
         } else if line.starts_with("move") {
-            if let Some(m) = input_movement(&board, &moves[..n]) {
+            if let Some(m) = input_movement(&board, &moves) {
                 history.push(m);
                 m.apply(&mut board);
             }
         } else if line.starts_with("place") {
-            if let Some(m) = input_placement(&board, &moves[..n]) {
+            if let Some(m) = input_placement(&board, &moves) {
                 history.push(m);
                 m.apply(&mut board);
             }

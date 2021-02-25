@@ -260,12 +260,13 @@ mod tests {
         let mut b = UhpBoard::new("Base+MLP");
         let mut rng = rand::thread_rng();
         for iter in 0..20 {
-            let mut moves = [None; 200];
+            let mut moves = Vec::new();
             let mut depth = 0;
             for _ in 0..20 {
                 depth += 1;
-                let n = Rules::generate_moves(&b.board, &mut moves);
-                let m = moves[rng.gen_range(0, n)].unwrap();
+                moves.clear();
+                Rules::generate_moves(&b.board, &mut moves);
+                let m = moves[rng.gen_range(0, moves.len())];
                 let move_string = b.to_move_string(m);
                 assert_eq!(
                     m,

@@ -25,9 +25,9 @@ fn face_off(
     loop {
         println!("{}{} ({:?}) to move", b, players[p].name(), b.to_move());
         let m = players[p].generate_move();
-        let mut moves = [None; 200];
-        let n = Rules::generate_moves(&b, &mut moves);
-        if !moves[..n].contains(&Some(m)) {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&b, &mut moves);
+        if !moves.contains(&m) {
             println!("{} played an illegal move.", players[p].name());
             return Some(players[1 - p].name());
         }

@@ -529,7 +529,7 @@ impl NodeSet {
 }
 
 impl Board {
-    fn generate_placements(&self, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_placements(&self, moves: &mut Vec<Move>) {
         // Use empty spaces that have no opposite colored tiles adjacent.
         for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
             if node.tile.is_some() {
@@ -552,8 +552,7 @@ impl Board {
                         continue;
                     }
                     if *num_left > 0 {
-                        moves[*n] = Some(Move::Place(self.loc(id), *bug));
-                        *n += 1;
+                        moves.push(Move::Place(self.loc(id), *bug));
                     }
                 }
             }
@@ -694,16 +693,15 @@ impl Board {
     }
 
     // From any bug on top of a stack.
-    fn generate_stack_walking(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_stack_walking(&self, id: Id, moves: &mut Vec<Move>) {
         let mut buf = [UNASSIGNED; 6];
         for adj in self.slidable_adjacent_beetle(&mut buf, id, id) {
-            moves[*n] = Some(Move::Movement(self.loc(id), self.loc(adj)));
-            *n += 1;
+            moves.push(Move::Movement(self.loc(id), self.loc(adj)));
         }
     }
 
     // Jumping over contiguous linear lines of tiles.
-    fn generate_jumps(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_jumps(&self, id: Id, moves: &mut Vec<Move>) {
         for dir in 0..6 {
             let mut jump = id;
             let mut dist = 0;
@@ -712,45 +710,39 @@ impl Board {
                 dist += 1;
             }
             if dist > 1 {
-                moves[*n] = Some(Move::Movement(self.loc(id), self.loc(jump)));
-                *n += 1;
+                moves.push(Move::Movement(self.loc(id), self.loc(jump)));
             }
         }
     }
 
-    fn generate_walk1(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_walk1(&self, id: Id, moves: &mut Vec<Move>) {
         let mut buf = [UNASSIGNED; 6];
         for adj in self.slidable_adjacent(&mut buf, id, id) {
-            moves[*n] = Some(Move::Movement(self.loc(id), self.loc(adj)));
-            *n += 1;
+            moves.push(Move::Movement(self.loc(id), self.loc(adj)));
         }
     }
 
-    fn generate_walk3(&self, orig: Id, moves: &mut [Option<Move>], n: &mut usize) {
-        fn dfs(
-            id: Id, orig: Id, board: &Board, path: &mut Vec<Id>, moves: &mut [Option<Move>],
-            n: &mut usize,
-        ) {
+    fn generate_walk3(&self, orig: Id, moves: &mut Vec<Move>) {
+        fn dfs(id: Id, orig: Id, board: &Board, path: &mut Vec<Id>, moves: &mut Vec<Move>) {
             if path.contains(&id) {
                 return;
             }
             if path.len() == 3 {
-                moves[*n] = Some(Move::Movement(board.loc(orig), board.loc(id)));
-                *n += 1;
+                moves.push(Move::Movement(board.loc(orig), board.loc(id)));
                 return;
             }
             path.push(id);
             let mut buf = [UNASSIGNED; 6];
             for adj in board.slidable_adjacent(&mut buf, orig, id) {
-                dfs(adj, orig, board, path, moves, n);
+                dfs(adj, orig, board, path, moves);
             }
             path.pop();
         }
         let mut path = Vec::with_capacity(3);
-        dfs(orig, orig, self, &mut path, moves, n);
+        dfs(orig, orig, self, &mut path, moves);
     }
 
-    fn generate_walk_all(&self, orig: Id, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_walk_all(&self, orig: Id, moves: &mut Vec<Move>) {
         let mut visited = NodeSet::new();
         let mut queue = vec![orig];
         let mut buf = [UNASSIGNED; 6];
@@ -760,8 +752,7 @@ impl Board {
             }
             visited.set(node);
             if node != orig {
-                moves[*n] = Some(Move::Movement(self.loc(orig), self.loc(node)));
-                *n += 1;
+                moves.push(Move::Movement(self.loc(orig), self.loc(node)));
             }
             for adj in self.slidable_adjacent(&mut buf, orig, node) {
                 queue.push(adj);
@@ -769,7 +760,7 @@ impl Board {
         }
     }
 
-    fn generate_ladybug(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_ladybug(&self, id: Id, moves: &mut Vec<Move>) {
         let mut buf1 = [UNASSIGNED; 6];
         let mut buf2 = [UNASSIGNED; 6];
         let mut step2 = NodeSet::new();
@@ -796,15 +787,12 @@ impl Board {
 
         for s3 in 0..self.nodes.len() as Id {
             if step3.get(s3) {
-                moves[*n] = Some(Move::Movement(self.loc(id), self.loc(s3)));
-                *n += 1;
+                moves.push(Move::Movement(self.loc(id), self.loc(s3)));
             }
         }
     }
 
-    fn generate_throws(
-        &self, immovable: &NodeSet, id: Id, moves: &mut [Option<Move>], n: &mut usize,
-    ) {
+    fn generate_throws(&self, immovable: &NodeSet, id: Id, moves: &mut Vec<Move>) {
         let mut starts = [UNASSIGNED; 6];
         let mut num_starts = 0;
         let mut ends = [UNASSIGNED; 6];
@@ -827,13 +815,12 @@ impl Board {
         }
         for &start in starts[..num_starts].iter() {
             for &end in ends[..num_ends].iter() {
-                moves[*n] = Some(Move::Movement(self.loc(start), self.loc(end)));
-                *n += 1;
+                moves.push(Move::Movement(self.loc(start), self.loc(end)));
             }
         }
     }
 
-    fn generate_mosquito(&self, id: Id, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_mosquito(&self, id: Id, moves: &mut Vec<Move>) {
         let mut targets = [false; 8];
         for &adj in self.adjacent(id) {
             if let Some(tile) = self.get(adj) {
@@ -842,31 +829,31 @@ impl Board {
         }
 
         if targets[Bug::Ant as usize] {
-            self.generate_walk_all(id, moves, n);
+            self.generate_walk_all(id, moves);
         } else {
             // Avoid adding strictly duplicative moves to the ant.
             if targets[Bug::Queen as usize]
                 || targets[Bug::Beetle as usize]
                 || targets[Bug::Pillbug as usize]
             {
-                self.generate_walk1(id, moves, n);
+                self.generate_walk1(id, moves);
             }
             if targets[Bug::Spider as usize] {
-                self.generate_walk3(id, moves, n);
+                self.generate_walk3(id, moves);
             }
         }
         if targets[Bug::Grasshopper as usize] {
-            self.generate_jumps(id, moves, n);
+            self.generate_jumps(id, moves);
         }
         if targets[Bug::Beetle as usize] {
-            self.generate_stack_walking(id, moves, n);
+            self.generate_stack_walking(id, moves);
         }
         if targets[Bug::Ladybug as usize] {
-            self.generate_ladybug(id, moves, n);
+            self.generate_ladybug(id, moves);
         }
     }
 
-    fn generate_movements(&self, moves: &mut [Option<Move>], n: &mut usize) {
+    fn generate_movements(&self, moves: &mut Vec<Move>) {
         let mut immovable = self.find_cut_vertexes();
         let stunned = self.move_history.last();
         if let Some(moved) = stunned {
@@ -874,14 +861,13 @@ impl Board {
             immovable.set(*moved);
         }
         let mut dedup = false;
-        let start = *n;
         for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
             if let Some(tile) = &node.tile {
                 if tile.color != self.to_move() {
                     continue;
                 }
                 if tile.underneath.is_some() {
-                    self.generate_stack_walking(id, moves, n);
+                    self.generate_stack_walking(id, moves);
                     // Don't let mosquito on stack use pillbug ability.
                     // Although the rules don't seem to specify either way.
                     continue;
@@ -894,50 +880,35 @@ impl Board {
                         }));
                 // However pillbugs just thrown cannot throw.
                 if pillbug_powers && stunned != Some(&id) {
-                    self.generate_throws(&immovable, id, moves, n);
+                    self.generate_throws(&immovable, id, moves);
                     dedup = true;
                 }
                 if immovable.get(id) {
                     continue;
                 }
                 match tile.bug {
-                    Bug::Queen => self.generate_walk1(id, moves, n),
-                    Bug::Grasshopper => self.generate_jumps(id, moves, n),
-                    Bug::Spider => self.generate_walk3(id, moves, n),
-                    Bug::Ant => self.generate_walk_all(id, moves, n),
+                    Bug::Queen => self.generate_walk1(id, moves),
+                    Bug::Grasshopper => self.generate_jumps(id, moves),
+                    Bug::Spider => self.generate_walk3(id, moves),
+                    Bug::Ant => self.generate_walk_all(id, moves),
                     Bug::Beetle => {
-                        self.generate_walk1(id, moves, n);
-                        self.generate_stack_walking(id, moves, n);
+                        self.generate_walk1(id, moves);
+                        self.generate_stack_walking(id, moves);
                     }
                     Bug::Mosquito => {
-                        self.generate_mosquito(id, moves, n);
+                        self.generate_mosquito(id, moves);
                         dedup = true;
                     }
-                    Bug::Ladybug => self.generate_ladybug(id, moves, n),
-                    Bug::Pillbug => self.generate_walk1(id, moves, n),
+                    Bug::Ladybug => self.generate_ladybug(id, moves),
+                    Bug::Pillbug => self.generate_walk1(id, moves),
                 }
             }
         }
 
         if dedup {
             // Mosquitos and pillbugs can create duplicate moves, so sort and dedup.
-            moves[start..*n].sort_unstable();
-            // slice::partition_dedup does this, but it's currently nightly-only.
-            let mut r = start + 1;
-            let mut w = r;
-            while r < *n {
-                if moves[w - 1] == moves[r] {
-                    r += 1;
-                } else {
-                    moves.swap(r, w);
-                    r += 1;
-                    w += 1;
-                }
-            }
-            while w < *n {
-                *n -= 1;
-                moves[*n] = None;
-            }
+            moves.sort_unstable();
+            moves.dedup();
         }
     }
 }
@@ -948,9 +919,7 @@ impl minimax::Game for Rules {
     type S = Board;
     type M = Move;
 
-    fn generate_moves(board: &Board, moves: &mut [Option<Move>]) -> usize {
-        let mut n = 0;
-
+    fn generate_moves(board: &Board, moves: &mut Vec<Move>) {
         if board.move_num < 2 {
             // Special case for the first 2 moves:
             for (bug, num_left) in board.get_available_bugs().iter() {
@@ -961,12 +930,10 @@ impl minimax::Game for Rules {
                 }
                 if *num_left > 0 {
                     if board.move_num == 0 {
-                        moves[n] = Some(Move::Place((board.move_num as i8, 0), *bug));
-                        n += 1;
+                        moves.push(Move::Place((board.move_num as i8, 0), *bug));
                     } else {
                         for &loc in adjacent((0, 0)).iter() {
-                            moves[n] = Some(Move::Place(loc, *bug));
-                            n += 1;
+                            moves.push(Move::Place(loc, *bug));
                         }
                     }
                 }
@@ -975,20 +942,16 @@ impl minimax::Game for Rules {
             // Once queen has been placed, pieces may move.
             if board.get_remaining()[Bug::Queen as usize] == 0 {
                 // For movable pieces, generate all legal moves.
-                board.generate_movements(moves, &mut n);
+                board.generate_movements(moves);
             }
 
             // Find placeable positions.
-            board.generate_placements(moves, &mut n);
+            board.generate_placements(moves);
         }
 
-        if n == 0 {
-            moves[n] = Some(Move::Pass);
-            n += 1;
+        if moves.is_empty() {
+            moves.push(Move::Pass);
         }
-
-        moves[n] = None;
-        n
     }
 
     fn get_winner(board: &Board) -> Option<minimax::Winner> {
@@ -1034,11 +997,11 @@ mod tests {
             }
         }
 
-        fn assert_placements(&self, moves: &[Option<Move>], expected: &[(Loc, Bug)]) {
+        fn assert_placements(&self, moves: &[Move], expected: &[(Loc, Bug)]) {
             let mut actual_pairs = Vec::new();
-            for m in moves.iter() {
-                if let Some(Move::Place(actual_id, actual_bug)) = m {
-                    actual_pairs.push((*actual_id, *actual_bug));
+            for &m in moves.iter() {
+                if let Move::Place(actual_id, actual_bug) = m {
+                    actual_pairs.push((actual_id, actual_bug));
                 }
             }
             actual_pairs.sort();
@@ -1048,12 +1011,12 @@ mod tests {
             assert_eq!(actual_pairs, expected_pairs);
         }
 
-        fn assert_movements(&self, moves: &[Option<Move>], start: Loc, ends: &[Loc]) {
+        fn assert_movements(&self, moves: &[Move], start: Loc, ends: &[Loc]) {
             let mut actual_ends = Vec::new();
-            for m in moves.iter() {
-                if let Some(Move::Movement(actual_start, actual_end)) = m {
-                    if *actual_start == start {
-                        actual_ends.push(*actual_end);
+            for &m in moves.iter() {
+                if let Move::Movement(actual_start, actual_end) = m {
+                    if actual_start == start {
+                        actual_ends.push(actual_end);
                     }
                 }
             }
@@ -1075,11 +1038,10 @@ mod tests {
         board.insert(1, Bug::Queen, Color::Black);
         board.insert(2, Bug::Queen, Color::White);
         println!("{}", board);
-        let mut moves = [None; 100];
-        let mut n = 0;
-        board.generate_placements(&mut moves, &mut n);
+        let mut moves = Vec::new();
+        board.generate_placements(&mut moves);
         board.assert_placements(
-            &moves[..n],
+            &moves,
             &[((-1, -1), Bug::Queen), ((-1, 0), Bug::Queen), ((0, 1), Bug::Queen)],
         );
     }
@@ -1168,10 +1130,9 @@ mod tests {
         // ．🦗．．
         board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
         println!("{}", board);
-        let mut moves = [None; 6];
-        let mut n = 0;
-        board.generate_jumps(ORIGIN, &mut moves, &mut n);
-        board.assert_movements(&moves[..n], (0, 0), &[(0, 2), (3, 0)]);
+        let mut moves = Vec::new();
+        board.generate_jumps(ORIGIN, &mut moves);
+        board.assert_movements(&moves, (0, 0), &[(0, 2), (3, 0)]);
     }
 
     #[test]
@@ -1203,10 +1164,9 @@ mod tests {
         // Can't move left (down) or right (up) because of blocking stacks.
         // Can move onto all 4 blocking stacks.
         println!("{}", board);
-        let mut moves = [None; 6];
-        let mut n = 0;
-        board.generate_stack_walking(ORIGIN, &mut moves, &mut n);
-        board.assert_movements(&moves[..n], (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
+        let mut moves = Vec::new();
+        board.generate_stack_walking(ORIGIN, &mut moves);
+        board.assert_movements(&moves, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
     }
 
     #[test]
@@ -1221,11 +1181,10 @@ mod tests {
             Bug::Spider,
         );
         println!("{}", board);
-        let mut moves = [None; 6];
-        let mut n = 0;
+        let mut moves = Vec::new();
         let start = board.id((-1, -1));
-        board.generate_walk3(start, &mut moves, &mut n);
-        board.assert_movements(&moves[..n], (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
+        board.generate_walk3(start, &mut moves);
+        board.assert_movements(&moves, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
 
         // ．．🕷．🕷．．
         //．．🕷🕷．🕷．
@@ -1233,11 +1192,10 @@ mod tests {
         board.remove_loc((-1, -1));
         board.insert_loc((1, 1), Bug::Spider, Color::Black);
         println!("{}", board);
-        moves = [None; 6];
-        n = 0;
+        moves.clear();
         let start = board.id((1, 1));
-        board.generate_walk3(start, &mut moves, &mut n);
-        board.assert_movements(&moves[..n], (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
+        board.generate_walk3(start, &mut moves);
+        board.assert_movements(&moves, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
     }
 
     #[test]
@@ -1249,12 +1207,11 @@ mod tests {
         // ．．．🐜🐜
         board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
         println!("{}", board);
-        let mut moves = [None; 20];
-        let mut n = 0;
+        let mut moves = Vec::new();
         let start = board.id((-1, -1));
-        board.generate_walk_all(start, &mut moves, &mut n);
+        board.generate_walk_all(start, &mut moves);
         board.assert_movements(
-            &moves[..n],
+            &moves,
             (-1, -1),
             &[
                 (0, -1),
@@ -1276,11 +1233,10 @@ mod tests {
     fn test_generate_mosquito() {
         let mut board = Board::default();
         board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
-        let mut moves = [None; 200];
-        let mut n = 0;
-        board.generate_mosquito(ORIGIN, &mut moves, &mut n);
+        let mut moves = Vec::new();
+        board.generate_mosquito(ORIGIN, &mut moves);
         // Mosquito on mosquito can't move at all.
-        board.assert_movements(&moves[..n], (0, 0), &[]);
+        board.assert_movements(&moves, (0, 0), &[]);
 
         //．．🦟🦗．
         // ．🐜🪲．
@@ -1288,12 +1244,11 @@ mod tests {
         board.insert_loc((1, 1), Bug::Beetle, Color::Black);
         board.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
         println!("{}", board);
-        moves = [None; 200];
-        n = 0;
+        moves.clear();
         // Dedup happens in generate_movements.
-        board.generate_movements(&mut moves, &mut n);
+        board.generate_movements(&mut moves);
         board.assert_movements(
-            &moves[..n],
+            &moves,
             (0, 0),
             &[
                 (-1, 0),
@@ -1321,12 +1276,11 @@ mod tests {
         //．．．🐞🐞．．
         // ．．．🐞．．
         println!("{}", board);
-        let mut moves = [None; 20];
-        let mut n = 0;
+        let mut moves = Vec::new();
         let start = board.id((2, 3));
-        board.generate_ladybug(start, &mut moves, &mut n);
+        board.generate_ladybug(start, &mut moves);
         board.assert_movements(
-            &moves[..n],
+            &moves,
             (2, 3),
             &[(-1, 0), (1, 0), (2, 0), (-1, 1), (1, 1), (3, 1), (0, 2), (3, 2), (1, 3), (3, 3)],
         );
@@ -1340,23 +1294,21 @@ mod tests {
         //．．💊💊．．
         // ．．💊💊．
         println!("{}", board);
-        let mut moves = [None; 20];
-        let mut n = 0;
+        let mut moves = Vec::new();
         let immovable = NodeSet::new();
         let start = board.id((1, 1));
-        board.generate_throws(&immovable, start, &mut moves, &mut n);
-        assert_eq!(4, n);
+        board.generate_throws(&immovable, start, &mut moves);
+        assert_eq!(4, moves.len());
         board.assert_movements(&moves[..2], (1, 2), &[(1, 0), (2, 1)]);
-        board.assert_movements(&moves[2..n], (0, 1), &[(1, 0), (2, 1)]);
+        board.assert_movements(&moves[2..], (0, 1), &[(1, 0), (2, 1)]);
 
         // Create a level-2 gate to prevent one piece from being thrown.
         board.remove_loc((0, 0));
         board.insert_loc((0, 1), Bug::Pillbug, Color::Black);
-        moves = [None; 20];
-        n = 0;
-        board.generate_throws(&immovable, start, &mut moves, &mut n);
-        assert_eq!(2, n);
-        board.assert_movements(&moves[..n], (0, 0), &[(1, 0), (2, 1)]);
+        moves.clear();
+        board.generate_throws(&immovable, start, &mut moves);
+        assert_eq!(2, moves.len());
+        board.assert_movements(&moves, (0, 0), &[(1, 0), (2, 1)]);
 
         // Create a level-2 gate to prevent one destination to being thrown to.
         board.insert_loc((1, 0), Bug::Pillbug, Color::Black);
@@ -1364,11 +1316,10 @@ mod tests {
         board.remove_loc((0, 1));
         board.remove_loc((0, 1));
         board.remove_loc((1, 2));
-        moves = [None; 20];
-        n = 0;
-        board.generate_throws(&immovable, start, &mut moves, &mut n);
-        assert_eq!(2, n);
-        board.assert_movements(&moves[..n], (0, 0), &[(0, 1), (1, 2)]);
+        moves = Vec::new();
+        board.generate_throws(&immovable, start, &mut moves);
+        assert_eq!(2, moves.len());
+        board.assert_movements(&moves, (0, 0), &[(0, 1), (1, 2)]);
     }
 
     #[test]

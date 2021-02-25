@@ -17,26 +17,26 @@ fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
         // Apparently perft rules only count positions at the target depth.
         return 0;
     }
-    let mut moves = [None; 200];
-    let n = Rules::generate_moves(b, &mut moves);
+    let mut moves = Vec::new();
+    Rules::generate_moves(b, &mut moves);
     if depth == 1 {
-        return n as u64;
+        return moves.len() as u64;
     } else if depth < 4 {
         // Serial exploration of leafy nodes, to avoid excessive cloning.
         let mut count = 0;
-        for m in moves[..n].iter().map(|x| x.unwrap()) {
+        for m in moves.iter() {
             m.apply(b);
             count += perft_recurse(b, depth - 1);
             m.undo(b);
         }
         count
     } else {
-        moves[..n]
+        moves
             .into_par_iter()
             .with_max_len(1)
             .map(|m| {
                 let mut b2 = b.clone();
-                m.unwrap().apply(&mut b2);
+                m.apply(&mut b2);
                 perft_recurse(&mut b2, depth - 1)
                 // no reason to undo
             })
@@ -72,26 +72,26 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let mut board = UhpBoard::from_game_string(game_string).unwrap().to_inner();
     // Generate random positions at the given depth, and compare output.
     let mut rng = rand::thread_rng();
-    let mut moves = [None; 200];
+    let mut moves = Vec::new();
     for iter in 0.. {
         if iter % 10000 == 0 {
             println!("iter {}", iter);
         }
         let mut stack = Vec::new();
         for _ in 0..depth {
-            let n = Rules::generate_moves(&board, &mut moves);
-            let m = moves[rng.gen_range(0, n)].unwrap();
+            Rules::generate_moves(&board, &mut moves);
+            let m = moves[rng.gen_range(0, moves.len())];
             m.apply(&mut board);
             engine.apply(m).unwrap();
             stack.push(m);
         }
         // Check for discrepancies.
-        let n = Rules::generate_moves(&board, &mut moves);
+        Rules::generate_moves(&board, &mut moves);
         let engine_moves = engine.generate_moves().unwrap();
-        if n != engine_moves.len() {
+        if moves.len() != engine_moves.len() {
             println!("game log: {}", engine.game_log());
             println!("engine moves: {}", engine.raw_generate_moves().unwrap());
-            dump_difference(&mut board, iter, &moves[..n], &engine_moves);
+            dump_difference(&mut board, iter, &moves, &engine_moves);
             break;
         }
         // Unwrap
@@ -103,8 +103,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
 }
 
 fn dump_difference(
-    board: &mut Board, iter: u64, nokamute_moves: &[Option<crate::Move>],
-    engine_moves: &[crate::Move],
+    board: &mut Board, iter: u64, nokamute_moves: &[crate::Move], engine_moves: &[crate::Move],
 ) {
     println!(
         "iteration {} found discrepancy: {} vs {} moves",
@@ -116,7 +115,7 @@ fn dump_difference(
     let mut common = Vec::new();
     let mut nokamute_only = Vec::new();
     let mut engine_only = Vec::new();
-    for m in nokamute_moves.iter().map(|x| x.unwrap()) {
+    for &m in nokamute_moves.iter() {
         if engine_moves.contains(&m) {
             common.push(m);
         } else {
@@ -124,7 +123,7 @@ fn dump_difference(
         }
     }
     for &m in engine_moves.iter() {
-        if !nokamute_moves.contains(&Some(m)) {
+        if !nokamute_moves.contains(&m) {
             engine_only.push(m);
         }
     }
