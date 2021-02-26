@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 fnv = "^1.0"
-minimax = { git = "https://github.com/edre/minimax-rs", rev = "c626e29" }
+minimax = { git = "https://github.com/edre/minimax-rs", rev = "c12e303" }
 rand = "0.4.*"
 rayon = "^1.5"
 
