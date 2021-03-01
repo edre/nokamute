@@ -99,6 +99,17 @@ impl Bug {
             _ => None,
         }
     }
+
+    // Whether this bug can only move (itself) by crawling.
+    pub(crate) fn crawler(&self) -> bool {
+        match *self {
+            Bug::Ant => true,
+            Bug::Queen => true,
+            Bug::Spider => true,
+            Bug::Pillbug => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -282,6 +293,10 @@ impl Board {
 
     pub(crate) fn get_remaining(&self) -> &[u8; 8] {
         &self.remaining[self.move_num as usize & 1]
+    }
+
+    pub(crate) fn get_opponent_remaining(&self) -> &[u8; 8] {
+        &self.remaining[!self.move_num as usize & 1]
     }
 
     fn mut_remaining(&mut self) -> &mut [u8; 8] {
@@ -627,7 +642,7 @@ impl Board {
     // adjacent locations still connected to the hive that are slidable.
     // A slidable position has 2 empty slots next to an occupied slot.
     // For all 2^6 possibilities, there can be 0, 2, or 4 slidable neighbors.
-    fn slidable_adjacent<'a>(
+    pub(crate) fn slidable_adjacent<'a>(
         &self, out: &'a mut [Id; 6], origin: Id, id: Id,
     ) -> impl Iterator<Item = Id> + 'a {
         let mut n = 0;

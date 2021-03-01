@@ -17,8 +17,9 @@ pub struct BasicEvaluator;
 impl minimax::Evaluator for BasicEvaluator {
     type G = Rules;
     fn evaluate(board: &Board) -> minimax::Evaluation {
-        const QUEEN_FACTOR: i32 = 20;
-        const MOVABLE_BUG_FACTOR: i32 = 1;
+        const QUEEN_FACTOR: i32 = 40;
+        const MOVABLE_BUG_FACTOR: i32 = 2;
+        const UNPLAYED_BUG_RATIO: i32 = 1;
 
         let queens_surrounded = board.queens_surrounded();
         let immovable = board.find_cut_vertexes();
@@ -41,6 +42,14 @@ impl minimax::Evaluator for BasicEvaluator {
             - queens_surrounded[board.to_move() as usize] as i32;
         score *= QUEEN_FACTOR;
 
+        let remaining = board.get_remaining();
+        let opp_remaining = board.get_opponent_remaining();
+        for bug in Bug::iter_all() {
+            score += (remaining[bug as usize] as i32 - opp_remaining[bug as usize] as i32)
+                * UNPLAYED_BUG_RATIO;
+        }
+
+        let mut buf = [UNASSIGNED; 6];
         for (id, node) in (0..).zip(board.nodes.iter()) {
             if let Some(ref tile) = node.tile {
                 let mut bug_score = value(tile.bug);
@@ -53,7 +62,9 @@ impl minimax::Evaluator for BasicEvaluator {
                     })
                 {
                     // Pillbugs get a bonus if adjacent to matching queen.
-                    bug_score += 9;
+                    // for each empty adjacent square.
+                    bug_score += (QUEEN_FACTOR / 2)
+                        * node.adj.iter().filter(|&&adj| board.get(adj).is_none()).count() as i32;
                 } else if tile.underneath.is_none() && immovable.get(id) {
                     continue;
                 }
@@ -68,6 +79,12 @@ impl minimax::Evaluator for BasicEvaluator {
                             .map(|&id| board.get(id).map(|tile| value(tile.bug) % 9).unwrap_or(0))
                             .max()
                             .unwrap_or(0);
+                    }
+                }
+                if tile.bug.crawler() {
+                    // Treat blocked crawlers as immovable.
+                    if board.slidable_adjacent(&mut buf, id, id).next().is_none() {
+                        continue;
                     }
                 }
                 bug_score *= MOVABLE_BUG_FACTOR;
@@ -122,7 +139,7 @@ mod tests {
         crate::Move::Place((1, 0), Bug::Queen).apply(&mut board);
         crate::Move::Place((1, 1), Bug::Spider).apply(&mut board);
         crate::Move::Place((0, 1), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place((-1, 0), Bug::Spider).apply(&mut board);
+        crate::Move::Place((-1, 0), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..3 {
