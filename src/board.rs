@@ -114,8 +114,8 @@ impl Bug {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Color {
-    Black = 0,
-    White = 1,
+    Black = 1,
+    White = 0,
 }
 
 // A tile on the board.
@@ -162,9 +162,9 @@ impl minimax::Zobrist for Board {
 impl Board {
     pub fn to_move(&self) -> Color {
         if self.move_num % 2 == 0 {
-            Color::Black
-        } else {
             Color::White
+        } else {
+            Color::Black
         }
     }
 
@@ -1050,8 +1050,8 @@ mod tests {
             board.remaining[0][i] = 0;
             board.remaining[1][i] = 0;
         }
-        board.insert(1, Bug::Queen, Color::Black);
-        board.insert(2, Bug::Queen, Color::White);
+        board.insert(1, Bug::Queen, Color::White);
+        board.insert(2, Bug::Queen, Color::Black);
         println!("{}", board);
         let mut moves = Vec::new();
         board.generate_placements(&mut moves);
@@ -1261,6 +1261,7 @@ mod tests {
         println!("{}", board);
         moves.clear();
         // Dedup happens in generate_movements.
+	board.move_num += 1;
         board.generate_movements(&mut moves);
         board.assert_movements(
             &moves,

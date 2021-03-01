@@ -13,9 +13,9 @@ pub(crate) struct UhpBoard {
 
 fn bug_name(color: Color, bug: Bug, number: u8) -> String {
     let mut name = match color {
-        // UHP says white goes first, I say black.
-        Color::Black => "w",
-        Color::White => "b",
+        // Standard seems to be white goes first.
+        Color::Black => "b",
+        Color::White => "w",
     }
     .to_string();
     name.push(bug.name().chars().next().unwrap().to_ascii_uppercase());
