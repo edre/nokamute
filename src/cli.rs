@@ -32,7 +32,7 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
             print!("{}:{}, ", bug.codepoint(), bug.name());
         }
     }
-    println!("");
+    println!();
 
     let line = read_line("Which bug? ");
     let bug = Bug::from_char(line.chars().next().unwrap_or('?'));
@@ -161,7 +161,7 @@ pub fn terminal_game_interface() {
         }
         // Precompute possible moves.
         let mut moves = Vec::new();
-        Rules::generate_moves(&mut board, &mut moves);
+        Rules::generate_moves(&board, &mut moves);
         if moves[0] == crate::Move::Pass {
             // Auto-pass if there are no valid moves.
             crate::Move::Pass.apply(&mut board);
@@ -183,7 +183,7 @@ pub fn terminal_game_interface() {
             } else {
                 strategy.set_timeout(Duration::from_secs(5));
             }
-            if let Some(m) = strategy.choose_move(&mut board) {
+            if let Some(m) = strategy.choose_move(&board) {
                 prev_pv_board = board.clone();
                 prev_pv = strategy.principal_variation().to_vec();
                 history.push(m);
@@ -215,7 +215,7 @@ pub fn terminal_game_interface() {
                 m.undo(&mut prev_pv_board);
             }
             println!("Current board:");
-        } else if line.starts_with("q") || line.starts_with("exit") {
+        } else if line.starts_with('q') || line.starts_with("exit") {
             break;
         } else {
             println!("commands: ai, pv, move, place, undo, quit");

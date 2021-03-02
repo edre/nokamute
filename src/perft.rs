@@ -20,7 +20,7 @@ fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
     let mut moves = Vec::new();
     Rules::generate_moves(b, &mut moves);
     if depth == 1 {
-        return moves.len() as u64;
+        moves.len() as u64
     } else if depth < 4 {
         // Serial exploration of leafy nodes, to avoid excessive cloning.
         let mut count = 0;
@@ -54,7 +54,7 @@ fn standard_games(game_string: &str) -> &str {
 pub fn perft(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
-    let mut b = UhpBoard::from_game_string(game_string).unwrap().to_inner();
+    let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
     println!("{}depth\tcount\ttime\tkn/s", b);
     for depth in 0.. {
         let start = Instant::now();
@@ -69,7 +69,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     engine.new_game(game_string).unwrap();
-    let mut board = UhpBoard::from_game_string(game_string).unwrap().to_inner();
+    let mut board = UhpBoard::from_game_string(game_string).unwrap().into_inner();
     // Generate random positions at the given depth, and compare output.
     let mut rng = rand::thread_rng();
     let mut moves = Vec::new();

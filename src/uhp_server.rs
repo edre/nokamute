@@ -33,18 +33,18 @@ impl UhpServer {
     fn new_game(&mut self, args: &str) -> Result<()> {
         let args = if args.is_empty() { "Base" } else { args };
         self.board = Some(UhpBoard::from_game_string(args)?);
-        self.engine = Some(minimax::IterativeSearch::new(self.options.clone()));
+        self.engine = Some(minimax::IterativeSearch::new(self.options));
         println!("{}", self.board.as_mut().unwrap().game_string());
         Ok(())
     }
 
     fn valid_moves(&self) -> Result<()> {
-        println!("{}", self.board.as_ref().ok_or_else(|| UhpError::GameNotStarted)?.valid_moves());
+        println!("{}", self.board.as_ref().ok_or(UhpError::GameNotStarted)?.valid_moves());
         Ok(())
     }
 
     fn play(&mut self, args: &str) -> Result<()> {
-        let board = self.board.as_mut().ok_or_else(|| UhpError::GameNotStarted)?;
+        let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
         let m = board.from_move_string(args)?;
         board.apply_untrusted(m)?;
         println!("{}", board.game_string());
@@ -52,15 +52,15 @@ impl UhpServer {
     }
 
     fn best_move(&mut self, args: &str) -> Result<()> {
-        let strategy = self.engine.as_mut().ok_or_else(|| UhpError::GameNotStarted)?;
-        if args.starts_with("depth ") {
-            let depth = args[6..]
+        let strategy = self.engine.as_mut().ok_or(UhpError::GameNotStarted)?;
+        if let Some(arg) = args.strip_prefix("depth ") {
+            let depth = arg
                 .parse::<usize>()
                 .map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?;
             strategy.set_max_depth(depth);
-        } else if args.starts_with("time ") {
-            let dur = parse_hhmmss(&args[5..])
-                .ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
+        } else if let Some(arg) = args.strip_prefix("time ") {
+            let dur =
+                parse_hhmmss(arg).ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
             strategy.set_timeout(dur);
         } else {
             return Err(UhpError::UnrecognizedCommand(args.to_string()));
@@ -68,12 +68,12 @@ impl UhpServer {
         let board = self.board.as_ref().unwrap();
         let m = strategy.choose_move(board.inner()).unwrap();
         println!("{}", board.to_move_string(m));
-        stderr().write((strategy.stats() + "\n").as_bytes())?;
+        stderr().write_all((strategy.stats() + "\n").as_bytes())?;
         Ok(())
     }
 
     fn undo(&mut self, args: &str) -> Result<()> {
-        let board = self.board.as_mut().ok_or_else(|| UhpError::GameNotStarted)?;
+        let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
         let num_undo = if args.is_empty() {
             1
         } else {

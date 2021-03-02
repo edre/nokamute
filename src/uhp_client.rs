@@ -23,8 +23,7 @@ impl UhpClient {
             .spawn()?;
         let input = proc.stdin.take().unwrap();
         let output = BufReader::new(proc.stdout.take().unwrap());
-        let mut client =
-            UhpClient { proc: proc, input: input, output: output, board: UhpBoard::new("Base") };
+        let mut client = UhpClient { proc, input, output, board: UhpBoard::new("Base") };
         // Eat the first output
         client.consume_output()?;
         Ok(client)
@@ -45,7 +44,7 @@ impl UhpClient {
     fn command(&mut self, command: &str) -> Result<Vec<String>> {
         let mut line = command.to_owned();
         line.push('\n');
-        self.input.write(line.as_bytes())?;
+        self.input.write_all(line.as_bytes())?;
         self.consume_output()
     }
 

@@ -83,7 +83,7 @@ impl Bug {
             Bug::Pillbug,
         ]
         .iter()
-        .map(|x| *x)
+        .copied()
     }
 
     pub fn from_char(c: char) -> Option<Bug> {
@@ -102,13 +102,7 @@ impl Bug {
 
     // Whether this bug can only move (itself) by crawling.
     pub(crate) fn crawler(&self) -> bool {
-        match *self {
-            Bug::Ant => true,
-            Bug::Queen => true,
-            Bug::Spider => true,
-            Bug::Pillbug => true,
-            _ => false,
-        }
+        matches!(*self, Bug::Ant | Bug::Queen | Bug::Spider | Bug::Pillbug)
     }
 }
 
@@ -254,7 +248,7 @@ impl Board {
             self.alloc_surrounding(id);
             None
         };
-        let tile = Tile { bug: bug, color: color, underneath: underneath };
+        let tile = Tile { bug, color, underneath };
         self.nodes[id as usize].tile = Some(tile);
         self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
 
@@ -323,8 +317,8 @@ impl Board {
 
     pub(crate) fn queens_surrounded(&self) -> [usize; 2] {
         let mut out = [0; 2];
-        for i in 0..2 {
-            out[i] = self
+        for (i, entry) in out.iter_mut().enumerate() {
+            *entry = self
                 .adjacent(self.queens[i])
                 .iter()
                 .filter(|adj| self.get(**adj).is_some())
@@ -342,7 +336,7 @@ impl Board {
             nodes: vec![Node { adj: [UNASSIGNED; 6], tile: None }],
             underworld: [None; 8],
             id_to_loc: vec![fake_loc],
-            loc_to_id: loc_to_id,
+            loc_to_id,
             remaining: [remaining; 2],
             queens: [UNASSIGNED; 2],
             move_num: 0,
@@ -632,8 +626,7 @@ impl Board {
             }
         }
 
-        let start: Id =
-            (0..).zip(self.nodes.iter()).filter(|(_, x)| x.tile.is_some()).next().unwrap().0;
+        let start: Id = (0..).zip(self.nodes.iter()).find(|(_, x)| x.tile.is_some()).unwrap().0;
         dfs(&mut state, start, UNASSIGNED);
         state.immovable
     }
@@ -668,7 +661,7 @@ impl Board {
             slidable >>= 1;
         }
 
-        out.iter().take(n).map(|x| *x)
+        out.iter().take(n).copied()
     }
 
     // Find all walkable tiles where either the source or the dest is on the hive.
@@ -704,7 +697,7 @@ impl Board {
             n += 1;
         }
 
-        out.iter().take(n).map(|x| *x)
+        out.iter().take(n).copied()
     }
 
     // From any bug on top of a stack.

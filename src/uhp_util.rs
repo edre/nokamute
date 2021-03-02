@@ -59,8 +59,8 @@ impl UhpBoard {
             }
         }
         UhpBoard {
-            board: board,
-            name_to_id: name_to_id,
+            board,
+            name_to_id,
             id_to_name_stack: HashMap::new(),
             game_type: game_type.to_string(),
             move_history: Vec::new(),
@@ -99,7 +99,7 @@ impl UhpBoard {
         let tokens = move_string.split(' ').collect::<Vec<_>>();
         let start: Id = self.to_id(tokens[0])?;
         let bug = Bug::from_char(tokens[0].chars().nth(1).unwrap()).unwrap();
-        if self.move_history.len() == 0 {
+        if self.move_history.is_empty() {
             if tokens.len() != 1 {
                 return Err(UhpError::InvalidMove(move_string.to_owned()));
             }
@@ -131,7 +131,7 @@ impl UhpBoard {
             }
             crate::Move::Pass => return "pass".to_owned(),
         };
-        if self.move_history.len() == 0 {
+        if self.move_history.is_empty() {
             return move_string;
         }
         move_string.push(' ');
@@ -191,7 +191,7 @@ impl UhpBoard {
                 let end = self.board.id(end_loc);
                 let name = self.id_to_name_stack.get_mut(&start).unwrap().pop().unwrap();
                 self.name_to_id.insert(name.clone(), end);
-                self.id_to_name_stack.entry(end).or_insert_with(|| Vec::new()).push(name);
+                self.id_to_name_stack.entry(end).or_insert_with(Vec::new).push(name);
             }
             crate::Move::Pass => {}
         }
@@ -201,7 +201,7 @@ impl UhpBoard {
     }
 
     pub(crate) fn undo(&mut self) -> Result<()> {
-        let m = self.move_history.pop().ok_or_else(|| UhpError::TooManyUndos)?;
+        let m = self.move_history.pop().ok_or(UhpError::TooManyUndos)?;
         match m {
             crate::Move::Place(loc, _) => {
                 let id = self.board.id(loc);
@@ -213,7 +213,7 @@ impl UhpBoard {
                 let end = self.board.id(end_loc);
                 let name = self.id_to_name_stack.get_mut(&end).unwrap().pop().unwrap();
                 self.name_to_id.insert(name.clone(), start);
-                self.id_to_name_stack.entry(start).or_insert_with(|| Vec::new()).push(name);
+                self.id_to_name_stack.entry(start).or_insert_with(Vec::new).push(name);
             }
             crate::Move::Pass => {}
         }
@@ -241,7 +241,7 @@ impl UhpBoard {
         Ok(board)
     }
 
-    pub(crate) fn to_inner(self) -> Board {
+    pub(crate) fn into_inner(self) -> Board {
         self.board
     }
 
@@ -257,7 +257,7 @@ impl UhpBoard {
             out.push_str(&self.to_move_string(m));
             out.push(';');
         }
-        if out.ends_with(";") {
+        if out.ends_with(';') {
             out.pop();
         }
         out
@@ -274,7 +274,7 @@ impl UhpBoard {
             log.push(';');
             self.apply(m).unwrap();
         }
-        if log.ends_with(";") {
+        if log.ends_with(';') {
             log.pop();
         }
         log

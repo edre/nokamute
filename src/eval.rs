@@ -1,5 +1,4 @@
 use crate::board::*;
-use minimax;
 
 // An evaluator that knows nothing but the rules, and maximally explores the tree.
 pub struct DumbEvaluator;
@@ -53,14 +52,14 @@ impl minimax::Evaluator for BasicEvaluator {
         for (id, node) in (0..).zip(board.nodes.iter()) {
             if let Some(ref tile) = node.tile {
                 let mut bug_score = value(tile.bug);
-                if tile.bug == Bug::Pillbug
+                let pillbug_near_its_queen = tile.bug == Bug::Pillbug
                     && node.adj.iter().any(|&adj| {
                         board
                             .get(adj)
                             .map(|tile2| tile2.bug == Bug::Queen && tile2.color == tile.color)
                             .unwrap_or(false)
-                    })
-                {
+                    });
+                if pillbug_near_its_queen {
                     // Pillbugs get a bonus if adjacent to matching queen.
                     // for each empty adjacent square.
                     bug_score += (QUEEN_FACTOR / 2)
