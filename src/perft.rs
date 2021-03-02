@@ -51,7 +51,17 @@ fn standard_games(game_string: &str) -> &str {
     }
 }
 
-pub fn perft(game_string: &str) {
+pub fn perft_single_thread(game_string: &str) {
+    let game_string = standard_games(game_string);
+    println!("{}", game_string);
+    let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
+    if game_string.contains(';') {
+        print!("{}", b);
+    }
+    minimax::perft::<Rules>(&mut b, 20);
+}
+
+pub fn perft_multi_thread(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
     let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
@@ -146,4 +156,15 @@ fn dump_difference(
         println!("{}", board);
         m.undo(board);
     }
+}
+
+#[test]
+fn test_perft() {
+    let mut b = Board::new_from_game_type("Base").unwrap();
+    let move_counts = minimax::perft::<Rules>(&mut b, 4);
+    assert_eq!(move_counts, vec![1, 4, 96, 1440, 21600]);
+
+    b = Board::new_from_game_type("Base+MLP").unwrap();
+    let move_counts = minimax::perft::<Rules>(&mut b, 4);
+    assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
 }

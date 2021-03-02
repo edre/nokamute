@@ -16,14 +16,20 @@ fn main() {
             play_game(game_type, player1, player2);
         }
         "perft" => {
+            // For engine performance comparisons.
             let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base");
-            perft(game_type);
+            perft_single_thread(game_type);
+        }
+        "perft-cheating" => {
+            // For more quickly getting values for correctness checking.
+            let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base");
+            perft_multi_thread(game_type);
         }
         "perft-debug" => {
             perft_debug(&args[1..], "Base", 8);
         }
         _ => {
-            println!("commands are: cli, perft, perft-debug, uhp");
+            println!("commands are: cli, perft, perft-cheating, perft-debug, play, uhp");
         }
     }
 }
