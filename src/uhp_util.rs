@@ -1,5 +1,6 @@
-use crate::{Board, Bug, Color, Id, UNASSIGNED};
-use minimax::Move;
+extern crate minimax;
+use crate::{Board, Bug, Color, Id, Rules, UNASSIGNED};
+use minimax::{Game, Move};
 use std::collections::HashMap;
 
 pub(crate) struct UhpBoard {
@@ -8,6 +9,7 @@ pub(crate) struct UhpBoard {
     name_to_id: HashMap<String, Id>,
     // Reverse map for pieces in play.
     id_to_name_stack: HashMap<Id, Vec<String>>,
+    game_type: String,
     move_history: Vec<crate::Move>,
 }
 
@@ -31,6 +33,9 @@ pub(crate) enum UhpError {
     UnknownPiece(String),
     InvalidGameString(String),
     InvalidMove(String),
+    GameNotStarted,
+    UnrecognizedCommand(String),
+    TooManyUndos,
 }
 
 impl From<std::io::Error> for UhpError {
@@ -57,6 +62,7 @@ impl UhpBoard {
             board: board,
             name_to_id: name_to_id,
             id_to_name_stack: HashMap::new(),
+            game_type: game_type.to_string(),
             move_history: Vec::new(),
         }
     }
@@ -162,6 +168,15 @@ impl UhpBoard {
         unreachable!("no neighboring pieces")
     }
 
+    pub(crate) fn apply_untrusted(&mut self, m: crate::Move) -> Result<()> {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&self.board, &mut moves);
+        if !moves.contains(&m) {
+            return Err(UhpError::InvalidMove("That is not a valid move".to_string()));
+        }
+        self.apply(m)
+    }
+
     pub(crate) fn apply(&mut self, m: crate::Move) -> Result<()> {
         match m {
             crate::Move::Place(loc, bug) => {
@@ -185,8 +200,8 @@ impl UhpBoard {
         Ok(())
     }
 
-    pub(crate) fn undo(&mut self) {
-        let m = self.move_history.pop().unwrap();
+    pub(crate) fn undo(&mut self) -> Result<()> {
+        let m = self.move_history.pop().ok_or_else(|| UhpError::TooManyUndos)?;
         match m {
             crate::Move::Place(loc, _) => {
                 let id = self.board.id(loc);
@@ -203,6 +218,7 @@ impl UhpBoard {
             crate::Move::Pass => {}
         }
         m.undo(&mut self.board);
+        Ok(())
     }
 
     pub(crate) fn from_game_string(s: &str) -> Result<Self> {
@@ -229,10 +245,28 @@ impl UhpBoard {
         self.board
     }
 
+    pub(crate) fn inner(&self) -> &Board {
+        &self.board
+    }
+
+    pub(crate) fn valid_moves(&self) -> String {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&self.board, &mut moves);
+        let mut out = String::new();
+        for m in moves {
+            out.push_str(&self.to_move_string(m));
+            out.push(';');
+        }
+        if out.ends_with(";") {
+            out.pop();
+        }
+        out
+    }
+
     pub(crate) fn game_log(&mut self) -> String {
         let history = self.move_history.clone();
         for _ in 0..history.len() {
-            self.undo();
+            self.undo().unwrap();
         }
         let mut log = String::new();
         for &m in history.iter() {
@@ -244,6 +278,41 @@ impl UhpBoard {
             log.pop();
         }
         log
+    }
+
+    fn game_state_string(&self) -> &'static str {
+        if self.move_history.is_empty() {
+            return "NotStarted";
+        }
+        match Rules::get_winner(&self.board) {
+            Some(minimax::Winner::Draw) => "Draw",
+            Some(minimax::Winner::PlayerToMove) => match self.board.to_move() {
+                Color::Black => "BlackWins",
+                Color::White => "WhiteWins",
+            },
+            Some(minimax::Winner::PlayerJustMoved) => match self.board.to_move() {
+                Color::White => "BlackWins",
+                Color::Black => "WhiteWins",
+            },
+            None => "InProgress",
+        }
+    }
+
+    fn turn_string(&self) -> String {
+        format!("{:?}[{}]", self.board.to_move(), self.move_history.len() / 2 + 1)
+    }
+
+    pub(crate) fn game_string(&mut self) -> String {
+        let mut out = self.game_type.clone();
+        out.push(';');
+        out.push_str(self.game_state_string());
+        out.push(';');
+        out.push_str(&self.turn_string());
+        if !self.move_history.is_empty() {
+            out.push(';');
+            out.push_str(&self.game_log());
+        }
+        out
     }
 }
 
@@ -282,7 +351,7 @@ mod tests {
                 }
             }
             for _ in 0..depth {
-                b.undo();
+                b.undo().unwrap();
             }
         }
     }

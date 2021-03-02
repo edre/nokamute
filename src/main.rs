@@ -6,6 +6,9 @@ fn main() {
         "cli" => {
             terminal_game_interface();
         }
+        "uhp" => {
+            UhpServer::new().serve();
+        }
         "play" => {
             let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base+MLP");
             let player1 = args.get(2).map(|s| s.as_ref()).unwrap_or("human");
@@ -20,7 +23,7 @@ fn main() {
             perft_debug(&args[1..], "Base", 8);
         }
         _ => {
-            println!("commands are: cli, perft, perft-debug");
+            println!("commands are: cli, perft, perft-debug, uhp");
         }
     }
 }

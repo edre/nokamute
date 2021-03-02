@@ -1261,7 +1261,7 @@ mod tests {
         println!("{}", board);
         moves.clear();
         // Dedup happens in generate_movements.
-	board.move_num += 1;
+        board.move_num += 1;
         board.generate_movements(&mut moves);
         board.assert_movements(
             &moves,

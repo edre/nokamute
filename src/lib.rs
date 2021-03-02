@@ -9,4 +9,6 @@ pub use perft::*;
 mod player;
 pub use player::*;
 mod uhp_client;
+mod uhp_server;
+pub use uhp_server::UhpServer;
 mod uhp_util;

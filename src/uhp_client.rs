@@ -70,7 +70,7 @@ impl UhpClient {
 
     pub(crate) fn undo(&mut self) -> Result<()> {
         self.command("undo 1")?;
-        self.board.undo();
+        self.board.undo()?;
         Ok(())
     }
 
