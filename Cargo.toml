@@ -1,8 +1,9 @@
 [package]
 name = "nokamute"
 version = "0.1.0"
-authors = ["Eric Roshan-Eisner <ede@alum.mit.edu>"]
+authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
 edition = "2018"
+license = "MIT"
 
 [dependencies]
 fnv = "^1.0"
