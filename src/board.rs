@@ -964,11 +964,22 @@ impl minimax::Game for Rules {
 
     fn get_winner(board: &Board) -> Option<minimax::Winner> {
         let queens_surrounded = board.queens_surrounded();
-        let n = board.zobrist_history.len();
-        if n > 5 && board.zobrist_history[n - 5] == board.zobrist_hash {
-            // Draw by stalemate.
-            Some(minimax::Winner::Draw)
-        } else if queens_surrounded == [6, 6] {
+        let n = board.move_num as usize;
+        if n > 10 {
+            // Check for position repeat stalemate.
+            // More than 32 moves ago, we're not going to bother looking.
+            // 4 is the most recently this move could have occurred.
+            let start = if n < 32 { !n & 1 } else { n - 32 };
+            let recent_past = &board.zobrist_history[start..n - 4];
+            let position_repeat_count =
+                recent_past.iter().step_by(2).filter(|&&hash| hash == board.zobrist_hash).count();
+            if position_repeat_count == 2 {
+                // Draw by stalemate.
+                return Some(minimax::Winner::Draw);
+            }
+        }
+
+        if queens_surrounded == [6, 6] {
             // Draw by simultaneous queen surrounding.
             Some(minimax::Winner::Draw)
         } else if queens_surrounded[board.to_move() as usize] == 6 {
@@ -1345,6 +1356,7 @@ mod tests {
         assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Place(x1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
+        // Create the position the first time.
         crate::Move::Place(y1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Movement(x1, x2).apply(&mut board);
@@ -1353,9 +1365,17 @@ mod tests {
         assert_eq!(None, Rules::get_winner(&board));
         crate::Move::Movement(x2, x1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
+        // Recreate position for the second time.
         crate::Move::Movement(y2, y1).apply(&mut board);
-        // This is the first repeat of a board position, a slightly aggressive
-        // interpretation of chess stalemate rules.
+        assert_eq!(None, Rules::get_winner(&board));
+        crate::Move::Movement(x1, x2).apply(&mut board);
+        assert_eq!(None, Rules::get_winner(&board));
+        crate::Move::Movement(y1, y2).apply(&mut board);
+        assert_eq!(None, Rules::get_winner(&board));
+        crate::Move::Movement(x2, x1).apply(&mut board);
+        assert_eq!(None, Rules::get_winner(&board));
+        // Recreate position for the third time.
+        crate::Move::Movement(y2, y1).apply(&mut board);
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
         // Undo reverts zobrist and history.
         crate::Move::Movement(y2, y1).undo(&mut board);
