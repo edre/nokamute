@@ -5,21 +5,27 @@ pub struct DumbEvaluator;
 
 impl minimax::Evaluator for DumbEvaluator {
     type G = Rules;
-    fn evaluate(_: &Board) -> minimax::Evaluation {
+    fn evaluate(&self, _: &Board) -> minimax::Evaluation {
         0
     }
 }
 
 // An evaluator that counts movable pieces and how close to death the queen is.
-pub struct BasicEvaluator;
+pub struct BasicEvaluator {
+    queen_factor: i32,
+    movable_bug_factor: i32,
+    unplayed_bug_factor: i32,
+}
+
+impl Default for BasicEvaluator {
+    fn default() -> Self {
+        Self { queen_factor: 40, movable_bug_factor: 2, unplayed_bug_factor: 1 }
+    }
+}
 
 impl minimax::Evaluator for BasicEvaluator {
     type G = Rules;
-    fn evaluate(board: &Board) -> minimax::Evaluation {
-        const QUEEN_FACTOR: i32 = 40;
-        const MOVABLE_BUG_FACTOR: i32 = 2;
-        const UNPLAYED_BUG_RATIO: i32 = 1;
-
+    fn evaluate(&self, board: &Board) -> minimax::Evaluation {
         let queens_surrounded = board.queens_surrounded();
         let immovable = board.find_cut_vertexes();
 
@@ -39,13 +45,13 @@ impl minimax::Evaluator for BasicEvaluator {
 
         let mut score = queens_surrounded[1 - board.to_move() as usize] as i32
             - queens_surrounded[board.to_move() as usize] as i32;
-        score *= QUEEN_FACTOR;
+        score *= self.queen_factor;
 
         let remaining = board.get_remaining();
         let opp_remaining = board.get_opponent_remaining();
         for bug in Bug::iter_all() {
             score += (remaining[bug as usize] as i32 - opp_remaining[bug as usize] as i32)
-                * UNPLAYED_BUG_RATIO;
+                * self.unplayed_bug_factor;
         }
 
         let mut buf = [UNASSIGNED; 6];
@@ -62,7 +68,7 @@ impl minimax::Evaluator for BasicEvaluator {
                 if pillbug_near_its_queen {
                     // Pillbugs get a bonus if adjacent to matching queen.
                     // for each empty adjacent square.
-                    bug_score += (QUEEN_FACTOR / 2)
+                    bug_score += (self.queen_factor / 2)
                         * node.adj.iter().filter(|&&adj| board.get(adj).is_none()).count() as i32;
                 } else if tile.underneath.is_none() && immovable.get(id) {
                     continue;
@@ -86,7 +92,7 @@ impl minimax::Evaluator for BasicEvaluator {
                         continue;
                     }
                 }
-                bug_score *= MOVABLE_BUG_FACTOR;
+                bug_score *= self.movable_bug_factor;
                 if tile.color != board.to_move() {
                     bug_score = -bug_score;
                 }
@@ -121,11 +127,11 @@ mod tests {
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..2 {
-            let mut strategy = Negamax::<DumbEvaluator>::with_max_depth(depth);
+            let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement((-1, 1), (2, 1))), m);
 
-            let mut strategy = Negamax::<BasicEvaluator>::with_max_depth(depth);
+            let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement((-1, 1), (2, 1))), m);
         }
@@ -142,7 +148,7 @@ mod tests {
         crate::Move::Pass.apply(&mut board);
         println!("{}", board);
         for depth in 0..3 {
-            let mut strategy = Negamax::<BasicEvaluator>::with_max_depth(depth);
+            let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement((0, 0), (0, -1))), m);
         }

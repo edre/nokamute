@@ -74,7 +74,7 @@ impl NokamutePlayer {
     fn new() -> Self {
         let opts =
             IterativeOptions::new().with_table_byte_size(32_000_000).with_null_window_search(true);
-        let mut strategy = IterativeSearch::<BasicEvaluator>::new(opts);
+        let mut strategy = IterativeSearch::new(BasicEvaluator::default(), opts);
         strategy.set_timeout(Duration::from_secs(5));
         NokamutePlayer { board: Board::default(), strategy }
     }

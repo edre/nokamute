@@ -145,7 +145,8 @@ impl Player for CliPlayer {
 pub fn terminal_game_interface() {
     let mut board = Board::default();
     let mut history = Vec::<crate::Move>::new();
-    let mut strategy = IterativeSearch::<crate::BasicEvaluator>::new(
+    let mut strategy = IterativeSearch::new(
+        crate::BasicEvaluator::default(),
         IterativeOptions::new().with_table_byte_size(32_000_000).with_null_window_search(true),
     );
     let mut prev_pv = Vec::new();

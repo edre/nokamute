@@ -8,7 +8,7 @@ use nokamute::{Board, Bug};
 fn empty_board_depth(depth: usize) {
     let mut board = Board::default();
     let options = IterativeOptions::new().with_table_byte_size(16000).with_null_window_search(true);
-    let mut strategy = IterativeSearch::<nokamute::BasicEvaluator>::new(options);
+    let mut strategy = IterativeSearch::new(nokamute::BasicEvaluator::default(), options);
     strategy.set_max_depth(depth);
     let m = strategy.choose_move(&mut board);
     assert!(m.is_some());
@@ -37,7 +37,7 @@ fn full_board_depth(depth: usize) {
     nokamute::Move::Place((5, 5), Bug::Ant).apply(&mut board);
     nokamute::Move::Pass.apply(&mut board);
     let options = IterativeOptions::new().with_table_byte_size(16000).with_null_window_search(true);
-    let mut strategy = IterativeSearch::<nokamute::BasicEvaluator>::new(options);
+    let mut strategy = IterativeSearch::new(nokamute::BasicEvaluator::default(), options);
     strategy.set_max_depth(depth);
     let m = strategy.choose_move(&mut board);
     assert!(m.is_some());

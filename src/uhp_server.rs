@@ -33,7 +33,7 @@ impl UhpServer {
     fn new_game(&mut self, args: &str) -> Result<()> {
         let args = if args.is_empty() { "Base" } else { args };
         self.board = Some(UhpBoard::from_game_string(args)?);
-        self.engine = Some(minimax::IterativeSearch::new(self.options));
+        self.engine = Some(minimax::IterativeSearch::new(BasicEvaluator::default(), self.options));
         println!("{}", self.board.as_mut().unwrap().game_string());
         Ok(())
     }
