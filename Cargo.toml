@@ -3,6 +3,8 @@ name = "nokamute"
 version = "0.1.0"
 authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
 edition = "2018"
+repository = "https://github.com/edre/nokamute"
+readme = "README.md"
 license = "MIT"
 
 [dependencies]
