@@ -89,6 +89,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
         }
         let mut stack = Vec::new();
         for _ in 0..depth {
+            moves.clear();
             Rules::generate_moves(&board, &mut moves);
             let m = moves[rng.gen_range(0, moves.len())];
             m.apply(&mut board);
@@ -96,6 +97,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
             stack.push(m);
         }
         // Check for discrepancies.
+        moves.clear();
         Rules::generate_moves(&board, &mut moves);
         let engine_moves = engine.generate_moves().unwrap();
         if moves.len() != engine_moves.len() {
@@ -105,9 +107,9 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
             break;
         }
         // Unwrap
+        engine.undo(stack.len()).unwrap();
         while let Some(m) = stack.pop() {
             m.undo(&mut board);
-            engine.undo().unwrap();
         }
     }
 }

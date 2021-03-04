@@ -67,9 +67,11 @@ impl UhpClient {
         Ok(())
     }
 
-    pub(crate) fn undo(&mut self) -> Result<()> {
-        self.command("undo 1")?;
-        self.board.undo()?;
+    pub(crate) fn undo(&mut self, num_undo: usize) -> Result<()> {
+        self.command(&format!("undo {}", num_undo))?;
+        for _ in 0..num_undo {
+            self.board.undo()?;
+        }
         Ok(())
     }
 
