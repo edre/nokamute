@@ -125,7 +125,6 @@ mod tests {
         crate::Move::Place((1, 1), Bug::Queen).apply(&mut board);
         crate::Move::Place((2, 2), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
-        println!("{}", board);
         for depth in 0..2 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
@@ -146,7 +145,6 @@ mod tests {
         crate::Move::Place((0, 1), Bug::Grasshopper).apply(&mut board);
         crate::Move::Place((-1, 0), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
-        println!("{}", board);
         for depth in 0..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);

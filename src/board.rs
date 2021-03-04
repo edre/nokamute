@@ -1,13 +1,15 @@
 extern crate fnv;
 extern crate minimax;
+extern crate termcolor;
 
 use fnv::FnvHashMap;
 use std::cmp::{max, min};
 use std::collections::hash_map::DefaultHasher;
 use std::convert::TryInto;
 use std::default::Default;
-use std::fmt::{Display, Formatter, Result};
 use std::hash::Hasher;
+use std::io::Write;
+use termcolor::WriteColor;
 
 // Board representation: Adjacency-list graph with grid backup.
 //      Dynamically allocate used and empty adjacent hexes with indexes.
@@ -386,12 +388,6 @@ impl Default for Board {
     }
 }
 
-impl Display for Board {
-    fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}", self.fancy_fmt(&[]))
-    }
-}
-
 impl Board {
     fn bounding_box(&self) -> (i8, i8, i8, i8) {
         if self.nodes.iter().all(|node| node.tile.is_none()) {
@@ -412,51 +408,63 @@ impl Board {
         (minx, maxx - minx + 1, miny, maxy - miny + 1)
     }
 
-    pub fn fancy_fmt(&self, highlights: &[Loc]) -> String {
-        let mut out = String::new();
+    pub fn fancy_fmt(
+        &self, buf: &mut termcolor::Buffer, highlights: &[Loc],
+    ) -> std::io::Result<()> {
         let (startx, dx, starty, dy) = self.bounding_box();
         for y in starty - 1..starty + dy + 1 {
             // Print prefix to get staggered hex rows
             let buflen = dy + starty - y;
             if buflen % 2 == 1 {
-                out.push(' ');
+                buf.write_all(b" ")?;
             }
             for _ in 0..buflen / 2 {
-                out.push('\u{ff0e}');
+                write!(buf, "\u{ff0e}")?;
             }
 
             for x in startx - 1..startx + dx + 1 {
                 let id = *self.loc_to_id.get(&(x, y)).unwrap_or(&UNASSIGNED);
                 if let Some(index) = highlights.iter().position(|&loc| loc == (x, y)) {
-                    // Manual 2-byte space padding.
-                    out.push(if index > 9 { ((index / 10) + 48) as u8 as char } else { ' ' });
-                    out.push(((index % 10) + 48) as u8 as char);
+                    write!(buf, "{: >2}", index)?;
                     continue;
                 }
                 if let Some(tile) = self.get(id) {
                     if tile.color == Color::White {
                         // Invert terminal background color for white pieces.
-                        out.push_str("\x1b[3m");
+                        buf.set_color(
+                            termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
+                        )?;
                     }
-                    out.push(tile.bug.codepoint());
+                    write!(buf, "{}", tile.bug.codepoint())?;
                     if tile.color == Color::White {
                         // Reset coloring.
-                        out.push_str("\x1b[m");
+                        buf.reset()?;
                     }
                 } else {
                     // Empty cell. Full width period.
-                    out.push('\u{ff0e}');
+                    write!(buf, "\u{ff0e}")?;
                 }
             }
 
             // Stagger rows the other way to make the space look rectangular.
             for _ in 0..(y - starty + 1) / 2 {
-                out.push('\u{ff0e}');
+                write!(buf, "\u{ff0e}")?;
             }
 
-            out.push('\n');
+            buf.write_all(b"\n")?;
         }
-        out
+        Ok(())
+    }
+
+    pub(crate) fn println(&self) {
+        self.println_highlights(&[]);
+    }
+
+    pub(crate) fn println_highlights(&self, highlights: &[Loc]) {
+        let writer = termcolor::BufferWriter::stdout(termcolor::ColorChoice::Auto);
+        let mut buffer = writer.buffer();
+        self.fancy_fmt(&mut buffer, highlights).unwrap();
+        writer.print(&buffer).unwrap();
     }
 }
 
@@ -1056,7 +1064,6 @@ mod tests {
         }
         board.insert(1, Bug::Queen, Color::White);
         board.insert(2, Bug::Queen, Color::Black);
-        println!("{}", board);
         let mut moves = Vec::new();
         board.generate_placements(&mut moves);
         board.assert_placements(
@@ -1075,7 +1082,6 @@ mod tests {
             &[(0, 0), (0, 1), (1, 0), (2, 1), (1, 2), (2, 2), (-1, 0), (-2, 0), (3, 1)],
             Bug::Queen,
         );
-        println!("{}", board);
         let cuts = board.find_cut_vertexes();
         let is_cut_loc = |loc: Loc| {
             let id = board.id(loc);
@@ -1148,7 +1154,6 @@ mod tests {
         //．．．．．．
         // ．🦗．．
         board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
-        println!("{}", board);
         let mut moves = Vec::new();
         board.generate_jumps(ORIGIN, &mut moves);
         board.assert_movements(&moves, (0, 0), &[(0, 2), (3, 0)]);
@@ -1182,7 +1187,6 @@ mod tests {
         //   2   3
         // Can't move left (down) or right (up) because of blocking stacks.
         // Can move onto all 4 blocking stacks.
-        println!("{}", board);
         let mut moves = Vec::new();
         board.generate_stack_walking(ORIGIN, &mut moves);
         board.assert_movements(&moves, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
@@ -1199,7 +1203,6 @@ mod tests {
             &[(-1, -1), (0, 0), (2, 0), (0, 1), (3, 1), (1, 2), (2, 2), (3, 2)],
             Bug::Spider,
         );
-        println!("{}", board);
         let mut moves = Vec::new();
         let start = board.id((-1, -1));
         board.generate_walk3(start, &mut moves);
@@ -1210,7 +1213,6 @@ mod tests {
         // ．．🕷🕷🕷
         board.remove_loc((-1, -1));
         board.insert_loc((1, 1), Bug::Spider, Color::Black);
-        println!("{}", board);
         moves.clear();
         let start = board.id((1, 1));
         board.generate_walk3(start, &mut moves);
@@ -1225,7 +1227,6 @@ mod tests {
         //．．．🐜．🐜．
         // ．．．🐜🐜
         board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
-        println!("{}", board);
         let mut moves = Vec::new();
         let start = board.id((-1, -1));
         board.generate_walk_all(start, &mut moves);
@@ -1262,7 +1263,6 @@ mod tests {
         board.insert_loc((0, 1), Bug::Ant, Color::Black);
         board.insert_loc((1, 1), Bug::Beetle, Color::Black);
         board.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
-        println!("{}", board);
         moves.clear();
         // Dedup happens in generate_movements.
         board.move_num += 1;
@@ -1295,7 +1295,6 @@ mod tests {
         // ．．🐞．🐞．．
         //．．．🐞🐞．．
         // ．．．🐞．．
-        println!("{}", board);
         let mut moves = Vec::new();
         let start = board.id((2, 3));
         board.generate_ladybug(start, &mut moves);
@@ -1313,7 +1312,6 @@ mod tests {
         // ．．💊．．．
         //．．💊💊．．
         // ．．💊💊．
-        println!("{}", board);
         let mut moves = Vec::new();
         let immovable = NodeSet::new();
         let start = board.id((1, 1));

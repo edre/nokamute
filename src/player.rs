@@ -23,7 +23,8 @@ fn face_off(
     let mut players = [player1, player2];
     let mut p = 0;
     loop {
-        println!("{}{} ({:?}) to move", b, players[p].name(), b.to_move());
+        b.println();
+        println!("{} ({:?}) to move", players[p].name(), b.to_move());
         let m = players[p].generate_move();
         let mut moves = Vec::new();
         Rules::generate_moves(&b, &mut moves);
@@ -33,7 +34,7 @@ fn face_off(
         }
         m.apply(&mut b);
         if let Some(winner) = Rules::get_winner(&b) {
-            print!("{}", b);
+            b.println();
             return match winner {
                 minimax::Winner::Draw => None,
                 minimax::Winner::PlayerJustMoved => Some(players[p].name()),

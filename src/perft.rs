@@ -56,7 +56,7 @@ pub fn perft_single_thread(game_string: &str) {
     println!("{}", game_string);
     let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
     if game_string.contains(';') {
-        print!("{}", b);
+        b.println();
     }
     minimax::perft::<Rules>(&mut b, 20);
 }
@@ -65,7 +65,8 @@ pub fn perft_multi_thread(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
     let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
-    println!("{}depth\tcount\ttime\tkn/s", b);
+    b.println();
+    println!("depth\tcount\ttime\tkn/s");
     for depth in 0.. {
         let start = Instant::now();
         let count = perft_recurse(&mut b, depth);
@@ -123,7 +124,8 @@ fn dump_difference(
         nokamute_moves.len(),
         engine_moves.len()
     );
-    println!("position:\n{}", board);
+    println!("position:");
+    board.println();
     let mut common = Vec::new();
     let mut nokamute_only = Vec::new();
     let mut engine_only = Vec::new();
@@ -143,19 +145,19 @@ fn dump_difference(
     println!("nokamute only moves:");
     for m in nokamute_only.iter() {
         m.apply(board);
-        println!("{}", board);
+        board.println();
         m.undo(board);
     }
     println!("UHP engine only moves:");
     for m in engine_only.iter() {
         m.apply(board);
-        println!("{}", board);
+        board.println();
         m.undo(board);
     }
     println!("common moves:");
     for m in common.iter() {
         m.apply(board);
-        println!("{}", board);
+        board.println();
         m.undo(board);
     }
 }

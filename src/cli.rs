@@ -11,7 +11,7 @@ fn read_line(prompt: &str) -> String {
 }
 
 fn input_loc(board: &Board, prompt: &str, options: &[Loc]) -> Option<Loc> {
-    println!("{}", board.fancy_fmt(options));
+    board.println_highlights(options);
     let line = read_line(prompt);
     let index = if let Ok(num) = line.parse::<usize>() {
         num
@@ -153,10 +153,11 @@ pub fn terminal_game_interface() {
     let mut prev_pv_board = Board::default();
     loop {
         if let Some(winner) = Rules::get_winner(&board) {
+            board.println();
             if winner == minimax::Winner::Draw {
-                println!("{}Game over. Draw.", board);
+                println!("Game over. Draw.");
             } else {
-                println!("{}Game over.", board);
+                println!("Game over.");
             }
             break;
         }
@@ -169,7 +170,8 @@ pub fn terminal_game_interface() {
             continue;
         }
 
-        print!("{}{:?} to move", board, board.to_move());
+        board.println();
+        print!("{:?} to move", board.to_move());
         let line = read_line(": ");
 
         if line.starts_with("ai") {
@@ -209,7 +211,8 @@ pub fn terminal_game_interface() {
             for (i, m) in prev_pv.iter().enumerate() {
                 m.apply(&mut prev_pv_board);
                 if i > 0 {
-                    print!("Principal variation depth {}\n{}", i, prev_pv_board);
+                    println!("Principal variation depth {}", i);
+                    prev_pv_board.println();
                 }
             }
             for m in prev_pv.iter().rev() {

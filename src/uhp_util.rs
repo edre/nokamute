@@ -340,10 +340,9 @@ mod tests {
                 assert_eq!(
                     m,
                     b.from_move_string(&move_string).unwrap(),
-                    "iter={}, move_string={}\n{}",
+                    "iter={}, move_string={}",
                     iter,
                     move_string,
-                    b.board
                 );
                 b.apply(m).unwrap();
                 if Rules::get_winner(&b.board).is_some() {
