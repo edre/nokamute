@@ -96,6 +96,9 @@ impl UhpBoard {
 
     // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
     pub(crate) fn from_move_string(&self, move_string: &str) -> Result<crate::Move> {
+        if move_string == "pass" {
+            return Ok(crate::Move::Pass);
+        }
         let tokens = move_string.split(' ').collect::<Vec<_>>();
         let start: Id = self.to_id(tokens[0])?;
         let bug = Bug::from_char(tokens[0].chars().nth(1).unwrap()).unwrap();
