@@ -4,8 +4,8 @@ Nokamute is a hive AI written in Rust.
 
 ## Build ##
 
-Get a stable rust toolchain from rustup.rs or any package manager.
-Run `cargo build --release` to build nokamute and its dependencies.
+Get a stable rust toolchain from [rustup.rs](https://rustup.rs) or any package
+manager.  Run `cargo build --release` to build nokamute and its dependencies.
 
 ## Features ##
 
