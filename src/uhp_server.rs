@@ -1,7 +1,7 @@
 extern crate minimax;
 
 use crate::uhp_util::{Result, UhpBoard, UhpError};
-use crate::BasicEvaluator;
+use crate::{BasicEvaluator, Rules};
 
 use minimax::Strategy;
 use std::io::{stderr, stdin, Write};
@@ -91,6 +91,14 @@ impl UhpServer {
         Ok(())
     }
 
+    // Bonus undocumented command.
+    fn perft(&mut self, args: &str) -> Result<()> {
+        let depth = args.parse::<usize>().unwrap_or(20);
+        let mut b = self.board.as_ref().ok_or(UhpError::GameNotStarted)?.inner().clone();
+        minimax::perft::<Rules>(&mut b, depth);
+        Ok(())
+    }
+
     pub fn serve(&mut self) {
         loop {
             let mut line = String::new();
@@ -108,6 +116,7 @@ impl UhpServer {
                 "bestmove" => self.best_move(args),
                 "undo" => self.undo(args),
                 "options" => self.options(args),
+                "perft" => self.perft(args),
                 "exit" => return,
                 _ => Err(UhpError::UnrecognizedCommand(command.to_string())),
             };
