@@ -419,7 +419,7 @@ impl Board {
                 buf.write_all(b" ")?;
             }
             for _ in 0..buflen / 2 {
-                write!(buf, "\u{ff0e}")?;
+                buf.write_all("\u{ff0e}".as_bytes())?;
             }
 
             for x in startx - 1..startx + dx + 1 {
@@ -442,13 +442,13 @@ impl Board {
                     }
                 } else {
                     // Empty cell. Full width period.
-                    write!(buf, "\u{ff0e}")?;
+                    buf.write_all("\u{ff0e}".as_bytes())?;
                 }
             }
 
             // Stagger rows the other way to make the space look rectangular.
             for _ in 0..(y - starty + 1) / 2 {
-                write!(buf, "\u{ff0e}")?;
+                buf.write_all("\u{ff0e}".as_bytes())?;
             }
 
             buf.write_all(b"\n")?;
