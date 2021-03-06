@@ -54,7 +54,6 @@ impl minimax::Evaluator for BasicEvaluator {
                 * self.unplayed_bug_factor;
         }
 
-        let mut buf = [UNASSIGNED; 6];
         for (id, node) in (0..).zip(board.nodes.iter()) {
             if let Some(ref tile) = node.tile {
                 let mut bug_score = value(tile.bug);
@@ -88,7 +87,7 @@ impl minimax::Evaluator for BasicEvaluator {
                 }
                 if tile.bug.crawler() {
                     // Treat blocked crawlers as immovable.
-                    if board.slidable_adjacent(&mut buf, id, id).next().is_none() {
+                    if board.slidable_adjacent(id, id).next().is_none() {
                         continue;
                     }
                 }
