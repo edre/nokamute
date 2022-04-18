@@ -9,6 +9,11 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::time::Instant;
 
+pub fn perft_grid() {
+    let mut b = crate::grid_board::Board::new_core_set();
+    minimax::perft::<crate::grid_board::Rules>(&mut b, 20);
+}
+
 fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
     if depth == 0 {
         return 1;

@@ -61,7 +61,7 @@ fn playout(mut depth: usize) {
 fn main() {
     let mut filter = std::env::args().skip(1).next().unwrap_or("".to_string());
     if filter == "--bench" {
-	filter = "".to_string();
+        filter = "".to_string();
     }
     if "empty board".contains(&filter) {
         println!("empty board 5:  {}", easybench::bench(|| empty_board_depth(5)));

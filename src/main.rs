@@ -60,6 +60,9 @@ fn main() {
             let game_type = &args[1];
             perft_debug(&args[3..], game_type, depth);
         }
+        "perft-grid" => {
+            perft_grid();
+        }
         _ => {
             help();
         }
