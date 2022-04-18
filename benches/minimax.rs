@@ -1,9 +1,11 @@
 extern crate easybench;
 extern crate minimax;
 extern crate nokamute;
+extern crate rand;
 
-use minimax::{IterativeOptions, IterativeSearch, Move, Strategy};
-use nokamute::{Board, Bug};
+use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
+use nokamute::{Board, Bug, Rules};
+use rand::Rng;
 
 fn empty_board_depth(depth: usize) {
     let mut board = Board::default();
@@ -43,8 +45,31 @@ fn full_board_depth(depth: usize) {
     assert!(m.is_some());
 }
 
+fn playout(mut depth: usize) {
+    let mut board = Board::default();
+    let mut moves = Vec::new();
+    let mut rng = rand::thread_rng();
+    while depth > 0 && Rules::get_winner(&board).is_none() {
+        depth -= 1;
+        moves.clear();
+        Rules::generate_moves(&board, &mut moves);
+        let m = moves[rng.gen_range(0, moves.len())];
+        m.apply(&mut board);
+    }
+}
+
 fn main() {
-    // TODO: cmd line selection, for perf record
-    println!("empty board 5: {}", easybench::bench(|| empty_board_depth(5)));
-    println!("full board 3:  {}", easybench::bench(|| full_board_depth(2)));
+    let mut filter = std::env::args().skip(1).next().unwrap_or("".to_string());
+    if filter == "--bench" {
+	filter = "".to_string();
+    }
+    if "empty board".contains(&filter) {
+        println!("empty board 5:  {}", easybench::bench(|| empty_board_depth(5)));
+    }
+    if "full board".contains(&filter) {
+        println!("full board 3:   {}", easybench::bench(|| full_board_depth(2)));
+    }
+    if "random playout".contains(&filter) {
+        println!("random playout: {}", easybench::bench(|| playout(200)));
+    }
 }
