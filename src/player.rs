@@ -4,6 +4,7 @@ use crate::cli::CliPlayer;
 use crate::uhp_client::UhpPlayer;
 use crate::{BasicEvaluator, Board, Rules};
 use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
+use rand::Rng;
 use std::time::Duration;
 
 // A player that can play one color's moves.
@@ -52,6 +53,7 @@ fn get_player(name: &str) -> Box<dyn Player> {
         "nokamute" => Box::new(NokamutePlayer::new()),
         "ai" => Box::new(NokamutePlayer::new()),
         "human" => Box::new(CliPlayer::new()),
+        "random" => Box::new(RandomPlayer::default()),
         // Try to launch this as a UHP server
         _ => Box::new(UhpPlayer::new(name).unwrap()),
     }
@@ -96,5 +98,30 @@ impl Player for NokamutePlayer {
 
     fn generate_move(&mut self) -> crate::Move {
         self.strategy.choose_move(&self.board).unwrap()
+    }
+}
+
+#[derive(Default)]
+struct RandomPlayer {
+    board: Board,
+}
+
+impl Player for RandomPlayer {
+    fn name(&self) -> String {
+        "random".to_owned()
+    }
+
+    fn new_game(&mut self, game_type: &str) {
+        self.board = Board::new_from_game_type(game_type).unwrap();
+    }
+
+    fn play_move(&mut self, m: crate::Move) {
+        m.apply(&mut self.board);
+    }
+
+    fn generate_move(&mut self) -> crate::Move {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&self.board, &mut moves);
+        moves[rand::thread_rng().gen_range(0, moves.len())]
     }
 }
