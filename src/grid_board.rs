@@ -289,7 +289,7 @@ impl Board {
     }
 
     fn queen_required(&self) -> bool {
-        self.move_num > 5 && self.get_remaining()[0] > 0
+        self.move_num > 5 && self.get_remaining()[Bug::Queen as usize] > 0
     }
 
     pub(crate) fn queens_surrounded(&self) -> [usize; 2] {
@@ -852,6 +852,7 @@ impl Board {
             if !node.occupied() {
                 continue;
             }
+	    queue.extend(adjacent(id));
             if node.color() != self.to_move() {
                 continue;
             }
@@ -974,12 +975,12 @@ impl minimax::Game for Rules {
 }
 
 type Loc = (i8, i8);
-fn loc_to_id(loc: Loc) -> Id {
+pub fn loc_to_id(loc: Loc) -> Id {
     // Centered in the middle of the board.
     START_ID.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as u8)).wrapping_add(loc.0 as u8)
 }
 
-fn id_to_loc(id: Id) -> Loc {
+pub fn id_to_loc(id: Id) -> Loc {
     let mut x = (id.wrapping_sub(START_ID - ROW_SIZE / 2) / ROW_SIZE) as i8;
     if x > 7 {
         x -= ROW_SIZE as i8;
