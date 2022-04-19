@@ -11,24 +11,35 @@ use std::hash::Hasher;
 //use termcolor::WriteColor;
 
 // Board representation: wrapping grid of tile locations.
+// Rows wrap around, and each row wraps to the next row.
+// It's like a spiral around a torus.
 
 // Index of a board location.
-// TODO: try 32x32 grid and see if perf dies.
+#[cfg(not(feature = "larger-grid"))]
 pub(crate) type Id = u8;
+#[cfg(feature = "larger-grid")]
+pub(crate) type Id = u16;
+#[cfg(not(feature = "larger-grid"))]
 const ROW_SIZE: Id = 16;
+#[cfg(feature = "larger-grid")]
+const ROW_SIZE: Id = 32;
+
 const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
-// One of the midpoints.
+const GRID_MASK: Id = (GRID_SIZE as Id).wrapping_sub(1);
+// In the middle of the columns and the rows.
+// To slightly increase cache locality in the early game,
+// and to make formatting slightly simpler.
 const START_ID: Id = ROW_SIZE / 2 * (ROW_SIZE + 1);
 
 fn adjacent(id: Id) -> [Id; 6] {
     // In clockwise order
     [
-        id.wrapping_sub(ROW_SIZE + 1),
-        id.wrapping_sub(ROW_SIZE),
-        id.wrapping_add(1),
-        id.wrapping_add(ROW_SIZE + 1),
-        id.wrapping_add(ROW_SIZE),
-        id.wrapping_sub(1),
+        GRID_MASK & id.wrapping_sub(ROW_SIZE + 1),
+        GRID_MASK & id.wrapping_sub(ROW_SIZE),
+        GRID_MASK & id.wrapping_add(1),
+        GRID_MASK & id.wrapping_add(ROW_SIZE + 1),
+        GRID_MASK & id.wrapping_add(ROW_SIZE),
+        GRID_MASK & id.wrapping_sub(1),
     ]
 }
 
@@ -484,22 +495,26 @@ impl minimax::Move for Move {
     }
 }
 
-// Useful utility.
+// Efficient set utility.
+const NODESET_NUM_WORDS: usize = GRID_SIZE / 32;
+const NODESET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
+const NODESET_MASK: usize = NODESET_NUM_WORDS - 1;
+
 pub(crate) struct NodeSet {
-    table: [u32; GRID_SIZE / 32],
+    table: [u32; NODESET_NUM_WORDS],
 }
 
 impl NodeSet {
     fn new() -> NodeSet {
-        NodeSet { table: [0; GRID_SIZE / 32] }
+        NodeSet { table: [0; NODESET_NUM_WORDS] }
     }
 
     fn set(&mut self, id: Id) {
-        self.table[id as usize & 0x7] |= 1 << (id as u32 >> 3);
+        self.table[id as usize & NODESET_MASK] |= 1 << (id as u32 >> NODESET_SHIFT);
     }
 
     pub(crate) fn get(&self, id: Id) -> bool {
-        (self.table[id as usize & 0x7] >> (id as u32 >> 3)) & 1 != 0
+        (self.table[id as usize & NODESET_MASK] >> (id as u32 >> NODESET_SHIFT)) & 1 != 0
     }
 }
 
@@ -682,17 +697,17 @@ impl Board {
     // Jumping over contiguous linear lines of tiles.
     fn generate_jumps(&self, id: Id, moves: &mut Vec<Move>) {
         for delta in [
-            (ROW_SIZE + 1).wrapping_neg(),
-            ROW_SIZE.wrapping_neg(),
-            1u8.wrapping_neg(),
+            GRID_MASK & (ROW_SIZE + 1).wrapping_neg(),
+            GRID_MASK & ROW_SIZE.wrapping_neg(),
+            GRID_MASK & (1 as Id).wrapping_neg(),
             1,
             ROW_SIZE,
             ROW_SIZE + 1,
         ] {
-            let mut jump = id.wrapping_add(delta);
+            let mut jump = id.wrapping_add(delta) & GRID_MASK;
             let mut dist = 1;
             while self.occupied(jump) {
-                jump = jump.wrapping_add(delta);
+                jump = jump.wrapping_add(delta) & GRID_MASK;
                 dist += 1;
             }
             if dist > 1 {
@@ -775,7 +790,7 @@ impl Board {
         let mut ends = [0; 6];
         let mut num_ends = 0;
         let mut buf = [0; 6];
-        let origin = id.wrapping_add(5); // something not adjacent
+        let origin = id.wrapping_add(5) & GRID_MASK; // something not adjacent
         for adj in self.slidable_adjacent_beetle(&mut buf, origin, id) {
             match self.height(adj) {
                 0 => {
@@ -852,7 +867,7 @@ impl Board {
             if !node.occupied() {
                 continue;
             }
-	    queue.extend(adjacent(id));
+            queue.extend(adjacent(id));
             if node.color() != self.to_move() {
                 continue;
             }
@@ -977,7 +992,7 @@ impl minimax::Game for Rules {
 type Loc = (i8, i8);
 pub fn loc_to_id(loc: Loc) -> Id {
     // Centered in the middle of the board.
-    START_ID.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as u8)).wrapping_add(loc.0 as u8)
+    START_ID.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as Id)).wrapping_add(loc.0 as Id)
 }
 
 pub fn id_to_loc(id: Id) -> Loc {
@@ -1082,7 +1097,7 @@ mod tests {
         );
         let cuts = board.find_cut_vertexes();
         let mut cut_locs = vec![];
-        for id in 0..255 {
+        for id in 0..GRID_MASK {
             if cuts.get(id) {
                 cut_locs.push(id_to_loc(id));
             }

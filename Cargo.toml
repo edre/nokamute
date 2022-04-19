@@ -18,6 +18,10 @@ termcolor = "^1.1"
 [dev-dependencies]
 easybench = "1.1.0"
 
+[features]
+# Less efficient memory layout, but more correct in edge cases.
+larger-grid = []
+
 [[bench]]
 name = "minimax"
 harness = false

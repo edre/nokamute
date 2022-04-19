@@ -3,15 +3,28 @@ extern crate rayon;
 
 use crate::uhp_client::UhpClient;
 use crate::uhp_util::UhpBoard;
-use crate::{Board, Rules};
+use crate::{Board, Rules, grid_board};
 use minimax::{Game, Move};
 use rand::Rng;
 use rayon::prelude::*;
 use std::time::Instant;
 
 pub fn perft_grid() {
-    let mut b = crate::grid_board::Board::new_core_set();
-    minimax::perft::<crate::grid_board::Rules>(&mut b, 20);
+    let mut b = grid_board::Board::new_core_set();
+    /*
+    let mut b = grid_board::Board::new_expansions();
+    for _ in 0..100 {
+        let mut moves = Vec::new();
+        grid_board::Rules::generate_moves(&b, &mut moves);
+        let m = moves[rand::thread_rng().gen_range(0, moves.len())];
+        m.apply(&mut b);
+        if grid_board::Rules::get_winner(&b).is_some() {
+            println!("winner too soon");
+            return;
+        }
+    }
+    */
+    minimax::perft::<grid_board::Rules>(&mut b, 20);
 }
 
 fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
