@@ -10,9 +10,8 @@ license = "MIT"
 [dependencies]
 fnv = "^1.0"
 lazy_static = "^1.4.0"
-minimax = { git = "https://github.com/edre/minimax-rs", rev = "b20c524" }
+minimax = { git = "https://github.com/edre/minimax-rs", rev = "4e5ce08" }
 rand = "0.4.*"
-rayon = "^1.5"
 termcolor = "^1.1"
 
 [dev-dependencies]

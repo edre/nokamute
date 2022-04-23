@@ -193,6 +193,19 @@ pub fn terminal_game_interface() {
                 m.apply(&mut board);
             }
             println!("{}", strategy.stats());
+        } else if line.starts_with("mcts") {
+            let opts = minimax::MCTSOptions::default().with_max_rollout_depth(200);
+            let mut mcts = minimax::MonteCarloTreeSearch::new(opts);
+            for arg in line.split(' ').skip(1) {
+                if let Ok(num) = arg.parse::<u32>() {
+                    mcts.set_max_rollouts(num);
+                }
+            }
+            let mut strat: &mut dyn minimax::Strategy<Rules> = &mut mcts;
+            if let Some(m) = strat.choose_move(&board) {
+                history.push(m);
+                m.apply(&mut board);
+            }
         } else if line.starts_with("move") {
             if let Some(m) = input_movement(&board, &moves) {
                 history.push(m);

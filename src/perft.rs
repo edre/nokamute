@@ -1,13 +1,10 @@
 extern crate rand;
-extern crate rayon;
 
 use crate::uhp_client::UhpClient;
 use crate::uhp_util::UhpBoard;
-use crate::{Board, Rules, grid_board};
+use crate::{grid_board, Board, Rules};
 use minimax::{Game, Move};
 use rand::Rng;
-use rayon::prelude::*;
-use std::time::Instant;
 
 pub fn perft_grid() {
     let mut b = grid_board::Board::new_core_set();
@@ -24,42 +21,7 @@ pub fn perft_grid() {
         }
     }
     */
-    minimax::perft::<grid_board::Rules>(&mut b, 20);
-}
-
-fn perft_recurse(b: &mut Board, depth: usize) -> u64 {
-    if depth == 0 {
-        return 1;
-    }
-    if Rules::get_winner(b).is_some() {
-        // Apparently perft rules only count positions at the target depth.
-        return 0;
-    }
-    let mut moves = Vec::new();
-    Rules::generate_moves(b, &mut moves);
-    if depth == 1 {
-        moves.len() as u64
-    } else if depth < 4 {
-        // Serial exploration of leafy nodes, to avoid excessive cloning.
-        let mut count = 0;
-        for m in moves.iter() {
-            m.apply(b);
-            count += perft_recurse(b, depth - 1);
-            m.undo(b);
-        }
-        count
-    } else {
-        moves
-            .into_par_iter()
-            .with_max_len(1)
-            .map(|m| {
-                let mut b2 = b.clone();
-                m.apply(&mut b2);
-                perft_recurse(&mut b2, depth - 1)
-                // no reason to undo
-            })
-            .sum()
-    }
+    minimax::perft::<grid_board::Rules>(&mut b, 20, false);
 }
 
 fn standard_games(game_string: &str) -> &str {
@@ -76,22 +38,17 @@ pub fn perft_single_thread(game_string: &str) {
     if game_string.contains(';') {
         b.println();
     }
-    minimax::perft::<Rules>(&mut b, 20);
+    minimax::perft::<Rules>(&mut b, 20, false);
 }
 
 pub fn perft_multi_thread(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
     let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
-    b.println();
-    println!("depth\tcount\ttime\tkn/s");
-    for depth in 0.. {
-        let start = Instant::now();
-        let count = perft_recurse(&mut b, depth);
-        let dur = start.elapsed();
-        let rate = count as f64 / dur.as_secs_f64();
-        println!("{}\t{}\t{:?}\t{}", depth, count, dur, rate as usize / 1000);
+    if game_string.contains(';') {
+        b.println();
     }
+    minimax::perft::<Rules>(&mut b, 20, true);
 }
 
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
@@ -183,10 +140,10 @@ fn dump_difference(
 #[test]
 fn test_perft() {
     let mut b = Board::new_from_game_type("Base").unwrap();
-    let move_counts = minimax::perft::<Rules>(&mut b, 4);
+    let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 4, 96, 1440, 21600]);
 
     b = Board::new_from_game_type("Base+MLP").unwrap();
-    let move_counts = minimax::perft::<Rules>(&mut b, 4);
+    let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
 }
