@@ -7,7 +7,6 @@ mod cli;
 pub use cli::*;
 mod eval;
 pub use eval::*;
-mod grid_board;
 mod perft;
 pub use perft::*;
 mod player;

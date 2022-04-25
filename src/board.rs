@@ -1,37 +1,58 @@
-extern crate fnv;
 extern crate minimax;
 extern crate termcolor;
 
-use fnv::FnvHashMap;
+use std::borrow::Borrow;
 use std::cmp::{max, min};
 use std::collections::hash_map::DefaultHasher;
-use std::convert::TryInto;
 use std::default::Default;
 use std::hash::Hasher;
 use std::io::Write;
 use termcolor::WriteColor;
 
-// Board representation: Adjacency-list graph with grid backup.
-//      Dynamically allocate used and empty adjacent hexes with indexes.
-//      Compact adjacency list for each node. Generate new nodes when expanding.
+// Board representation: wrapping grid of tile locations.
+// Rows wrap around, and each row wraps to the next row.
+// It's like a spiral around a torus.
 
-// Hex coordinates. Grid connections plus one of the diagonals. First bug is at (0,0).
-pub type Loc = (i8, i8);
+// Index of a board location.
+#[cfg(not(feature = "larger-grid"))]
+pub type Id = u8;
+#[cfg(feature = "larger-grid")]
+pub type Id = u16;
 
-// Persistent id of a location.
-pub(crate) type Id = u8;
+#[cfg(not(feature = "larger-grid"))]
+pub const ROW_SIZE: Id = 16;
+#[cfg(feature = "larger-grid")]
+pub const ROW_SIZE: Id = 32;
 
-// Special value for nodes not adjacent to occupied tiles that haven't been
-// allocated their own node yet.
-pub(crate) const UNASSIGNED: Id = 0;
+const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
+const GRID_MASK: Id = (GRID_SIZE as Id).wrapping_sub(1);
+// In the middle of the columns and the rows.
+// To slightly increase cache locality in the early game,
+// and to make formatting slightly simpler.
+pub(crate) const START_ID: Id = ROW_SIZE / 2 * (ROW_SIZE + 1);
 
-// Ids for tiles that are currently under other pieces.
-type UnderId = u8;
-
-fn adjacent(loc: Loc) -> [Loc; 6] {
-    let (x, y) = loc;
+pub(crate) fn adjacent(id: Id) -> [Id; 6] {
     // In clockwise order
-    [(x - 1, y - 1), (x, y - 1), (x + 1, y), (x + 1, y + 1), (x, y + 1), (x - 1, y)]
+    [
+        GRID_MASK & id.wrapping_sub(ROW_SIZE + 1),
+        GRID_MASK & id.wrapping_sub(ROW_SIZE),
+        GRID_MASK & id.wrapping_add(1),
+        GRID_MASK & id.wrapping_add(ROW_SIZE + 1),
+        GRID_MASK & id.wrapping_add(ROW_SIZE),
+        GRID_MASK & id.wrapping_sub(1),
+    ]
+}
+
+lazy_static! {
+    static ref ZOBRIST_TABLE: Box<[u64; GRID_SIZE * 2]> = {
+        let mut table = Box::new([0u64; GRID_SIZE * 2]);
+        let mut hasher = DefaultHasher::new();
+        for i in 0..table.len() {
+            hasher.write_usize(i);
+            table[i] = hasher.finish();
+        }
+        table
+    };
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -114,35 +135,59 @@ pub enum Color {
     White = 0,
 }
 
-// A tile on the board.
+// bit 7: Color
+// bits 4-6: Bug
+// bits 0-3:
+//   0 => empty
+//   1 => single tile
+//   2+ => stacked; index into underworld
+// All zeros when node is empty.
 #[derive(Clone, Copy)]
-pub(crate) struct Tile {
-    pub(crate) bug: Bug,
-    pub(crate) color: Color,
-    pub(crate) underneath: Option<UnderId>,
-}
+pub(crate) struct Node(u8);
 
-#[derive(Clone, Copy)]
-pub(crate) struct Node {
-    // Adjacency list.
-    pub(crate) adj: [Id; 6],
-    pub(crate) tile: Option<Tile>,
+impl Node {
+    fn new() -> Self {
+        Node(0)
+    }
+
+    fn new_occupied(bug: Bug, color: Color, under_bits: u8) -> Self {
+        Node(((color as u8) << 7) | ((bug as u8) << 4) | under_bits)
+    }
+
+    pub(crate) fn color(self) -> Color {
+        // Color enum is densely packed in 1 bit.
+        unsafe { std::mem::transmute::<u8, Color>(self.0 as u8 >> 7) }
+    }
+
+    pub(crate) fn bug(self) -> Bug {
+        // Bug enum is densely packed in 3 bits.
+        unsafe { std::mem::transmute::<u8, Bug>((self.0 >> 4) & 7) }
+    }
+
+    pub(crate) fn occupied(self) -> bool {
+        self.0 != 0
+    }
+
+    pub(crate) fn is_stacked(self) -> bool {
+        self.under_bits() > 1
+    }
+
+    fn under_bits(self) -> u8 {
+        self.0 & 0xf
+    }
 }
 
 #[derive(Clone)]
 pub struct Board {
     // Indexed by Id.
-    pub(crate) nodes: Vec<Node>,
+    pub(crate) nodes: [Node; GRID_SIZE],
     // Tiles that are under other tiles.
-    underworld: [Option<Tile>; 8],
-    id_to_loc: Vec<Loc>,
-    loc_to_id: FnvHashMap<Loc, Id>,
+    underworld: [Node; 8],
     remaining: [[u8; 8]; 2],
-    queens: [Id; 2],
+    pub(crate) queens: [Id; 2],
+    // TODO: occupied_ids: [Vec<Id>; 2],
     pub(crate) move_num: u16,
-    // Dynamically allocate zobrist values for the ids we have by hashing
-    // their locations.
-    zobrist_table: Vec<u64>,
+    zobrist_table: &'static [u64; GRID_SIZE * 2],
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
     // History of move destinations.
@@ -164,12 +209,8 @@ impl Board {
         }
     }
 
-    pub fn loc(&self, id: Id) -> Loc {
-        self.id_to_loc[id as usize]
-    }
-
-    pub fn id(&self, loc: Loc) -> Id {
-        *self.loc_to_id.get(&loc).unwrap()
+    pub(crate) fn node(&self, id: Id) -> Node {
+        self.nodes[id as usize]
     }
 
     fn zobrist(&self, id: Id, bug: Bug, color: Color, height: u32) -> u64 {
@@ -180,78 +221,26 @@ impl Board {
         hash.rotate_left((height << 3) | bug as u32) ^ 0xa6c11b626b105b7c
     }
 
-    // Hash the loc to produce 128 bits of zobrist lookup table.
-    fn hash_loc(loc: Loc) -> [u64; 2] {
-        let mut hasher = DefaultHasher::new();
-        hasher.write_u8(loc.0 as u8);
-        hasher.write_u8(loc.1 as u8);
-        let hash1 = hasher.finish();
-        hasher.write_u64(0x73399349585d196e);
-        let hash2 = hasher.finish();
-        [hash1, hash2]
-    }
-
-    // Allocate a new node, and link it to its neighbors.
-    fn alloc(&mut self, loc: Loc) -> Id {
-        if let Some(id) = self.loc_to_id.get(&loc) {
-            return *id;
-        }
-        let new_id: Id = self.nodes.len().try_into().unwrap();
-        self.loc_to_id.insert(loc, new_id);
-        self.id_to_loc.push(loc);
-        let mut node = Node { tile: None, adj: [UNASSIGNED; 6] };
-        // Link existing adjacent nodes in both directions.
-        for (i, adj) in (0..6).zip(adjacent(loc).iter()) {
-            if let Some(id) = self.loc_to_id.get(adj) {
-                node.adj[i] = *id;
-                debug_assert_eq!(self.nodes[*id as usize].adj[(i + 3) % 6], UNASSIGNED);
-                self.nodes[*id as usize].adj[(i + 3) % 6] = new_id;
-            }
-        }
-        self.nodes.push(node);
-        self.zobrist_table.extend(&Board::hash_loc(loc));
-        new_id
-    }
-
-    // For tiles getting placed, ensure all tiles around them are allocated.
-    // This ensures empty tiles know all tiles that surround them, even if
-    // they don't touch each other for placement.
-    fn alloc_surrounding(&mut self, id: Id) {
-        for (i, &loc) in (0..6).zip(adjacent(self.loc(id)).iter()) {
-            if self.adjacent(id)[i] == UNASSIGNED {
-                self.alloc(loc);
-            }
-        }
-    }
-
-    pub(crate) fn get(&self, id: Id) -> Option<&Tile> {
-        self.nodes[id as usize].tile.as_ref()
-    }
-
-    fn insert_underworld(&mut self, tile: Tile) -> UnderId {
+    fn insert_underworld(&mut self, node: Node) -> u8 {
         for i in 0..self.underworld.len() {
-            if self.underworld[i].is_none() {
-                self.underworld[i] = Some(tile);
-                return i as UnderId;
+            if !self.underworld[i].occupied() {
+                self.underworld[i] = node;
+                return i as u8 + 2;
             }
         }
         unreachable!("underworld overflowed");
     }
 
-    fn remove_underworld(&mut self, id: UnderId) -> Option<Tile> {
-        self.underworld[id as usize].take()
+    fn remove_underworld(&mut self, under_bits: u8) -> Node {
+        let node = self.underworld[under_bits as usize - 2];
+        self.underworld[under_bits as usize - 2] = Node::new();
+        node
     }
 
     fn insert(&mut self, id: Id, bug: Bug, color: Color) {
-        let underneath = if let Some(prev) = self.nodes[id as usize].tile.take() {
-            Some(self.insert_underworld(prev))
-        } else {
-            // Potentially newly occupied node. Ensure all surrounding nodes get allocated.
-            self.alloc_surrounding(id);
-            None
-        };
-        let tile = Tile { bug, color, underneath };
-        self.nodes[id as usize].tile = Some(tile);
+        let prev = self.node(id);
+        let under_bits = if prev.occupied() { self.insert_underworld(prev) } else { 1 };
+        self.nodes[id as usize] = Node::new_occupied(bug, color, under_bits);
         self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
 
         if bug == Bug::Queen {
@@ -260,31 +249,37 @@ impl Board {
     }
 
     // Asserts that there is something there.
-    fn remove(&mut self, id: Id) -> Tile {
+    fn remove(&mut self, id: Id) -> (Bug, Color) {
         let height = self.height(id);
-        let mut tile = self.nodes[id as usize].tile.take().unwrap();
-        if let Some(stack) = tile.underneath.take() {
-            self.nodes[id as usize].tile = self.remove_underworld(stack);
+        let prev = self.node(id);
+        let under_bits = prev.under_bits();
+        assert!(under_bits != 0);
+        self.nodes[id as usize] =
+            if under_bits > 1 { self.remove_underworld(under_bits) } else { Node::new() };
+        let bug = prev.bug();
+        let color = prev.color();
+        self.zobrist_hash ^= self.zobrist(id, bug, color, height);
+        if bug == Bug::Queen {
+            self.queens[self.move_num as usize & 1] = START_ID;
         }
-        self.zobrist_hash ^= self.zobrist(id, tile.bug, tile.color, height);
-        if tile.bug == Bug::Queen {
-            self.queens[self.move_num as usize & 1] = UNASSIGNED;
-        }
-        tile
+        (bug, color)
     }
 
     fn height(&self, id: Id) -> u32 {
         let mut height = 0;
-        let mut tile: Option<&Tile> = self.nodes[id as usize].tile.as_ref();
-        while let Some(t) = tile {
+        let mut node = self.node(id);
+        loop {
+            let under_bits = node.under_bits();
+            if under_bits < 2 {
+                return height + under_bits as u32;
+            }
             height += 1;
-            tile = t.underneath.map(|uid| self.underworld[uid as usize].as_ref().unwrap());
+            node = self.underworld[under_bits as usize - 2];
         }
-        height
     }
 
-    pub(crate) fn adjacent(&self, id: Id) -> &[Id; 6] {
-        &self.nodes[id as usize].adj
+    pub(crate) fn occupied(&self, id: Id) -> bool {
+        self.node(id).occupied()
     }
 
     pub(crate) fn get_remaining(&self) -> &[u8; 8] {
@@ -314,43 +309,29 @@ impl Board {
     }
 
     fn queen_required(&self) -> bool {
-        self.move_num > 5 && self.get_remaining()[0] > 0
+        self.move_num > 5 && self.get_remaining()[Bug::Queen as usize] > 0
     }
 
     pub(crate) fn queens_surrounded(&self) -> [usize; 2] {
         let mut out = [0; 2];
         for (i, entry) in out.iter_mut().enumerate() {
-            *entry = self
-                .adjacent(self.queens[i])
-                .iter()
-                .filter(|adj| self.get(**adj).is_some())
-                .count();
+            *entry = adjacent(self.queens[i]).iter().filter(|adj| self.occupied(**adj)).count();
         }
         out
     }
 
     fn new(remaining: [u8; 8]) -> Self {
-        // Pre-allocate dummy unassigned Id to unused location.
-        let fake_loc = (i8::MAX, i8::MAX);
-        let mut loc_to_id = FnvHashMap::default();
-        loc_to_id.insert(fake_loc, 0);
-        let mut board = Board {
-            nodes: vec![Node { adj: [UNASSIGNED; 6], tile: None }],
-            underworld: [None; 8],
-            id_to_loc: vec![fake_loc],
-            loc_to_id,
+        Board {
+            nodes: [Node::new(); GRID_SIZE],
+            underworld: [Node::new(); 8],
             remaining: [remaining; 2],
-            queens: [UNASSIGNED; 2],
+            queens: [START_ID; 2],
             move_num: 0,
-            zobrist_table: vec![0, 0],
+            zobrist_table: ZOBRIST_TABLE.borrow(),
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
             move_history: Vec::new(),
-        };
-        // Pre-allocate starting moves.
-        board.alloc((0, 0));
-        board.alloc((1, 0));
-        board
+        }
     }
 
     pub fn new_core_set() -> Self {
@@ -389,69 +370,96 @@ impl Default for Board {
 }
 
 impl Board {
-    fn bounding_box(&self) -> (i8, i8, i8, i8) {
-        if self.nodes.iter().all(|node| node.tile.is_none()) {
-            return (0, 1, 0, 1);
+    // return the Id to the upper left and lower right of all occupied nodes.
+    // Given wrapping, the second may be less than the first.
+    fn bounding_box(&self) -> (Id, Id, Id, Id) {
+        let empty_rows = (0..ROW_SIZE)
+            .map(|r| ((0..ROW_SIZE).all(|c| !self.occupied(r * ROW_SIZE + c))))
+            .collect::<Vec<bool>>();
+        let empty_cols = (0..ROW_SIZE)
+            .map(|c| ((0..ROW_SIZE).all(|r| !self.occupied(r * ROW_SIZE + c))))
+            .collect::<Vec<bool>>();
+        if empty_rows.iter().all(|&r| r) {
+            // Center around start id
+            return (
+                START_ID / ROW_SIZE - 1,
+                START_ID / ROW_SIZE + 1,
+                START_ID % ROW_SIZE - 1,
+                START_ID % ROW_SIZE + 1,
+            );
         }
-        let mut minx = i8::MAX;
-        let mut maxx = i8::MIN;
-        let mut miny = i8::MAX;
-        let mut maxy = i8::MIN;
-        for (id, loc) in (0..).zip(self.id_to_loc.iter()) {
-            if self.get(id).is_some() {
-                minx = min(minx, loc.0);
-                maxx = max(maxx, loc.0);
-                miny = min(miny, loc.1);
-                maxy = max(maxy, loc.1);
+        let mut minr = 0;
+        let mut maxr = 0;
+        let mut minc = 0;
+        let mut maxc = 0;
+        for i in 0..ROW_SIZE as usize {
+            let j = (i + 1) % ROW_SIZE as usize;
+            if empty_rows[i] && !empty_rows[j] {
+                minr = i as Id;
+            }
+            if !empty_rows[i] && empty_rows[j] {
+                maxr = j as Id;
+            }
+            if empty_cols[i] && !empty_cols[j] {
+                minc = i as Id;
+            }
+            if !empty_cols[i] && empty_cols[j] {
+                maxc = j as Id;
             }
         }
-        (minx, maxx - minx + 1, miny, maxy - miny + 1)
+        (minr, maxr, minc, maxc)
     }
 
-    pub fn fancy_fmt(
-        &self, buf: &mut termcolor::Buffer, highlights: &[Loc],
-    ) -> std::io::Result<()> {
-        let (startx, dx, starty, dy) = self.bounding_box();
-        for y in starty - 1..starty + dy + 1 {
+    pub fn fancy_fmt(&self, buf: &mut termcolor::Buffer, highlights: &[Id]) -> std::io::Result<()> {
+        let (startr, endr, startc, endc) = self.bounding_box();
+        let free_space = "\u{ff0e}".as_bytes();
+
+        let mut r = startr;
+        while r != (endr + 1) % ROW_SIZE {
             // Print prefix to get staggered hex rows
-            let buflen = dy + starty - y;
+            let buflen = endr.wrapping_sub(r) % ROW_SIZE;
             if buflen % 2 == 1 {
                 buf.write_all(b" ")?;
             }
             for _ in 0..buflen / 2 {
-                buf.write_all("\u{ff0e}".as_bytes())?;
+                buf.write_all(free_space)?;
             }
 
-            for x in startx - 1..startx + dx + 1 {
-                let id = *self.loc_to_id.get(&(x, y)).unwrap_or(&UNASSIGNED);
-                if let Some(index) = highlights.iter().position(|&loc| loc == (x, y)) {
+            let mut c = startc;
+            while c != (endc + 1) % ROW_SIZE {
+                let id = c + r * ROW_SIZE;
+                if let Some(index) = highlights.iter().position(|&x| x == id) {
                     write!(buf, "{: >2}", index)?;
+                    c = (c + 1) % ROW_SIZE;
                     continue;
                 }
-                if let Some(tile) = self.get(id) {
-                    if tile.color == Color::White {
+                let node = self.node(id);
+                if node.occupied() {
+                    if node.color() == Color::White {
                         // Invert terminal background color for white pieces.
                         buf.set_color(
                             termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
                         )?;
                     }
-                    write!(buf, "{}", tile.bug.codepoint())?;
-                    if tile.color == Color::White {
+                    write!(buf, "{}", node.bug().codepoint())?;
+                    if node.color() == Color::White {
                         // Reset coloring.
                         buf.reset()?;
                     }
                 } else {
                     // Empty cell. Full width period.
-                    buf.write_all("\u{ff0e}".as_bytes())?;
+                    buf.write_all(free_space)?;
                 }
+                c = (c + 1) % ROW_SIZE;
             }
 
             // Stagger rows the other way to make the space look rectangular.
-            for _ in 0..(y - starty + 1) / 2 {
-                buf.write_all("\u{ff0e}".as_bytes())?;
+            for _ in 0..r.wrapping_sub(startr) % ROW_SIZE / 2 {
+                buf.write_all(free_space)?;
             }
 
             buf.write_all(b"\n")?;
+            r = (r + 1) % ROW_SIZE;
         }
         Ok(())
     }
@@ -460,7 +468,7 @@ impl Board {
         self.println_highlights(&[]);
     }
 
-    pub(crate) fn println_highlights(&self, highlights: &[Loc]) {
+    pub(crate) fn println_highlights(&self, highlights: &[Id]) {
         let writer = termcolor::BufferWriter::stdout(termcolor::ColorChoice::Auto);
         let mut buffer = writer.buffer();
         self.fancy_fmt(&mut buffer, highlights).unwrap();
@@ -470,8 +478,8 @@ impl Board {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Move {
-    Place(Loc, Bug),
-    Movement(Loc, Loc),
+    Place(Id, Bug),
+    Movement(Id, Id),
     Pass,
 }
 
@@ -485,23 +493,21 @@ impl minimax::Move for Move {
     type G = Rules;
     fn apply(&self, board: &mut Board) {
         let dest = match *self {
-            Move::Place(loc, bug) => {
-                let id = board.alloc(loc);
+            Move::Place(id, bug) => {
                 board.insert(id, bug, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
                 id
             }
             Move::Movement(start, end) => {
-                let start_id = board.alloc(start);
-                let end_id = board.alloc(end);
-                let tile = board.remove(start_id);
-                board.insert(end_id, tile.bug, tile.color);
-                end_id
+                let (bug, color) = board.remove(start);
+                board.insert(end, bug, color);
+                end
             }
-            Move::Pass => UNASSIGNED,
+            Move::Pass => 0,
         };
         board.move_num += 1;
         board.zobrist_history.push(board.zobrist_hash);
+        // TODO: only put Movements in move history
         board.move_history.push(dest);
     }
 
@@ -510,53 +516,62 @@ impl minimax::Move for Move {
         board.zobrist_history.pop();
         board.move_history.pop();
         match *self {
-            Move::Place(loc, bug) => {
-                let id = board.id(loc);
+            Move::Place(id, bug) => {
                 board.remove(id);
                 board.mut_remaining()[bug as usize] += 1;
             }
             Move::Movement(start, end) => {
-                let start_id = board.alloc(start);
-                let end_id = board.alloc(end);
-                let tile = board.remove(end_id);
-                board.insert(start_id, tile.bug, tile.color);
+                let (bug, color) = board.remove(end);
+                board.insert(start, bug, color);
             }
             Move::Pass => {}
         }
     }
 }
 
-// Useful utility.
+// Efficient set utility.
+const NODESET_NUM_WORDS: usize = GRID_SIZE / 32;
+const NODESET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
+const NODESET_MASK: usize = NODESET_NUM_WORDS - 1;
+
 pub(crate) struct NodeSet {
-    table: [u32; 8],
+    table: [u32; NODESET_NUM_WORDS],
 }
 
 impl NodeSet {
-    fn new() -> NodeSet {
-        NodeSet { table: [0; 8] }
+    pub(crate) fn new() -> NodeSet {
+        NodeSet { table: [0; NODESET_NUM_WORDS] }
     }
 
-    fn set(&mut self, id: Id) {
-        self.table[id as usize & 0x7] |= 1 << (id as u32 >> 3);
+    pub(crate) fn set(&mut self, id: Id) {
+        self.table[id as usize & NODESET_MASK] |= 1 << (id as u32 >> NODESET_SHIFT);
     }
 
     pub(crate) fn get(&self, id: Id) -> bool {
-        (self.table[id as usize & 0x7] >> (id as u32 >> 3)) & 1 != 0
+        (self.table[id as usize & NODESET_MASK] >> (id as u32 >> NODESET_SHIFT)) & 1 != 0
     }
 }
 
 impl Board {
     fn generate_placements(&self, moves: &mut Vec<Move>) {
-        // Use empty spaces that have no opposite colored tiles adjacent.
-        for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
-            if node.tile.is_some() {
+        // TODO: try smallvec to put these queues on the stack
+        let mut queue = vec![self.queens[0]];
+        let mut visited = NodeSet::new();
+        while let Some(id) = queue.pop() {
+            if visited.get(id) {
+                continue;
+            }
+            visited.set(id);
+            if self.occupied(id) {
+                queue.extend(adjacent(id));
                 continue;
             }
             let mut num_buddies = 0;
             let mut num_enemies = 0;
-            for adj in node.adj.iter() {
-                if let Some(tile) = self.get(*adj) {
-                    if tile.color == self.to_move() {
+            for adj in adjacent(id) {
+                let node = self.nodes[adj as usize];
+                if node.occupied() {
+                    if node.color() == self.to_move() {
                         num_buddies += 1;
                     } else {
                         num_enemies += 1;
@@ -569,7 +584,7 @@ impl Board {
                         continue;
                     }
                     if *num_left > 0 {
-                        moves.push(Move::Place(self.loc(id), *bug));
+                        moves.push(Move::Place(id, *bug));
                     }
                 }
             }
@@ -591,51 +606,51 @@ impl Board {
             visited: NodeSet,
             immovable: NodeSet,
             // Visitation number in DFS traversal.
-            num: [u8; 256],
+            num: [u8; GRID_SIZE],
             // Lowest-numbered node reachable using DFS edges and then at most
             // one back edge.
-            low: [u8; 256],
+            low: [u8; GRID_SIZE],
             visit_num: u8,
         }
         let mut state = State {
             board: self,
             visited: NodeSet::new(),
             immovable: NodeSet::new(),
-            num: [0; 256],
-            low: [0; 256],
+            num: [0; GRID_SIZE],
+            low: [0; GRID_SIZE],
             visit_num: 1,
         };
-        fn dfs(state: &mut State, id: Id, parent: Id) {
+        fn dfs(state: &mut State, id: Id, parent: Id, root: bool) {
             state.visited.set(id);
             state.num[id as usize] = state.visit_num;
             state.low[id as usize] = state.visit_num;
             state.visit_num += 1;
             let mut children = 0;
-            for &adj in state.board.adjacent(id) {
-                if state.board.get(adj).is_none() {
+            for adj in adjacent(id) {
+                if !state.board.occupied(adj) {
                     continue;
                 }
-                if adj == parent {
+                if !root && adj == parent {
                     continue;
                 }
                 if state.visited.get(adj) {
                     state.low[id as usize] = min(state.low[id as usize], state.num[adj as usize]);
                 } else {
-                    dfs(state, adj, id);
+                    dfs(state, adj, id, false);
                     state.low[id as usize] = min(state.low[id as usize], state.low[adj as usize]);
-                    if state.low[adj as usize] >= state.num[id as usize] && parent != UNASSIGNED {
+                    if state.low[adj as usize] >= state.num[id as usize] && !root {
                         state.immovable.set(id);
                     }
                     children += 1;
                 }
             }
-            if parent == UNASSIGNED && children > 1 {
+            if root && children > 1 {
                 state.immovable.set(id);
             }
         }
 
-        let start: Id = (0..).zip(self.nodes.iter()).find(|(_, x)| x.tile.is_some()).unwrap().0;
-        dfs(&mut state, start, UNASSIGNED);
+        let start = self.queens[0]; // Some occupied node.
+        dfs(&mut state, start, 0, true);
         state.immovable
     }
 
@@ -643,14 +658,16 @@ impl Board {
     // adjacent locations still connected to the hive that are slidable.
     // A slidable position has 2 empty slots next to an occupied slot.
     // For all 2^6 possibilities, there can be 0, 2, or 4 slidable neighbors.
-    pub(crate) fn slidable_adjacent(&self, origin: Id, id: Id) -> impl Iterator<Item = Id> + '_ {
-        let neighbors = self.adjacent(id);
+    pub(crate) fn slidable_adjacent<'a>(
+        &self, neighbors: &'a mut [Id; 6], origin: Id, id: Id,
+    ) -> impl Iterator<Item = Id> + 'a {
+        *neighbors = adjacent(id);
         // Each bit is whether neighbor is occupied.
         let mut occupied = 0;
         for neighbor in neighbors.iter().rev() {
             occupied <<= 1;
             // Since the origin bug is moving, we can't crawl around it.
-            if self.get(*neighbor).is_some() && *neighbor != origin {
+            if self.occupied(*neighbor) && *neighbor != origin {
                 occupied |= 1;
             }
         }
@@ -680,7 +697,7 @@ impl Board {
             self_height -= 1;
         }
         let mut heights = [0; 6];
-        let neighbors = self.adjacent(id);
+        let neighbors = adjacent(id);
         for i in 0..6 {
             heights[i] = self.height(neighbors[i]);
         }
@@ -705,30 +722,38 @@ impl Board {
 
     // From any bug on top of a stack.
     fn generate_stack_walking(&self, id: Id, moves: &mut Vec<Move>) {
-        let mut buf = [UNASSIGNED; 6];
+        let mut buf = [0; 6];
         for adj in self.slidable_adjacent_beetle(&mut buf, id, id) {
-            moves.push(Move::Movement(self.loc(id), self.loc(adj)));
+            moves.push(Move::Movement(id, adj));
         }
     }
 
     // Jumping over contiguous linear lines of tiles.
     fn generate_jumps(&self, id: Id, moves: &mut Vec<Move>) {
-        for dir in 0..6 {
-            let mut jump = id;
-            let mut dist = 0;
-            while self.get(jump).is_some() {
-                jump = self.adjacent(jump)[dir];
+        for delta in [
+            GRID_MASK & (ROW_SIZE + 1).wrapping_neg(),
+            GRID_MASK & ROW_SIZE.wrapping_neg(),
+            GRID_MASK & (1 as Id).wrapping_neg(),
+            1,
+            ROW_SIZE,
+            ROW_SIZE + 1,
+        ] {
+            let mut jump = id.wrapping_add(delta) & GRID_MASK;
+            let mut dist = 1;
+            while self.occupied(jump) {
+                jump = jump.wrapping_add(delta) & GRID_MASK;
                 dist += 1;
             }
             if dist > 1 {
-                moves.push(Move::Movement(self.loc(id), self.loc(jump)));
+                moves.push(Move::Movement(id, jump));
             }
         }
     }
 
     fn generate_walk1(&self, id: Id, moves: &mut Vec<Move>) {
-        for adj in self.slidable_adjacent(id, id) {
-            moves.push(Move::Movement(self.loc(id), self.loc(adj)));
+        let mut buf = [0; 6];
+        for adj in self.slidable_adjacent(&mut buf, id, id) {
+            moves.push(Move::Movement(id, adj));
         }
     }
 
@@ -738,11 +763,12 @@ impl Board {
                 return;
             }
             if path.len() == 3 {
-                moves.push(Move::Movement(board.loc(orig), board.loc(id)));
+                moves.push(Move::Movement(orig, id));
                 return;
             }
             path.push(id);
-            for adj in board.slidable_adjacent(orig, id) {
+            let mut buf = [0; 6];
+            for adj in board.slidable_adjacent(&mut buf, orig, id) {
                 dfs(adj, orig, board, path, moves);
             }
             path.pop();
@@ -754,59 +780,52 @@ impl Board {
     fn generate_walk_all(&self, orig: Id, moves: &mut Vec<Move>) {
         let mut visited = NodeSet::new();
         let mut queue = vec![orig];
+        let mut buf = [0; 6];
         while let Some(node) = queue.pop() {
             if visited.get(node) {
                 continue;
             }
             visited.set(node);
             if node != orig {
-                moves.push(Move::Movement(self.loc(orig), self.loc(node)));
+                moves.push(Move::Movement(orig, node));
             }
-            for adj in self.slidable_adjacent(orig, node) {
+            for adj in self.slidable_adjacent(&mut buf, orig, node) {
                 queue.push(adj);
             }
         }
     }
 
     fn generate_ladybug(&self, id: Id, moves: &mut Vec<Move>) {
-        let mut buf1 = [UNASSIGNED; 6];
-        let mut buf2 = [UNASSIGNED; 6];
+        let mut buf1 = [0; 6];
+        let mut buf2 = [0; 6];
+        let mut buf3 = [0; 6];
         let mut step2 = NodeSet::new();
-        for s1 in self.slidable_adjacent_beetle(&mut buf1, id, id) {
-            if self.get(s1).is_some() {
-                for s2 in self.slidable_adjacent_beetle(&mut buf2, id, s1) {
-                    if self.get(s2).is_some() {
-                        step2.set(s2);
-                    }
-                }
-            }
-        }
-
         let mut step3 = NodeSet::new();
-        for s2 in 0..self.nodes.len() as Id {
-            if step2.get(s2) && s2 != id {
-                for s3 in self.slidable_adjacent_beetle(&mut buf1, id, s2) {
-                    if self.get(s3).is_none() {
-                        step3.set(s3);
+        for s1 in self.slidable_adjacent_beetle(&mut buf1, id, id) {
+            if self.occupied(s1) {
+                for s2 in self.slidable_adjacent_beetle(&mut buf2, id, s1) {
+                    if self.occupied(s2) && !step2.get(s2) {
+                        step2.set(s2);
+                        for s3 in self.slidable_adjacent_beetle(&mut buf3, id, s2) {
+                            if !self.occupied(s3) && !step3.get(s3) {
+                                step3.set(s3);
+                                moves.push(Move::Movement(id, s3));
+                            }
+                        }
                     }
                 }
-            }
-        }
-
-        for s3 in 0..self.nodes.len() as Id {
-            if step3.get(s3) {
-                moves.push(Move::Movement(self.loc(id), self.loc(s3)));
             }
         }
     }
 
     fn generate_throws(&self, immovable: &NodeSet, id: Id, moves: &mut Vec<Move>) {
-        let mut starts = [UNASSIGNED; 6];
+        let mut starts = [0; 6];
         let mut num_starts = 0;
-        let mut ends = [UNASSIGNED; 6];
+        let mut ends = [0; 6];
         let mut num_ends = 0;
-        let mut buf = [UNASSIGNED; 6];
-        for adj in self.slidable_adjacent_beetle(&mut buf, UNASSIGNED, id) {
+        let mut buf = [0; 6];
+        let origin = id.wrapping_add(5) & GRID_MASK; // something not adjacent
+        for adj in self.slidable_adjacent_beetle(&mut buf, origin, id) {
             match self.height(adj) {
                 0 => {
                     ends[num_ends] = adj;
@@ -823,16 +842,17 @@ impl Board {
         }
         for &start in starts[..num_starts].iter() {
             for &end in ends[..num_ends].iter() {
-                moves.push(Move::Movement(self.loc(start), self.loc(end)));
+                moves.push(Move::Movement(start, end));
             }
         }
     }
 
     fn generate_mosquito(&self, id: Id, moves: &mut Vec<Move>) {
         let mut targets = [false; 8];
-        for &adj in self.adjacent(id) {
-            if let Some(tile) = self.get(adj) {
-                targets[tile.bug as usize] = true;
+        for adj in adjacent(id) {
+            let node = self.nodes[adj as usize];
+            if node.occupied() {
+                targets[node.bug() as usize] = true;
             }
         }
 
@@ -868,48 +888,59 @@ impl Board {
             // Can't move pieces that were moved on the opponent's turn.
             immovable.set(*moved);
         }
+
         let mut dedup = false;
-        for (id, node) in (0..).zip(self.nodes.iter()).skip(1) {
-            if let Some(tile) = &node.tile {
-                if tile.color != self.to_move() {
-                    continue;
-                }
-                if tile.underneath.is_some() {
+        let mut queue = vec![self.queens[0]];
+        let mut visited = NodeSet::new();
+        while let Some(id) = queue.pop() {
+            if visited.get(id) {
+                continue;
+            }
+            visited.set(id);
+            let node = self.node(id);
+            if !node.occupied() {
+                continue;
+            }
+            queue.extend(adjacent(id));
+            if node.color() != self.to_move() {
+                continue;
+            }
+            if node.is_stacked() {
+                self.generate_stack_walking(id, moves);
+                // Don't let mosquito on stack use pillbug ability.
+                // Although the rules don't seem to specify either way.
+                continue;
+            }
+            // Check for throw ability before movability, as pinned pillbugs can still throw.
+            let pillbug_powers = node.bug() == Bug::Pillbug
+                || (node.bug() == Bug::Mosquito
+                    && adjacent(id).iter().any(|&adj| {
+                        let n = self.nodes[adj as usize];
+                        n.occupied() && n.bug() == Bug::Pillbug
+                    }));
+            // However pillbugs just thrown cannot throw.
+            if pillbug_powers && stunned != Some(&id) {
+                self.generate_throws(&immovable, id, moves);
+                dedup = true;
+            }
+            if immovable.get(id) {
+                continue;
+            }
+            match node.bug() {
+                Bug::Queen => self.generate_walk1(id, moves),
+                Bug::Grasshopper => self.generate_jumps(id, moves),
+                Bug::Spider => self.generate_walk3(id, moves),
+                Bug::Ant => self.generate_walk_all(id, moves),
+                Bug::Beetle => {
+                    self.generate_walk1(id, moves);
                     self.generate_stack_walking(id, moves);
-                    // Don't let mosquito on stack use pillbug ability.
-                    // Although the rules don't seem to specify either way.
-                    continue;
                 }
-                // Check for throw ability before movability, as pinned pillbugs can still throw.
-                let pillbug_powers = tile.bug == Bug::Pillbug
-                    || (tile.bug == Bug::Mosquito
-                        && node.adj.iter().any(|&adj| {
-                            self.get(adj).map(|tile| tile.bug == Bug::Pillbug).unwrap_or(false)
-                        }));
-                // However pillbugs just thrown cannot throw.
-                if pillbug_powers && stunned != Some(&id) {
-                    self.generate_throws(&immovable, id, moves);
+                Bug::Mosquito => {
+                    self.generate_mosquito(id, moves);
                     dedup = true;
                 }
-                if immovable.get(id) {
-                    continue;
-                }
-                match tile.bug {
-                    Bug::Queen => self.generate_walk1(id, moves),
-                    Bug::Grasshopper => self.generate_jumps(id, moves),
-                    Bug::Spider => self.generate_walk3(id, moves),
-                    Bug::Ant => self.generate_walk_all(id, moves),
-                    Bug::Beetle => {
-                        self.generate_walk1(id, moves);
-                        self.generate_stack_walking(id, moves);
-                    }
-                    Bug::Mosquito => {
-                        self.generate_mosquito(id, moves);
-                        dedup = true;
-                    }
-                    Bug::Ladybug => self.generate_ladybug(id, moves),
-                    Bug::Pillbug => self.generate_walk1(id, moves),
-                }
+                Bug::Ladybug => self.generate_ladybug(id, moves),
+                Bug::Pillbug => self.generate_walk1(id, moves),
             }
         }
 
@@ -938,10 +969,10 @@ impl minimax::Game for Rules {
                 }
                 if *num_left > 0 {
                     if board.move_num == 0 {
-                        moves.push(Move::Place((board.move_num as i8, 0), *bug));
+                        moves.push(Move::Place(START_ID, *bug));
                     } else {
-                        for &loc in adjacent((0, 0)).iter() {
-                            moves.push(Move::Place(loc, *bug));
+                        for &id in adjacent(START_ID).iter() {
+                            moves.push(Move::Place(id, *bug));
                         }
                     }
                 }
@@ -992,27 +1023,53 @@ impl minimax::Game for Rules {
     }
 }
 
+// Coordinates for populating test positions.
+pub(crate) type Loc = (i8, i8);
+pub fn loc_to_id(loc: Loc) -> Id {
+    // Centered in the middle of the board.
+    START_ID.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as Id)).wrapping_add(loc.0 as Id)
+}
+
+#[cfg(test)]
+pub(crate) fn id_to_loc(id: Id) -> Loc {
+    let mut x = (id.wrapping_sub(START_ID - ROW_SIZE / 2) / ROW_SIZE) as i8;
+    if x > 7 {
+        x -= ROW_SIZE as i8;
+    }
+    let mut y = (id.wrapping_sub(START_ID) % ROW_SIZE) as i8;
+    if y > 7 {
+        y -= ROW_SIZE as i8;
+    }
+    (y, x)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ORIGIN: Id = 1;
+    #[test]
+    fn test_id_loc() {
+        for x in -6..6 {
+            for y in -6..6 {
+                let loc = (x, y);
+                let id = loc_to_id(loc);
+                assert_eq!(loc, id_to_loc(id), "{}", id);
+            }
+        }
+    }
 
     impl Board {
         fn insert_loc(&mut self, loc: Loc, bug: Bug, color: Color) {
-            let id = self.alloc(loc);
-            self.insert(id, bug, color);
+            self.insert(loc_to_id(loc), bug, color);
         }
 
-        fn remove_loc(&mut self, loc: Loc) -> Tile {
-            let id = self.alloc(loc);
-            self.remove(id)
+        fn remove_loc(&mut self, loc: Loc) {
+            self.remove(loc_to_id(loc));
         }
 
         fn fill_board(&mut self, locs: &[Loc], bug: Bug) {
             for &loc in locs {
-                let id = self.alloc(loc);
-                self.insert(id, bug, Color::Black);
+                self.insert(loc_to_id(loc), bug, Color::Black);
             }
         }
 
@@ -1020,7 +1077,7 @@ mod tests {
             let mut actual_pairs = Vec::new();
             for &m in moves.iter() {
                 if let Move::Place(actual_id, actual_bug) = m {
-                    actual_pairs.push((actual_id, actual_bug));
+                    actual_pairs.push((id_to_loc(actual_id), actual_bug));
                 }
             }
             actual_pairs.sort();
@@ -1034,8 +1091,8 @@ mod tests {
             let mut actual_ends = Vec::new();
             for &m in moves.iter() {
                 if let Move::Movement(actual_start, actual_end) = m {
-                    if actual_start == start {
-                        actual_ends.push(actual_end);
+                    if id_to_loc(actual_start) == start {
+                        actual_ends.push(id_to_loc(actual_end));
                     }
                 }
             }
@@ -1054,8 +1111,8 @@ mod tests {
             board.remaining[0][i] = 0;
             board.remaining[1][i] = 0;
         }
-        board.insert(1, Bug::Queen, Color::White);
-        board.insert(2, Bug::Queen, Color::Black);
+        board.insert(loc_to_id((0, 0)), Bug::Queen, Color::White);
+        board.insert(loc_to_id((1, 0)), Bug::Queen, Color::Black);
         let mut moves = Vec::new();
         board.generate_placements(&mut moves);
         board.assert_placements(
@@ -1075,65 +1132,52 @@ mod tests {
             Bug::Queen,
         );
         let cuts = board.find_cut_vertexes();
-        let is_cut_loc = |loc: Loc| {
-            let id = board.id(loc);
-            cuts.get(id)
-        };
-        // Line 1
-        assert!(is_cut_loc((-1, 0)));
-        assert!(!is_cut_loc((-2, 0)));
-        assert!(!is_cut_loc((0, 0)));
-        assert!(!is_cut_loc((1, 0)));
-        // Line 2
-        assert!(!is_cut_loc((0, 1)));
-        assert!(is_cut_loc((2, 1)));
-        assert!(!is_cut_loc((3, 1)));
-        // Line 3
-        assert!(!is_cut_loc((1, 2)));
-        assert!(!is_cut_loc((2, 2)));
+        let mut cut_locs = vec![];
+        for id in 0..GRID_MASK {
+            if cuts.get(id) {
+                cut_locs.push(id_to_loc(id));
+            }
+        }
+        assert_eq!(&[(-1, 0), (2, 1)], &cut_locs[..]);
     }
 
     #[test]
     fn test_slidable() {
         let mut board = Board::default();
-        let x = board.alloc((0, 0));
+        let x = START_ID;
+        let mut buf = [0; 6];
         // One neighbor.
         board.insert_loc((0, 0), Bug::Queen, Color::Black);
         board.insert_loc((1, 0), Bug::Queen, Color::Black);
         assert_eq!(
-            vec![board.alloc((0, -1)), board.alloc((1, 1))],
-            board.slidable_adjacent(x, x).collect::<Vec<Id>>()
+            vec![loc_to_id((0, -1)), loc_to_id((1, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
         // Two adjacent neighbors.
         board.insert_loc((1, 1), Bug::Queen, Color::Black);
         assert_eq!(
-            vec![board.alloc((0, -1)), board.alloc((0, 1))],
-            board.slidable_adjacent(x, x).collect::<Vec<Id>>()
+            vec![loc_to_id((0, -1)), loc_to_id((0, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
         // Four adjacent neighbors.
         board.insert_loc((0, 1), Bug::Queen, Color::Black);
         board.insert_loc((-1, 0), Bug::Queen, Color::Black);
         assert_eq!(
-            vec![board.alloc((-1, -1)), board.alloc((0, -1))],
-            board.slidable_adjacent(x, x).collect::<Vec<Id>>()
+            vec![loc_to_id((-1, -1)), loc_to_id((0, -1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
         // Five adjacent neighbors.
         board.insert_loc((-1, -1), Bug::Queen, Color::Black);
-        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(x, x).collect::<Vec<Id>>());
+        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>());
         // 2 separated groups of neighbors.
         board.remove_loc((0, 1));
-        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(x, x).collect::<Vec<Id>>());
+        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>());
         // 2 opposite single neighbors
         board.remove_loc((1, 1));
         board.remove_loc((-1, -1));
         assert_eq!(
-            vec![
-                board.alloc((-1, -1)),
-                board.alloc((0, -1)),
-                board.alloc((1, 1)),
-                board.alloc((0, 1))
-            ],
-            board.slidable_adjacent(x, x).collect::<Vec<Id>>()
+            vec![loc_to_id((-1, -1)), loc_to_id((0, -1)), loc_to_id((1, 1)), loc_to_id((0, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
         );
     }
 
@@ -1146,7 +1190,7 @@ mod tests {
         // ．🦗．．
         board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
         let mut moves = Vec::new();
-        board.generate_jumps(ORIGIN, &mut moves);
+        board.generate_jumps(START_ID, &mut moves);
         board.assert_movements(&moves, (0, 0), &[(0, 2), (3, 0)]);
     }
 
@@ -1179,7 +1223,7 @@ mod tests {
         // Can't move left (down) or right (up) because of blocking stacks.
         // Can move onto all 4 blocking stacks.
         let mut moves = Vec::new();
-        board.generate_stack_walking(ORIGIN, &mut moves);
+        board.generate_stack_walking(START_ID, &mut moves);
         board.assert_movements(&moves, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
     }
 
@@ -1195,7 +1239,7 @@ mod tests {
             Bug::Spider,
         );
         let mut moves = Vec::new();
-        let start = board.id((-1, -1));
+        let start = loc_to_id((-1, -1));
         board.generate_walk3(start, &mut moves);
         board.assert_movements(&moves, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
 
@@ -1205,7 +1249,7 @@ mod tests {
         board.remove_loc((-1, -1));
         board.insert_loc((1, 1), Bug::Spider, Color::Black);
         moves.clear();
-        let start = board.id((1, 1));
+        let start = loc_to_id((1, 1));
         board.generate_walk3(start, &mut moves);
         board.assert_movements(&moves, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
     }
@@ -1219,7 +1263,7 @@ mod tests {
         // ．．．🐜🐜
         board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
         let mut moves = Vec::new();
-        let start = board.id((-1, -1));
+        let start = loc_to_id((-1, -1));
         board.generate_walk_all(start, &mut moves);
         board.assert_movements(
             &moves,
@@ -1245,7 +1289,7 @@ mod tests {
         let mut board = Board::default();
         board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
         let mut moves = Vec::new();
-        board.generate_mosquito(ORIGIN, &mut moves);
+        board.generate_mosquito(loc_to_id((0, 0)), &mut moves);
         // Mosquito on mosquito can't move at all.
         board.assert_movements(&moves, (0, 0), &[]);
 
@@ -1287,7 +1331,7 @@ mod tests {
         //．．．🐞🐞．．
         // ．．．🐞．．
         let mut moves = Vec::new();
-        let start = board.id((2, 3));
+        let start = loc_to_id((2, 3));
         board.generate_ladybug(start, &mut moves);
         board.assert_movements(
             &moves,
@@ -1305,7 +1349,7 @@ mod tests {
         // ．．💊💊．
         let mut moves = Vec::new();
         let immovable = NodeSet::new();
-        let start = board.id((1, 1));
+        let start = loc_to_id((1, 1));
         board.generate_throws(&immovable, start, &mut moves);
         assert_eq!(4, moves.len());
         board.assert_movements(&moves[..2], (1, 2), &[(1, 0), (2, 1)]);
@@ -1337,37 +1381,37 @@ mod tests {
 
         // Draw by stalemate
         let mut board = Board::default();
-        let x1 = (-1, -1);
-        let x2 = (-1, 0);
-        let y1 = (1, 1);
-        let y2 = (1, 0);
-        crate::Move::Place((0, 0), Bug::Spider).apply(&mut board);
+        let x1 = loc_to_id((-1, -1));
+        let x2 = loc_to_id((-1, 0));
+        let y1 = loc_to_id((1, 1));
+        let y2 = loc_to_id((1, 0));
+        super::Move::Place(loc_to_id((0, 0)), Bug::Spider).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Place(x1, Bug::Queen).apply(&mut board);
+        super::Move::Place(x1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Create the position the first time.
-        crate::Move::Place(y1, Bug::Queen).apply(&mut board);
+        super::Move::Place(y1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Movement(x1, x2).apply(&mut board);
+        super::Move::Movement(x1, x2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Movement(y1, y2).apply(&mut board);
+        super::Move::Movement(y1, y2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Movement(x2, x1).apply(&mut board);
+        super::Move::Movement(x2, x1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Recreate position for the second time.
-        crate::Move::Movement(y2, y1).apply(&mut board);
+        super::Move::Movement(y2, y1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Movement(x1, x2).apply(&mut board);
+        super::Move::Movement(x1, x2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Movement(y1, y2).apply(&mut board);
+        super::Move::Movement(y1, y2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        crate::Move::Movement(x2, x1).apply(&mut board);
+        super::Move::Movement(x2, x1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Recreate position for the third time.
-        crate::Move::Movement(y2, y1).apply(&mut board);
+        super::Move::Movement(y2, y1).apply(&mut board);
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
         // Undo reverts zobrist and history.
-        crate::Move::Movement(y2, y1).undo(&mut board);
+        super::Move::Movement(y2, y1).undo(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
     }
 }

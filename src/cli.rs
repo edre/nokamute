@@ -1,5 +1,5 @@
 use crate::player::Player;
-use crate::{Board, Bug, Loc, Rules};
+use crate::{Board, Bug, Id, Rules};
 use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
@@ -10,7 +10,7 @@ fn read_line(prompt: &str) -> String {
     io::stdin().lock().lines().next().unwrap().unwrap()
 }
 
-fn input_loc(board: &Board, prompt: &str, options: &[Loc]) -> Option<Loc> {
+fn input_id(board: &Board, prompt: &str, options: &[Id]) -> Option<Id> {
     board.println_highlights(options);
     let line = read_line(prompt);
     let index = if let Ok(num) = line.parse::<usize>() {
@@ -53,7 +53,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
         println!("No movements available.");
         return None;
     }
-    let start = input_loc(board, "Move which bug? ", &starts)?;
+    let start = input_id(board, "Move which bug? ", &starts)?;
 
     let mut ends = moves
         .iter()
@@ -71,7 +71,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
         .collect::<Vec<_>>();
     ends.sort();
     ends.dedup();
-    let end = input_loc(board, "Move to where? ", &ends)?;
+    let end = input_id(board, "Move to where? ", &ends)?;
 
     Some(crate::Move::Movement(start, end))
 }
@@ -87,7 +87,7 @@ fn input_placement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> 
         println!("No placements available.");
         return None;
     }
-    let place = input_loc(board, "Place new bug where? ", &places)?;
+    let place = input_id(board, "Place new bug where? ", &places)?;
 
     let bugs = moves
         .iter()
@@ -201,7 +201,7 @@ pub fn terminal_game_interface() {
                     mcts.set_max_rollouts(num);
                 }
             }
-            let mut strat: &mut dyn minimax::Strategy<Rules> = &mut mcts;
+            let strat: &mut dyn minimax::Strategy<Rules> = &mut mcts;
             if let Some(m) = strat.choose_move(&board) {
                 history.push(m);
                 m.apply(&mut board);

@@ -26,6 +26,7 @@ impl Default for BasicEvaluator {
 impl minimax::Evaluator for BasicEvaluator {
     type G = Rules;
     fn evaluate(&self, board: &Board) -> minimax::Evaluation {
+        let mut buf = [0; 6];
         let queens_surrounded = board.queens_surrounded();
         let immovable = board.find_cut_vertexes();
 
@@ -54,49 +55,55 @@ impl minimax::Evaluator for BasicEvaluator {
                 * self.unplayed_bug_factor;
         }
 
-        for (id, node) in (0..).zip(board.nodes.iter()) {
-            if let Some(ref tile) = node.tile {
-                let mut bug_score = value(tile.bug);
-                let pillbug_near_its_queen = tile.bug == Bug::Pillbug
-                    && node.adj.iter().any(|&adj| {
-                        board
-                            .get(adj)
-                            .map(|tile2| tile2.bug == Bug::Queen && tile2.color == tile.color)
-                            .unwrap_or(false)
-                    });
-                if pillbug_near_its_queen {
-                    // Pillbugs get a bonus if adjacent to matching queen.
-                    // for each empty adjacent square.
-                    bug_score += (self.queen_factor / 2)
-                        * node.adj.iter().filter(|&&adj| board.get(adj).is_none()).count() as i32;
-                } else if tile.underneath.is_none() && immovable.get(id) {
+        let mut queue = vec![board.queens[0]];
+        let mut visited = NodeSet::new();
+        while let Some(id) = queue.pop() {
+            if visited.get(id) {
+                continue;
+            }
+            visited.set(id);
+            let node = board.node(id);
+            if !node.occupied() {
+                continue;
+            }
+            let mut bug_score = value(node.bug());
+            let pillbug = node.bug() == Bug::Pillbug; // TODO also pillbug'd mosquito.
+            let pillbug_near_its_queen = pillbug
+                && adjacent(id).iter().any(|&adj| {
+                    let node2 = board.node(adj);
+                    node2.occupied() && node2.bug() == Bug::Queen && node2.color() == node.color()
+                });
+            if pillbug_near_its_queen {
+                // Pillbugs get a bonus if adjacent to matching queen.
+                // for each empty adjacent square.
+                bug_score += (self.queen_factor / 2)
+                    * adjacent(id).iter().filter(|adj| !board.occupied(**adj)).count() as i32;
+            } else if !node.is_stacked() && immovable.get(id) {
+                continue;
+            }
+            if node.bug() == Bug::Mosquito {
+                // Mosquitos are valued as they can currently move.
+                if node.is_stacked() {
+                    bug_score = value(Bug::Beetle);
+                } else {
+                    bug_score = adjacent(id)
+                        .iter()
+                        .map(|&id| if board.occupied(id) { value(board.node(id).bug()) } else { 0 })
+                        .max()
+                        .unwrap_or(0);
+                }
+            }
+            if node.bug().crawler() {
+                // Treat blocked crawlers as immovable.
+                if board.slidable_adjacent(&mut buf, id, id).next().is_none() {
                     continue;
                 }
-                if tile.bug == Bug::Mosquito {
-                    // Mosquitos are valued as they can currently move.
-                    if tile.underneath.is_some() {
-                        bug_score = value(Bug::Beetle);
-                    } else {
-                        bug_score = node
-                            .adj
-                            .iter()
-                            .map(|&id| board.get(id).map(|tile| value(tile.bug) % 9).unwrap_or(0))
-                            .max()
-                            .unwrap_or(0);
-                    }
-                }
-                if tile.bug.crawler() {
-                    // Treat blocked crawlers as immovable.
-                    if board.slidable_adjacent(id, id).next().is_none() {
-                        continue;
-                    }
-                }
-                bug_score *= self.movable_bug_factor;
-                if tile.color != board.to_move() {
-                    bug_score = -bug_score;
-                }
-                score += bug_score;
             }
+            bug_score *= self.movable_bug_factor;
+            if node.color() != board.to_move() {
+                bug_score = -bug_score;
+            }
+            score += bug_score;
         }
 
         score as minimax::Evaluation
@@ -116,38 +123,38 @@ mod tests {
         //．．🐜🐜🐝．．
         // ．．．🦗🪲
         let mut board = Board::default();
-        crate::Move::Place((0, 0), Bug::Queen).apply(&mut board);
-        crate::Move::Place((1, 0), Bug::Spider).apply(&mut board);
-        crate::Move::Place((-1, 1), Bug::Ant).apply(&mut board);
-        crate::Move::Place((0, 1), Bug::Ant).apply(&mut board);
-        crate::Move::Place((1, 2), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place((1, 1), Bug::Queen).apply(&mut board);
-        crate::Move::Place((2, 2), Bug::Beetle).apply(&mut board);
+        crate::Move::Place(loc_to_id((0, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_id((1, 0)), Bug::Spider).apply(&mut board);
+        crate::Move::Place(loc_to_id((-1, 1)), Bug::Ant).apply(&mut board);
+        crate::Move::Place(loc_to_id((0, 1)), Bug::Ant).apply(&mut board);
+        crate::Move::Place(loc_to_id((1, 2)), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place(loc_to_id((1, 1)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_id((2, 2)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         for depth in 0..2 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement((-1, 1), (2, 1))), m);
+            assert_eq!(Some(crate::Move::Movement(loc_to_id((-1, 1)), loc_to_id((2, 1)))), m);
 
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement((-1, 1), (2, 1))), m);
+            assert_eq!(Some(crate::Move::Movement(loc_to_id((-1, 1)), loc_to_id((2, 1)))), m);
         }
 
         // Find queen escape.
         //．．🕷🐝🐝．
         // ．．🦗🕷．
         let mut board = Board::default();
-        crate::Move::Place((0, 0), Bug::Queen).apply(&mut board);
-        crate::Move::Place((1, 0), Bug::Queen).apply(&mut board);
-        crate::Move::Place((1, 1), Bug::Spider).apply(&mut board);
-        crate::Move::Place((0, 1), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place((-1, 0), Bug::Beetle).apply(&mut board);
+        crate::Move::Place(loc_to_id((0, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_id((1, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_id((1, 1)), Bug::Spider).apply(&mut board);
+        crate::Move::Place(loc_to_id((0, 1)), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place(loc_to_id((-1, 0)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         for depth in 0..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement((0, 0), (0, -1))), m);
+            assert_eq!(Some(crate::Move::Movement(loc_to_id((0, 0)), loc_to_id((0, -1)))), m);
         }
     }
 }

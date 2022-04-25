@@ -8,7 +8,6 @@ readme = "README.md"
 license = "MIT"
 
 [dependencies]
-fnv = "^1.0"
 lazy_static = "^1.4.0"
 minimax = { git = "https://github.com/edre/minimax-rs", rev = "4e5ce08" }
 rand = "0.4.*"
