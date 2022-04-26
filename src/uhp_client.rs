@@ -1,6 +1,10 @@
+extern crate minimax;
+
 use crate::player::Player;
 use crate::uhp_util::{Result, UhpBoard, UhpError};
+use crate::Color;
 
+use minimax::Winner;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Drop;
 use std::path::Path;
@@ -38,6 +42,9 @@ impl UhpClient {
                 return Ok(out);
             }
             out.push(line.trim().to_string());
+            if line.starts_with("err") {
+                return Err(UhpError::EngineError(out.join("\n")));
+            }
         }
     }
 
@@ -56,7 +63,7 @@ impl UhpClient {
         Ok(())
     }
 
-    pub(crate) fn apply(&mut self, m: crate::Move) -> Result<()> {
+    pub(crate) fn apply(&mut self, m: crate::Move) -> Result<Option<Winner>> {
         let mut command = "play ".to_owned();
         command.push_str(&self.board.to_move_string(m));
         let out = self.command(&command)?.join("\n");
@@ -64,7 +71,20 @@ impl UhpClient {
             return Err(UhpError::InvalidMove(command + ": " + &out));
         }
         self.board.apply(m)?;
-        Ok(())
+        Ok(match out.split(";").nth(1).unwrap_or_default() {
+            "Draw" => Some(Winner::Draw),
+            "WhiteWins" => Some(if self.board.inner().to_move() == Color::White {
+                Winner::PlayerToMove
+            } else {
+                Winner::PlayerJustMoved
+            }),
+            "BlackWins" => Some(if self.board.inner().to_move() == Color::Black {
+                Winner::PlayerToMove
+            } else {
+                Winner::PlayerJustMoved
+            }),
+            _ => None,
+        })
     }
 
     pub(crate) fn undo(&mut self, num_undo: usize) -> Result<()> {

@@ -42,28 +42,48 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let mut rng = rand::thread_rng();
     let mut moves = Vec::new();
     for iter in 0.. {
-        if iter % 10000 == 0 {
+        if iter % 100 == 0 {
             println!("iter {}", iter);
         }
+        // Roll out a random game to the desired depth.
         let mut stack = Vec::new();
+        let mut skip_comparison = false;
         for _ in 0..depth {
             moves.clear();
             Rules::generate_moves(&board, &mut moves);
             let m = moves[rng.gen_range(0, moves.len())];
-            m.apply(&mut board);
-            engine.apply(m).unwrap();
             stack.push(m);
+            m.apply(&mut board);
+            let board_winner = Rules::get_winner(&board);
+            let engine_winner = engine.apply(m).unwrap();
+            if board_winner != engine_winner {
+                println!(
+                    "iter {} game end disagreement: board_winner={:?} engine_winner={:?}",
+                    iter, board_winner, engine_winner
+                );
+                println!("game log: {}", engine.game_log());
+                board.println();
+                return;
+            }
+            if board_winner.is_some() {
+                skip_comparison = true;
+                break;
+            }
         }
-        // Check for discrepancies.
-        moves.clear();
-        Rules::generate_moves(&board, &mut moves);
-        let engine_moves = engine.generate_moves().unwrap();
-        if moves.len() != engine_moves.len() {
-            println!("game log: {}", engine.game_log());
-            println!("engine moves: {}", engine.raw_generate_moves().unwrap());
-            dump_difference(&mut board, iter, &moves, &engine_moves);
-            break;
+
+        if !skip_comparison {
+            // Check for discrepancies.
+            moves.clear();
+            Rules::generate_moves(&board, &mut moves);
+            let engine_moves = engine.generate_moves().unwrap();
+            if moves.len() != engine_moves.len() {
+                println!("game log: {}", engine.game_log());
+                println!("engine moves: {}", engine.raw_generate_moves().unwrap());
+                dump_difference(&mut board, iter, &moves, &engine_moves);
+                break;
+            }
         }
+
         // Unwrap
         engine.undo(stack.len()).unwrap();
         while let Some(m) = stack.pop() {
@@ -73,7 +93,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
 }
 
 fn dump_difference(
-    board: &mut Board, iter: u64, nokamute_moves: &[crate::Move], engine_moves: &[crate::Move],
+    board: &mut Board, iter: usize, nokamute_moves: &[crate::Move], engine_moves: &[crate::Move],
 ) {
     println!(
         "iteration {} found discrepancy: {} vs {} moves",
@@ -107,12 +127,6 @@ fn dump_difference(
     }
     println!("UHP engine only moves:");
     for m in engine_only.iter() {
-        m.apply(board);
-        board.println();
-        m.undo(board);
-    }
-    println!("common moves:");
-    for m in common.iter() {
         m.apply(board);
         board.println();
         m.undo(board);
