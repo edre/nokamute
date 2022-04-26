@@ -55,17 +55,8 @@ impl minimax::Evaluator for BasicEvaluator {
                 * self.unplayed_bug_factor;
         }
 
-        let mut queue = vec![board.queens[0]];
-        let mut visited = NodeSet::new();
-        while let Some(id) = queue.pop() {
-            if visited.get(id) {
-                continue;
-            }
-            visited.set(id);
+        for &id in board.occupied_ids[0].iter().chain(board.occupied_ids[1].iter()) {
             let node = board.node(id);
-            if !node.occupied() {
-                continue;
-            }
             let mut bug_score = value(node.bug());
             let pillbug = node.bug() == Bug::Pillbug; // TODO also pillbug'd mosquito.
             let pillbug_near_its_queen = pillbug

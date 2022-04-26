@@ -185,7 +185,8 @@ pub struct Board {
     underworld: [Node; 8],
     remaining: [[u8; 8]; 2],
     pub(crate) queens: [Id; 2],
-    // TODO: occupied_ids: [Vec<Id>; 2],
+    pub(crate) occupied_ids: [Vec<Id>; 2],
+
     pub(crate) move_num: u16,
     zobrist_table: &'static [u64; GRID_SIZE * 2],
     zobrist_hash: u64,
@@ -237,8 +238,26 @@ impl Board {
         node
     }
 
+    fn occupied_add(&mut self, color: Color, id: Id) {
+        self.occupied_ids[color as usize].push(id);
+    }
+
+    fn occupied_remove(&mut self, color: Color, id: Id) {
+        let vec = &mut self.occupied_ids[color as usize];
+        let i = vec.iter().position(|&x| x == id).unwrap();
+        vec.swap_remove(i);
+    }
+
     fn insert(&mut self, id: Id, bug: Bug, color: Color) {
         let prev = self.node(id);
+        if prev.occupied() {
+            if prev.color() != color {
+                self.occupied_remove(prev.color(), id);
+                self.occupied_add(color, id);
+            }
+        } else {
+            self.occupied_add(color, id);
+        }
         let under_bits = if prev.occupied() { self.insert_underworld(prev) } else { 1 };
         self.nodes[id as usize] = Node::new_occupied(bug, color, under_bits);
         self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
@@ -253,11 +272,22 @@ impl Board {
         let height = self.height(id);
         let prev = self.node(id);
         let under_bits = prev.under_bits();
-        assert!(under_bits != 0);
-        self.nodes[id as usize] =
+        debug_assert!(under_bits != 0);
+
+        let new_node =
             if under_bits > 1 { self.remove_underworld(under_bits) } else { Node::new() };
+        self.nodes[id as usize] = new_node;
         let bug = prev.bug();
         let color = prev.color();
+        if new_node.occupied() {
+            if new_node.color() != color {
+                self.occupied_remove(color, id);
+                self.occupied_add(new_node.color(), id);
+            }
+        } else {
+            self.occupied_remove(color, id);
+        }
+
         self.zobrist_hash ^= self.zobrist(id, bug, color, height);
         if bug == Bug::Queen {
             self.queens[self.move_num as usize & 1] = START_ID;
@@ -326,6 +356,7 @@ impl Board {
             underworld: [Node::new(); 8],
             remaining: [remaining; 2],
             queens: [START_ID; 2],
+            occupied_ids: [Vec::new(), Vec::new()],
             move_num: 0,
             zobrist_table: ZOBRIST_TABLE.borrow(),
             zobrist_hash: 0,
@@ -554,31 +585,23 @@ impl NodeSet {
 
 impl Board {
     fn generate_placements(&self, moves: &mut Vec<Move>) {
-        // TODO: try smallvec to put these queues on the stack
-        let mut queue = vec![self.queens[0]];
+        let mut enemy_adjacent = NodeSet::new();
+        for &enemy in self.occupied_ids[1 - self.to_move() as usize].iter() {
+            for adj in adjacent(enemy) {
+                enemy_adjacent.set(adj);
+            }
+        }
+
         let mut visited = NodeSet::new();
-        while let Some(id) = queue.pop() {
-            if visited.get(id) {
-                continue;
-            }
-            visited.set(id);
-            if self.occupied(id) {
-                queue.extend(adjacent(id));
-                continue;
-            }
-            let mut num_buddies = 0;
-            let mut num_enemies = 0;
-            for adj in adjacent(id) {
-                let node = self.nodes[adj as usize];
-                if node.occupied() {
-                    if node.color() == self.to_move() {
-                        num_buddies += 1;
-                    } else {
-                        num_enemies += 1;
-                    }
+        for &friend in self.occupied_ids[self.to_move() as usize].iter() {
+            for id in adjacent(friend) {
+                if visited.get(id) {
+                    continue;
                 }
-            }
-            if num_buddies > 0 && num_enemies == 0 {
+                visited.set(id);
+                if self.occupied(id) || enemy_adjacent.get(id) {
+                    continue;
+                }
                 for (bug, num_left) in self.get_available_bugs().iter() {
                     if self.queen_required() && *bug != Bug::Queen {
                         continue;
@@ -890,21 +913,8 @@ impl Board {
         }
 
         let mut dedup = false;
-        let mut queue = vec![self.queens[0]];
-        let mut visited = NodeSet::new();
-        while let Some(id) = queue.pop() {
-            if visited.get(id) {
-                continue;
-            }
-            visited.set(id);
+        for &id in self.occupied_ids[self.to_move() as usize].iter() {
             let node = self.node(id);
-            if !node.occupied() {
-                continue;
-            }
-            queue.extend(adjacent(id));
-            if node.color() != self.to_move() {
-                continue;
-            }
             if node.is_stacked() {
                 self.generate_stack_walking(id, moves);
                 // Don't let mosquito on stack use pillbug ability.
