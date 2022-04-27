@@ -152,3 +152,26 @@ fn test_perft() {
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
 }
+
+// Regression suite for bugs caught by perft-debug.
+
+#[test]
+fn test_winner_fail() {
+    let b = UhpBoard::from_game_string(r#"Base+MLP;InProgress;Black[99];wP;bB1 \wP;wG1 wP-;bA1 -bB1;wL /wP;bP /bA1;wQ wP\;bQ -bA1;wQ \wG1;bG1 /bP;wL \bB1;bB2 bP\;wQ bA1\;bL -bQ;wL bB1/;wQ bL\;wG1 /wP"#).unwrap().into_inner();
+    assert_eq!(None, Rules::get_winner(&b));
+}
+
+#[test]
+fn test_mosquito_throw() {
+    // TODO: fix
+    //let b = UhpBoard::new(r#"Base+MLP;InProgress;wM;bP \wM;wS1 /wM;bB1 bP/;wB1 -wS1;bM \bB1;wQ wM\;bQ /bM;wG1 /wB1;bG1 -bM;wP -wG1;bM bB1;wQ /bP;bG2 bG1/;wP wP\;bB2 -bG1;wB2 wB1\;wQ bM\;wA1 -wB1;bA1 bM/"#).into_inner();
+    // assert the mosquito can throw the pillbug
+    // another: r#"Base+MLP;wM;bB1 /wM;wP wM/;bG1 bB1\;wG1 wP/;bS1 bG1\;wQ wG1\;bQ bS1-;wG1 wP\;bM /bB1;wA1 wG1\;bM \wQ;wP -bM;bL /bG1;wP wP\;bS2 bS1\;wB1 wA1-;wQ -bM"#
+    // Assert pillbug can throw mosquito
+}
+
+#[test]
+fn test_spider_walk() {
+    // game log: wL;bP wL-;wM \wL;bL bP\;wP -wM;bM bP/;wQ wP\;bQ bL-;wA1 wM/;bG1 bM-;wS1 wA1/;bG1 wA1\;wS2 \wP;bG1 bM\;wA2 /wS2;bA1 bM/;wA3 -wS1;bA2 bQ\;wA3 bA1\;bG2 /bA2;wA2 bA1/;bG1 wA1\;wG1 /wQ;wL wL\;wG2 /wS2;bG3 bA2-;wG3 -wG2;bA3 /bG2;wA2 wL\;bG3 bL\;wA3 bG2\;bA3 bA1\;wA3 wQ\;bS1 bM\;wA2 bA3\;bA3 -wG1;wB1 -wG3;bA3 bA1\;wA3 wB1\;bP wS1\;wA1 wG2\;bA2 -wB1;wA2 bA1/;bA2 -wS2;wA2 /wA1;bA2 /wL;wA3 \wS1;bA2 wB1\;wQ /wS1;bA3 wA3/;wL bA1\;bA1 \bA1;wA2 bQ-;bA2 \wG3;wA2 /wA1;bA2 -bL;wL bG1\;bA3 bG2\;wS2 -wQ;bA1 -wA2;wL bQ\;bA1 wA3/;wM -wB1;bA3 /bG3;wB2 \wG3;bS2 bG1\;wA2 wG3\;bA1 wS2\;wS2 \wA3;bA2 bS1/;wL bG2\;bA3 /wA3;wA2 bA2-;bA3 wG1\;wA2 /bG3;bA2 \wP;wA2 wB2/;bM bQ\;wS2 bP/;bL /bL;bA2 wP\;bB1 bL\;wA3 -bL;bA2 bA1\;wA1 wB1\;bG1 -wS1;wA1 /bG1;bG1 wQ\;wA1 /wM;bB2 bS2\;wA2 wG2\;wQ wS2\
+    // Assert that the top spider gets normal moves generated.
+}

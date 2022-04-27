@@ -354,19 +354,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn test_winner_fail() {
-        // TODO: fix
-        //let b = UhpBoard::new(r#"Base+MLP;wP;bM -wP;wS1 wP-;bL \bM;wA1 wS1/;bP bL/;wQ wP\;bQ -bP;wQ bP\;bB1 -bQ;wA1 wQ/;wQ bM\;wL wS1\;bS1 /bL;wG1 wA1\"#).into_inner();
-        //assert_eq!(None, Rules::get_winner(&b));
-    }
-
-    #[test]
-    fn test_mosquito_throw() {
-        // TODO: fix
-        //let b = UhpBoard::new(r#"Base+MLP;wM;bP \wM;wS1 /wM;bB1 bP/;wB1 -wS1;bM \bB1;wQ wM\;bQ /bM;wG1 /wB1;bG1 -bM;wP -wG1;bM bB1;wQ /bP;bG2 bG1/;wP wP\;bB2 -bG1;wB2 wB1\;wQ bM\;wA1 -wB1;bA1 bM/"#).into_inner();
-        // assert the mosquito can throw the pillbug
-    }
-
 }

@@ -263,7 +263,7 @@ impl Board {
         self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
 
         if bug == Bug::Queen {
-            self.queens[self.move_num as usize & 1] = id;
+            self.queens[color as usize] = id;
         }
     }
 
@@ -290,7 +290,7 @@ impl Board {
 
         self.zobrist_hash ^= self.zobrist(id, bug, color, height);
         if bug == Bug::Queen {
-            self.queens[self.move_num as usize & 1] = START_ID;
+            self.queens[color as usize] = START_ID;
         }
         (bug, color)
     }
