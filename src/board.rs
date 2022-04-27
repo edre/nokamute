@@ -925,7 +925,7 @@ impl Board {
             let pillbug_powers = node.bug() == Bug::Pillbug
                 || (node.bug() == Bug::Mosquito
                     && adjacent(id).iter().any(|&adj| {
-                        let n = self.nodes[adj as usize];
+                        let n = self.node(adj);
                         n.occupied() && n.bug() == Bug::Pillbug
                     }));
             // However pillbugs just thrown cannot throw.
@@ -956,6 +956,8 @@ impl Board {
 
         if dedup {
             // Mosquitos and pillbugs can create duplicate moves, so sort and dedup.
+            // TODO: Maybe only enable this for perft?
+            // Dups get resolved quickly with the transposition table and this dedup is very slow.
             moves.sort_unstable();
             moves.dedup();
         }

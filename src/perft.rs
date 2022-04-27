@@ -47,10 +47,17 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
         }
         // Roll out a random game to the desired depth.
         let mut stack = Vec::new();
-        let mut skip_comparison = false;
         for _ in 0..depth {
+            // Check for discrepancies on every move.
             moves.clear();
             Rules::generate_moves(&board, &mut moves);
+            let engine_moves = engine.generate_moves().unwrap();
+            if moves.len() != engine_moves.len() {
+                println!("game log: {}", engine.game_log());
+                dump_difference(&mut board, iter, &moves, &engine_moves);
+                return;
+            }
+
             let m = moves[rng.gen_range(0, moves.len())];
             stack.push(m);
             m.apply(&mut board);
@@ -66,20 +73,6 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
                 return;
             }
             if board_winner.is_some() {
-                skip_comparison = true;
-                break;
-            }
-        }
-
-        if !skip_comparison {
-            // Check for discrepancies.
-            moves.clear();
-            Rules::generate_moves(&board, &mut moves);
-            let engine_moves = engine.generate_moves().unwrap();
-            if moves.len() != engine_moves.len() {
-                println!("game log: {}", engine.game_log());
-                println!("engine moves: {}", engine.raw_generate_moves().unwrap());
-                dump_difference(&mut board, iter, &moves, &engine_moves);
                 break;
             }
         }
@@ -119,18 +112,34 @@ fn dump_difference(
         }
     }
 
-    println!("nokamute only moves:");
-    for m in nokamute_only.iter() {
-        m.apply(board);
-        board.println();
-        m.undo(board);
+    let nokamute_dups = find_dups(nokamute_moves);
+    let engine_dups = find_dups(engine_moves);
+
+    let mut print_moves = |title: &str, moves: &[crate::Move]| {
+        if !moves.is_empty() {
+            println!("{}:", title);
+        }
+        for m in moves.iter() {
+            m.apply(board);
+            board.println();
+            m.undo(board);
+        }
+    };
+
+    print_moves("nokamute only moves", &nokamute_only);
+    print_moves("UHP engine only moves", &engine_only);
+    print_moves("nokamute duplicate moves", &nokamute_dups);
+    print_moves("engine duplicate moves", &engine_dups);
+}
+
+fn find_dups(moves: &[crate::Move]) -> Vec<crate::Move> {
+    let mut dups = Vec::new();
+    for &m in moves.iter() {
+        if moves.iter().filter(|&&m2| m == m2).count() > 1 && !dups.contains(&m) {
+            dups.push(m);
+        }
     }
-    println!("UHP engine only moves:");
-    for m in engine_only.iter() {
-        m.apply(board);
-        board.println();
-        m.undo(board);
-    }
+    dups
 }
 
 #[test]
