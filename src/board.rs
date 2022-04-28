@@ -495,8 +495,45 @@ impl Board {
                 buf.write_all(free_space)?;
             }
 
+            // On 2nd and 3rd rows, print remaining bugs from each side
+            if r == (startr + 1) % ROW_SIZE {
+                buf.write_all(b" ")?;
+                self.write_remaining(Color::White, buf)?;
+            } else if r == (startr + 2) % ROW_SIZE {
+                self.write_remaining(Color::Black, buf)?;
+            }
+
             buf.write_all(b"\n")?;
             r = (r + 1) % ROW_SIZE;
+        }
+        Ok(())
+    }
+
+    fn write_remaining(&self, color: Color, buf: &mut termcolor::Buffer) -> std::io::Result<()> {
+        for bug in Bug::iter_all() {
+            let count = self.remaining[color as usize][bug as usize];
+            let prefix = if count == 2 {
+                b"2"
+            } else if count == 3 {
+                b"3"
+            } else {
+                b" "
+            };
+            if count > 0 {
+                buf.write_all(prefix)?;
+                if color == Color::White {
+                    // Invert terminal background color for white pieces.
+                    buf.set_color(
+                        termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
+                    )?;
+                }
+                write!(buf, "{}", bug.codepoint())?;
+                if color == Color::White {
+                    // Reset coloring.
+                    buf.reset()?;
+                }
+                buf.write_all(b" ")?;
+            }
         }
         Ok(())
     }
