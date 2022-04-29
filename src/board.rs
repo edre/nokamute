@@ -136,7 +136,7 @@ pub enum Color {
 }
 
 impl Color {
-    fn other(self) -> usize {
+    pub fn other(self) -> usize {
         1 - self as usize
     }
 }

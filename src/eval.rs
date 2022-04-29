@@ -1,36 +1,102 @@
 use crate::board::*;
 
+use minimax::{Evaluation, Evaluator};
+use std::cmp::{max, min};
+
 // An evaluator that knows nothing but the rules, and maximally explores the tree.
 pub struct DumbEvaluator;
 
-impl minimax::Evaluator for DumbEvaluator {
+impl Evaluator for DumbEvaluator {
     type G = Rules;
-    fn evaluate(&self, _: &Board) -> minimax::Evaluation {
+    fn evaluate(&self, _: &Board) -> Evaluation {
         0
     }
 }
 
 // An evaluator that counts movable pieces and how close to death the queen is.
 pub struct BasicEvaluator {
-    queen_factor: i32,
-    movable_bug_factor: i32,
-    unplayed_bug_factor: i32,
+    queen_factor: Evaluation,
+    movable_bug_factor: Evaluation,
+    unplayed_bug_factor: Evaluation,
+    beetle_attack_factor: Evaluation,
 }
 
 impl Default for BasicEvaluator {
     fn default() -> Self {
-        Self { queen_factor: 40, movable_bug_factor: 2, unplayed_bug_factor: 1 }
+        Self {
+            queen_factor: 40,
+            movable_bug_factor: 2,
+            unplayed_bug_factor: 1,
+            beetle_attack_factor: 15,
+        }
     }
 }
 
-impl minimax::Evaluator for BasicEvaluator {
-    type G = Rules;
-    fn evaluate(&self, board: &Board) -> minimax::Evaluation {
-        let mut buf = [0; 6];
-        let queens_surrounded = board.queens_surrounded();
-        let immovable = board.find_cut_vertexes();
+fn _count_liberties(board: &Board, origin: Id, id: Id) -> Evaluation {
+    adjacent(id).into_iter().filter(|&adj| adj == origin || !board.occupied(adj)).count()
+        as Evaluation
+}
 
-        fn value(bug: Bug) -> i32 {
+// If this node has pillbug powers, see if any adjacent friendly queens can be
+// moved to higher liberties, or if adjacent enemy queens can be moved to
+// lower liberties.
+fn _update_queen_escape(board: &Board, id: Id, queen_liberties: &mut [Evaluation; 2]) {
+    let node = board.node(id);
+    let pillbug = node.bug() == Bug::Pillbug
+        || (node.bug() == Bug::Mosquito
+            && !node.is_stacked()
+            && adjacent(id)
+                .into_iter()
+                .any(|adj| board.occupied(adj) && board.node(adj).bug() == Bug::Pillbug));
+    if !pillbug {
+        return;
+    }
+
+    for queen in adjacent(id) {
+        if !board.occupied(id) || board.node(queen).bug() != Bug::Queen {
+            continue;
+        }
+        let color = board.node(queen).color();
+
+        for liberty in adjacent(id) {
+            if board.occupied(liberty) {
+                continue;
+            }
+            let new_libs = _count_liberties(board, queen, liberty);
+            if color == node.color() {
+                queen_liberties[color as usize] = max(queen_liberties[color as usize], new_libs);
+            } else {
+                queen_liberties[color.other()] = min(queen_liberties[color.other()], new_libs);
+            }
+        }
+    }
+}
+
+// We really only care about 0, 1, 2, many
+fn distance(start: Id, end: Id) -> Id {
+    // Computing this directly on the spiral torus was too hard.
+    if start == end {
+        return 0;
+    }
+    if adjacent(start).contains(&end) {
+        return 1;
+    }
+    for d1 in adjacent(start) {
+        if adjacent(d1).contains(&end) {
+            return 2;
+        }
+    }
+    return 3;
+}
+
+impl Evaluator for BasicEvaluator {
+    type G = Rules;
+
+    fn evaluate(&self, board: &Board) -> Evaluation {
+        let mut buf = [0; 6];
+        let mut immovable = board.find_cut_vertexes();
+
+        fn value(bug: Bug) -> Evaluation {
             // Mostly made up. All I know is that ants are good.
             match bug {
                 Bug::Queen => 10,
@@ -38,58 +104,95 @@ impl minimax::Evaluator for BasicEvaluator {
                 Bug::Beetle => 6,
                 Bug::Grasshopper => 4,
                 Bug::Spider => 3,
-                Bug::Mosquito => 0, // See below.
+                Bug::Mosquito => 8, // See below.
                 Bug::Ladybug => 5,
                 Bug::Pillbug => 4,
             }
         }
 
-        let mut score = queens_surrounded[1 - board.to_move() as usize] as i32
-            - queens_surrounded[board.to_move() as usize] as i32;
-        score *= self.queen_factor;
+        let mut score = 0;
+        let mut beetle_attack_score = [0; 2];
+        let mut queen_score = [0; 2];
 
         let remaining = board.get_remaining();
         let opp_remaining = board.get_opponent_remaining();
         for bug in Bug::iter_all() {
-            score += (remaining[bug as usize] as i32 - opp_remaining[bug as usize] as i32)
+            score += (remaining[bug as usize] as Evaluation
+                - opp_remaining[bug as usize] as Evaluation)
                 * self.unplayed_bug_factor;
         }
 
         for &id in board.occupied_ids[0].iter().chain(board.occupied_ids[1].iter()) {
             let node = board.node(id);
             let mut bug_score = value(node.bug());
-            let pillbug = node.bug() == Bug::Pillbug; // TODO also pillbug'd mosquito.
-            let pillbug_near_its_queen = pillbug
-                && adjacent(id).iter().any(|&adj| {
-                    let node2 = board.node(adj);
-                    node2.occupied() && node2.bug() == Bug::Queen && node2.color() == node.color()
-                });
-            if pillbug_near_its_queen {
-                // Pillbugs get a bonus if adjacent to matching queen.
-                // for each empty adjacent square.
-                bug_score += (self.queen_factor / 2)
-                    * adjacent(id).iter().filter(|adj| !board.occupied(**adj)).count() as i32;
-            } else if !node.is_stacked() && immovable.get(id) {
-                continue;
-            }
             if node.bug() == Bug::Mosquito {
                 // Mosquitos are valued as they can currently move.
-                if node.is_stacked() {
-                    bug_score = value(Bug::Beetle);
+                bug_score = if node.is_stacked() {
+                    value(Bug::Beetle)
                 } else {
-                    bug_score = adjacent(id)
-                        .iter()
-                        .map(|&id| if board.occupied(id) { value(board.node(id).bug()) } else { 0 })
+                    adjacent(id)
+                        .into_iter()
+                        .map(|adj| {
+                            if board.occupied(adj)
+                                && board.node(adj).bug() != Bug::Queen
+                                && board.node(adj).bug() != Bug::Mosquito
+                            {
+                                value(board.node(adj).bug())
+                            } else {
+                                0
+                            }
+                        })
                         .max()
-                        .unwrap_or(0);
+                        .unwrap_or(0)
                 }
-            }
+            };
+
             if node.bug().crawler() {
                 // Treat blocked crawlers as immovable.
                 if board.slidable_adjacent(&mut buf, id, id).next().is_none() {
-                    continue;
+                    immovable.set(id);
                 }
             }
+
+            if adjacent(board.queens[node.color() as usize]).contains(&id) {
+                // Filling friendly queen's liberty.
+                if immovable.get(id) && !node.is_stacked() {
+                    queen_score[node.color() as usize] -= self.queen_factor;
+                } else {
+                    // Lower penalty for being able to leave.
+                    queen_score[node.color() as usize] -= self.queen_factor / 2;
+                }
+            }
+            if adjacent(board.queens[node.color().other()]).contains(&id) {
+                // A little extra boost for filling opponent's queen, as we will never choose to move.
+                queen_score[node.color().other()] -= self.queen_factor * 11 / 10;
+                // If this bug is already filling a queen's liberty, so don't
+                // also give it its movability bonus. It's more valuable here
+                // than moving around.
+                bug_score = 0;
+            }
+
+            // Check for pillbug queen escape.
+            // TODO: enemy moves should trump friendly moves
+            // This seems to make the ai much dumber, so instead we'll rely on reading 2 more ply.
+            //update_queen_escape(board, id, &mut queen_liberties);
+
+            if !node.is_stacked() && immovable.get(id) {
+                // Pinned bugs are worthless.
+                continue;
+            }
+
+            // Beetles prevent queen shenanigans, give a bonus for a movable beetle near opponent's queen.
+            if node.bug() == Bug::Beetle {
+                let dist = distance(id, board.queens[node.color().other()]);
+                if dist < 3 {
+                    beetle_attack_score[node.color() as usize] = max(
+                        beetle_attack_score[node.color() as usize],
+                        (3 - dist as Evaluation) * self.beetle_attack_factor,
+                    );
+                }
+            }
+
             bug_score *= self.movable_bug_factor;
             if node.color() != board.to_move() {
                 bug_score = -bug_score;
@@ -97,7 +200,11 @@ impl minimax::Evaluator for BasicEvaluator {
             score += bug_score;
         }
 
-        score as minimax::Evaluation
+        let queen_score =
+            queen_score[board.to_move() as usize] - queen_score[board.to_move().other()];
+        let beetle_attack_score = beetle_attack_score[board.to_move() as usize]
+            - beetle_attack_score[board.to_move().other()];
+        queen_score + beetle_attack_score + score
     }
 }
 
