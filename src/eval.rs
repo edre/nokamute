@@ -1,7 +1,7 @@
 use crate::board::*;
 
 use minimax::{Evaluation, Evaluator};
-use std::cmp::{max, min};
+use std::cmp::max;
 
 // An evaluator that knows nothing but the rules, and maximally explores the tree.
 pub struct DumbEvaluator;
@@ -32,44 +32,20 @@ impl Default for BasicEvaluator {
     }
 }
 
-fn _count_liberties(board: &Board, origin: Id, id: Id) -> Evaluation {
+fn count_liberties(board: &Board, origin: Id, id: Id) -> Evaluation {
     adjacent(id).into_iter().filter(|&adj| adj == origin || !board.occupied(adj)).count()
         as Evaluation
 }
 
-// If this node has pillbug powers, see if any adjacent friendly queens can be
-// moved to higher liberties, or if adjacent enemy queens can be moved to
-// lower liberties.
-fn _update_queen_escape(board: &Board, id: Id, queen_liberties: &mut [Evaluation; 2]) {
-    let node = board.node(id);
-    let pillbug = node.bug() == Bug::Pillbug
-        || (node.bug() == Bug::Mosquito
-            && !node.is_stacked()
-            && adjacent(id)
-                .into_iter()
-                .any(|adj| board.occupied(adj) && board.node(adj).bug() == Bug::Pillbug));
-    if !pillbug {
-        return;
+fn pillbug_powers(board: &Board, id: Id, node: Node) -> bool {
+    if node.bug() == Bug::Pillbug {
+        return true;
     }
-
-    for queen in adjacent(id) {
-        if !board.occupied(id) || board.node(queen).bug() != Bug::Queen {
-            continue;
-        }
-        let color = board.node(queen).color();
-
-        for liberty in adjacent(id) {
-            if board.occupied(liberty) {
-                continue;
-            }
-            let new_libs = _count_liberties(board, queen, liberty);
-            if color == node.color() {
-                queen_liberties[color as usize] = max(queen_liberties[color as usize], new_libs);
-            } else {
-                queen_liberties[color.other()] = min(queen_liberties[color.other()], new_libs);
-            }
-        }
-    }
+    node.bug() == Bug::Mosquito
+        && !node.is_stacked()
+        && adjacent(id)
+            .into_iter()
+            .any(|adj| board.occupied(adj) && board.node(adj).bug() == Bug::Pillbug)
 }
 
 // We really only care about 0, 1, 2, many
@@ -112,6 +88,7 @@ impl Evaluator for BasicEvaluator {
 
         let mut score = 0;
         let mut beetle_attack_score = [0; 2];
+        let mut pillbug_defense_score = [0; 2];
         let mut queen_score = [0; 2];
 
         let remaining = board.get_remaining();
@@ -154,7 +131,9 @@ impl Evaluator for BasicEvaluator {
                 }
             }
 
-            if adjacent(board.queens[node.color() as usize]).contains(&id) {
+            let friendly_queen = board.queens[node.color() as usize];
+
+            if adjacent(friendly_queen).contains(&id) {
                 // Filling friendly queen's liberty.
                 if immovable.get(id) && !node.is_stacked() {
                     queen_score[node.color() as usize] -= self.queen_factor;
@@ -162,20 +141,52 @@ impl Evaluator for BasicEvaluator {
                     // Lower penalty for being able to leave.
                     queen_score[node.color() as usize] -= self.queen_factor / 2;
                 }
+                if pillbug_powers(board, id, node) {
+                    let best_escape = adjacent(id)
+                        .into_iter()
+                        .map(|lib| {
+                            if board.occupied(lib) {
+                                0
+                            } else {
+                                count_liberties(board, friendly_queen, lib)
+                            }
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    if best_escape > 2 && pillbug_defense_score[node.color() as usize] >= 0 {
+                        // Don't double count bonus points from pillbug and mosquito. Only one of them can do an escape.
+                        // Enemy pillbug trumps friendly pillbug. Move to safety early.
+                        pillbug_defense_score[node.color() as usize] = self.queen_factor * 2;
+                    }
+                }
             }
-            if adjacent(board.queens[node.color().other()]).contains(&id) {
+
+            let enemy_queen = board.queens[node.color().other()];
+
+            if adjacent(enemy_queen).contains(&id) {
                 // A little extra boost for filling opponent's queen, as we will never choose to move.
-                queen_score[node.color().other()] -= self.queen_factor * 11 / 10;
+                queen_score[node.color().other()] -= self.queen_factor * 12 / 10;
                 // If this bug is already filling a queen's liberty, so don't
                 // also give it its movability bonus. It's more valuable here
                 // than moving around.
                 bug_score = 0;
+                if pillbug_powers(board, id, node) {
+                    let best_unescape = adjacent(id)
+                        .into_iter()
+                        .map(|lib| {
+                            if board.occupied(lib) {
+                                6
+                            } else {
+                                count_liberties(board, enemy_queen, lib)
+                            }
+                        })
+                        .min()
+                        .unwrap_or(6);
+                    if best_unescape < 3 {
+                        pillbug_defense_score[node.color().other()] = -self.queen_factor;
+                    }
+                }
             }
-
-            // Check for pillbug queen escape.
-            // TODO: enemy moves should trump friendly moves
-            // This seems to make the ai much dumber, so instead we'll rely on reading 2 more ply.
-            //update_queen_escape(board, id, &mut queen_liberties);
 
             if !node.is_stacked() && immovable.get(id) {
                 // Pinned bugs are worthless.
@@ -204,7 +215,9 @@ impl Evaluator for BasicEvaluator {
             queen_score[board.to_move() as usize] - queen_score[board.to_move().other()];
         let beetle_attack_score = beetle_attack_score[board.to_move() as usize]
             - beetle_attack_score[board.to_move().other()];
-        queen_score + beetle_attack_score + score
+        let pillbug_defense_score = pillbug_defense_score[board.to_move() as usize]
+            - pillbug_defense_score[board.to_move().other()];
+        queen_score + beetle_attack_score + pillbug_defense_score + score
     }
 }
 
