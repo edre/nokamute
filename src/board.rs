@@ -1125,16 +1125,20 @@ impl minimax::Game for Rules {
 
     fn get_winner(board: &Board) -> Option<minimax::Winner> {
         let queens_surrounded = board.queens_surrounded();
-        let n = board.move_num as usize;
+        let n = board.zobrist_history.len();
         if n > 10 {
             // Check for position repeat stalemate.
             // More than 32 moves ago, we're not going to bother looking.
-            // 4 is the most recently this move could have occurred.
-            let start = if n < 32 { !n & 1 } else { n - 32 };
-            let recent_past = &board.zobrist_history[start..n - 4];
-            let position_repeat_count =
-                recent_past.iter().step_by(2).filter(|&&hash| hash == board.zobrist_hash).count();
-            if position_repeat_count == 2 {
+            // Check every 4 moves as both players need to move and move back to repeat.
+            // Last move is at zobrist_history[n-1], so offset by 1.
+            let start = if n < 35 { (n - 1) % 4 } else { n - 33 };
+            let recent_past = &board.zobrist_history[start..n];
+            let position_repeat_count = recent_past
+                .into_iter()
+                .step_by(4)
+                .filter(|&&hash| hash == board.zobrist_hash)
+                .count();
+            if position_repeat_count >= 2 {
                 // Draw by stalemate.
                 return Some(minimax::Winner::Draw);
             }
@@ -1509,7 +1513,7 @@ mod tests {
     fn test_winner() {
         use minimax::{Game, Move};
 
-        // Draw by stalemate
+        // Draw by threefold repetition.
         let mut board = Board::default();
         let x1 = loc_to_id((-1, -1));
         let x2 = loc_to_id((-1, 0));
@@ -1543,5 +1547,8 @@ mod tests {
         // Undo reverts zobrist and history.
         super::Move::Movement(y2, y1).undo(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
+        // Redo re-reverts draw state.
+        super::Move::Movement(y2, y1).apply(&mut board);
+        assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
     }
 }
