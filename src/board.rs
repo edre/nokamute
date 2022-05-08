@@ -663,9 +663,9 @@ impl Board {
     //
     // TODO: cache movability for each tile, and somehow iteratively update it
     // Need to persist the DFS tree from an arbitrary root.
-    // Adding a tile just adds a leaf to one of its neighbors
-    // Removing a tile means recomputing a path to the root for any children of the removed node.
-    // Hmm, maybe not. DFS iteration order is important.
+    // DFS iteration order is important.
+    // Perhaps you can find the first-explored neighbor and restart the DFS search at that point?
+    // This would be very fast for repeated insertion/removal of leaf nodes (Placement heavy parts of search).
     pub(crate) fn find_cut_vertexes(&self) -> NodeSet {
         struct State<'a> {
             board: &'a Board,
