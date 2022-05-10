@@ -2,6 +2,7 @@ extern crate minimax;
 
 use crate::cli::CliPlayer;
 use crate::uhp_client::UhpPlayer;
+use crate::uhp_util::UhpBoard;
 use crate::{BasicEvaluator, Board, Rules};
 use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
 use rand::Rng;
@@ -18,24 +19,26 @@ pub(crate) trait Player {
 fn face_off(
     game_type: &str, mut player1: Box<dyn Player>, mut player2: Box<dyn Player>,
 ) -> Option<String> {
-    let mut b = Board::new_from_game_type(game_type).unwrap();
+    let mut b = UhpBoard::new(game_type);
     player1.new_game(game_type);
     player2.new_game(game_type);
     let mut players = [player1, player2];
     let mut p = 0;
     loop {
-        b.println();
-        println!("{} ({:?}) to move", players[p].name(), b.to_move());
+        b.inner().println();
+        println!("{} ({:?}) to move", players[p].name(), b.inner().to_move());
         let m = players[p].generate_move();
         let mut moves = Vec::new();
-        Rules::generate_moves(&b, &mut moves);
+        Rules::generate_moves(&b.inner(), &mut moves);
         if !moves.contains(&m) {
-            println!("{} played an illegal move.", players[p].name());
+            println!("{} played an illegal move: {}", players[p].name(), b.to_move_string(m));
+            println!("Game log: {}", b.game_log());
             return Some(players[1 - p].name());
         }
-        m.apply(&mut b);
-        if let Some(winner) = Rules::get_winner(&b) {
-            b.println();
+        b.apply(m).unwrap();
+        if let Some(winner) = Rules::get_winner(&b.inner()) {
+            b.inner().println();
+            println!("Game log: {}", b.game_log());
             return match winner {
                 minimax::Winner::Draw => None,
                 minimax::Winner::PlayerJustMoved => Some(players[p].name()),
