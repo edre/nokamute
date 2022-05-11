@@ -102,7 +102,17 @@ impl UhpServer {
     pub fn serve(&mut self) {
         loop {
             let mut line = String::new();
-            stdin().read_line(&mut line).unwrap();
+            match stdin().read_line(&mut line) {
+                Ok(size) => {
+                    if size == 0 {
+                        return;
+                    }
+                }
+                Err(err) => {
+                    eprintln!("{}", err);
+                    return;
+                }
+            };
             let line = line.trim();
             let space = line.find(' ');
             let command = if let Some(i) = space { &line[..i] } else { &line };
