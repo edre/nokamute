@@ -38,17 +38,6 @@ fn count_liberties(board: &Board, origin: Id, id: Id) -> Evaluation {
         as Evaluation
 }
 
-fn pillbug_powers(board: &Board, id: Id, node: Node) -> bool {
-    if node.bug() == Bug::Pillbug {
-        return true;
-    }
-    node.bug() == Bug::Mosquito
-        && !node.is_stacked()
-        && adjacent(id)
-            .into_iter()
-            .any(|adj| board.occupied(adj) && board.node(adj).bug() == Bug::Pillbug)
-}
-
 // We really only care about 0, 1, 2, many
 fn distance(start: Id, end: Id) -> Id {
     // Computing this directly on the spiral torus was too hard.
@@ -103,29 +92,38 @@ impl Evaluator for BasicEvaluator {
         for &id in board.occupied_ids[0].iter().chain(board.occupied_ids[1].iter()) {
             let node = board.node(id);
             let mut bug_score = value(node.bug());
+            let mut pillbug_powers = node.bug() == Bug::Pillbug;
+            let mut beetle_powers = node.bug() == Bug::Beetle;
+            let mut crawler = node.bug().crawler();
             if node.bug() == Bug::Mosquito {
                 // Mosquitos are valued as they can currently move.
-                bug_score = if node.is_stacked() {
-                    value(Bug::Beetle)
+                bug_score = 0;
+                crawler = true;
+                if node.is_stacked() {
+                    bug_score = value(Bug::Beetle);
+                    beetle_powers = true;
                 } else {
-                    adjacent(id)
-                        .into_iter()
-                        .map(|adj| {
-                            if board.occupied(adj)
-                                && board.node(adj).bug() != Bug::Queen
-                                && board.node(adj).bug() != Bug::Mosquito
-                            {
-                                value(board.node(adj).bug())
-                            } else {
-                                0
+                    for adj in adjacent(id) {
+                        if board.occupied(adj) {
+                            let bug = board.node(adj).bug();
+                            if bug != Bug::Queen {
+                                bug_score = value(Bug::Queen);
                             }
-                        })
-                        .max()
-                        .unwrap_or(0)
+                            if bug == Bug::Beetle {
+                                beetle_powers = true;
+                            }
+                            if bug == Bug::Pillbug {
+                                pillbug_powers = true;
+                            }
+                            if !bug.crawler() {
+                                crawler = false;
+                            }
+                        }
+                    }
                 }
             };
 
-            if node.bug().crawler() {
+            if crawler {
                 // Treat blocked crawlers as immovable.
                 if board.slidable_adjacent(&mut buf, id, id).next().is_none() {
                     immovable.set(id);
@@ -142,7 +140,7 @@ impl Evaluator for BasicEvaluator {
                     // Lower penalty for being able to leave.
                     queen_score[node.color() as usize] -= self.queen_factor / 2;
                 }
-                if pillbug_powers(board, id, node) {
+                if pillbug_powers {
                     let best_escape = adjacent(id)
                         .into_iter()
                         .map(|lib| {
@@ -171,7 +169,7 @@ impl Evaluator for BasicEvaluator {
                 // also give it its movability bonus. It's more valuable here
                 // than moving around.
                 bug_score = 0;
-                if pillbug_powers(board, id, node) {
+                if pillbug_powers {
                     let best_unescape = adjacent(id)
                         .into_iter()
                         .map(|lib| {
@@ -195,7 +193,7 @@ impl Evaluator for BasicEvaluator {
             }
 
             // Beetles prevent queen shenanigans, give a bonus for a movable beetle near opponent's queen.
-            if node.bug() == Bug::Beetle {
+            if beetle_powers {
                 let dist = distance(id, board.queens[node.color().other()]);
                 if dist < 3 {
                     beetle_attack_score[node.color() as usize] = max(
