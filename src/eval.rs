@@ -14,6 +14,7 @@ impl Evaluator for DumbEvaluator {
 }
 
 // An evaluator that counts movable pieces and how close to death the queen is.
+#[derive(Copy, Clone)]
 pub struct BasicEvaluator {
     queen_factor: Evaluation,
     movable_bug_factor: Evaluation,

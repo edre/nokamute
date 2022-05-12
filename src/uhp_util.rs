@@ -51,7 +51,7 @@ impl UhpBoard {
     pub(crate) fn new(game_type: &str) -> Self {
         // Generate names of all pieces.
         let mut name_to_id = HashMap::new();
-        let board = Board::new_from_game_type(game_type).unwrap();
+        let board = Board::new_from_game_type(game_type).expect("unrecognized game type");
         for &color in &[Color::Black, Color::White] {
             for (bug, num_bugs) in board.get_available_bugs().iter() {
                 for num in 0..*num_bugs {
@@ -247,6 +247,10 @@ impl UhpBoard {
 
     pub(crate) fn inner(&self) -> &Board {
         &self.board
+    }
+
+    pub(crate) fn last_move(&self) -> Option<crate::Move> {
+        self.move_history.last().copied()
     }
 
     pub(crate) fn valid_moves(&self) -> String {

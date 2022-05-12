@@ -121,6 +121,11 @@ impl UhpClient {
             self.command(&format!("bestmove time {:02}:{:02}:{:02}", h, m, s))?.pop().unwrap();
         self.board.from_move_string(&move_string)
     }
+
+    pub(crate) fn best_move_depth(&mut self, depth: u8) -> Result<crate::Move> {
+        let move_string = self.command(&format!("bestmove depth {}", depth))?.pop().unwrap();
+        self.board.from_move_string(&move_string)
+    }
 }
 
 impl Drop for UhpClient {
@@ -134,6 +139,8 @@ impl Drop for UhpClient {
 pub(crate) struct UhpPlayer {
     client: UhpClient,
     cmd: String,
+    timeout: Option<Duration>,
+    depth: Option<u8>,
 }
 
 impl UhpPlayer {
@@ -141,6 +148,8 @@ impl UhpPlayer {
         Ok(UhpPlayer {
             client: UhpClient::new(&[cmd.to_owned()])?,
             cmd: Path::new(cmd).file_name().unwrap().to_str().unwrap().to_string(),
+            timeout: None,
+            depth: None,
         })
     }
 }
@@ -158,7 +167,23 @@ impl Player for UhpPlayer {
         self.client.apply(m).unwrap();
     }
 
+    fn undo_move(&mut self, _: crate::Move) {
+        self.client.undo(1).unwrap();
+    }
+
     fn generate_move(&mut self) -> crate::Move {
-        self.client.best_move(Duration::from_secs(5)).unwrap()
+        if let Some(depth) = self.depth {
+            self.client.best_move_depth(depth).unwrap()
+        } else {
+            self.client.best_move(self.timeout.unwrap_or(Duration::from_secs(5))).unwrap()
+        }
+    }
+
+    fn set_max_depth(&mut self, depth: u8) {
+        self.depth = Some(depth);
+    }
+
+    fn set_timeout(&mut self, time: Duration) {
+        self.timeout = Some(time);
     }
 }

@@ -1,6 +1,6 @@
-use crate::player::Player;
+use crate::player::{Player, PlayerConfig};
 use crate::{Board, Bug, Id, Rules};
-use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
+use minimax::{Game, Move};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
 
@@ -121,6 +121,10 @@ impl Player for CliPlayer {
         m.apply(&mut self.board);
     }
 
+    fn undo_move(&mut self, m: crate::Move) {
+        m.undo(&mut self.board);
+    }
+
     fn generate_move(&mut self) -> crate::Move {
         let mut moves = Vec::new();
         Rules::generate_moves(&self.board, &mut moves);
@@ -142,13 +146,10 @@ impl Player for CliPlayer {
     }
 }
 
-pub fn terminal_game_interface() {
+pub fn terminal_game_interface(config: PlayerConfig) {
+    let mut player = config.new_player();
     let mut board = Board::default();
     let mut history = Vec::<crate::Move>::new();
-    let mut strategy = IterativeSearch::new(
-        crate::BasicEvaluator::default(),
-        IterativeOptions::new().with_table_byte_size(32_000_000).with_null_window_search(true),
-    );
     let mut prev_pv = Vec::new();
     let mut prev_pv_board = Board::default();
     loop {
@@ -177,22 +178,20 @@ pub fn terminal_game_interface() {
         if line.starts_with("ai") {
             let mut depth = None;
             for arg in line.split(' ').skip(1) {
-                if let Ok(num) = arg.parse::<usize>() {
+                if let Ok(num) = arg.parse::<u8>() {
                     depth = Some(num);
                 }
             }
             if let Some(d) = depth {
-                strategy.set_max_depth(d);
+                player.set_max_depth(d);
             } else {
-                strategy.set_timeout(Duration::from_secs(5));
+                player.set_timeout(Duration::from_secs(5));
             }
-            if let Some(m) = strategy.choose_move(&board) {
-                prev_pv_board = board.clone();
-                prev_pv = strategy.principal_variation().to_vec();
-                history.push(m);
-                m.apply(&mut board);
-            }
-            println!("{}", strategy.stats());
+            let m = player.generate_move();
+            prev_pv_board = board.clone();
+            prev_pv = player.principal_variation();
+            history.push(m);
+            m.apply(&mut board);
         } else if line.starts_with("mcts") {
             let opts = minimax::MCTSOptions::default().with_max_rollout_depth(200);
             let mut mcts = minimax::MonteCarloTreeSearch::new(opts);
@@ -205,20 +204,24 @@ pub fn terminal_game_interface() {
             if let Some(m) = strat.choose_move(&board) {
                 history.push(m);
                 m.apply(&mut board);
+                player.play_move(m);
             }
         } else if line.starts_with("move") {
             if let Some(m) = input_movement(&board, &moves) {
                 history.push(m);
                 m.apply(&mut board);
+                player.play_move(m);
             }
         } else if line.starts_with("place") {
             if let Some(m) = input_placement(&board, &moves) {
                 history.push(m);
                 m.apply(&mut board);
+                player.play_move(m);
             }
         } else if line.starts_with("undo") {
             if let Some(m) = history.pop() {
                 m.undo(&mut board);
+                player.undo_move(m);
             }
         } else if line.starts_with("pv") {
             for (i, m) in prev_pv.iter().enumerate() {

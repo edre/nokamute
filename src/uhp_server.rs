@@ -1,22 +1,20 @@
 extern crate minimax;
 
 use crate::uhp_util::{Result, UhpBoard, UhpError};
-use crate::{BasicEvaluator, Rules};
+use crate::{Player, PlayerConfig, Rules};
 
-use minimax::Strategy;
-use std::io::{stderr, stdin, Write};
+use std::io::stdin;
 use std::time::Duration;
 
 pub struct UhpServer {
     board: Option<UhpBoard>,
-    options: minimax::IterativeOptions,
-    engine: Option<minimax::IterativeSearch<BasicEvaluator>>,
+    config: PlayerConfig,
+    engine: Option<Box<dyn Player>>,
 }
 
 impl UhpServer {
-    pub fn new() -> Self {
-        let server =
-            UhpServer { board: None, options: minimax::IterativeOptions::new(), engine: None };
+    pub fn new(config: PlayerConfig) -> Self {
+        let server = UhpServer { board: None, config, engine: None };
         server.info().unwrap();
         println!("ok");
         server
@@ -33,7 +31,7 @@ impl UhpServer {
     fn new_game(&mut self, args: &str) -> Result<()> {
         let args = if args.is_empty() { "Base" } else { args };
         self.board = Some(UhpBoard::from_game_string(args)?);
-        self.engine = Some(minimax::IterativeSearch::new(BasicEvaluator::default(), self.options));
+        self.engine = Some(self.config.new_player());
         println!("{}", self.board.as_mut().unwrap().game_string());
         Ok(())
     }
@@ -47,28 +45,29 @@ impl UhpServer {
         let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
         let m = board.from_move_string(args)?;
         board.apply_untrusted(m)?;
+        self.engine.as_mut().unwrap().play_move(m);
         println!("{}", board.game_string());
         Ok(())
     }
 
     fn best_move(&mut self, args: &str) -> Result<()> {
-        let strategy = self.engine.as_mut().ok_or(UhpError::GameNotStarted)?;
+        if self.board.is_none() {
+            return Err(UhpError::GameNotStarted);
+        }
         if let Some(arg) = args.strip_prefix("depth ") {
-            let depth = arg
-                .parse::<usize>()
-                .map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?;
-            strategy.set_max_depth(depth);
+            let depth =
+                arg.parse::<u8>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?;
+            self.engine.as_mut().unwrap().set_max_depth(depth);
         } else if let Some(arg) = args.strip_prefix("time ") {
             let dur =
                 parse_hhmmss(arg).ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
-            strategy.set_timeout(dur);
+            self.engine.as_mut().unwrap().set_timeout(dur);
         } else {
             return Err(UhpError::UnrecognizedCommand(args.to_string()));
         }
         let board = self.board.as_ref().unwrap();
-        let m = strategy.choose_move(board.inner()).unwrap();
+        let m = self.engine.as_mut().unwrap().generate_move();
         println!("{}", board.to_move_string(m));
-        stderr().write_all((strategy.stats() + "\n").as_bytes())?;
         Ok(())
     }
 
@@ -80,6 +79,7 @@ impl UhpServer {
             args.parse::<usize>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?
         };
         for _ in 0..num_undo {
+            self.engine.as_mut().unwrap().undo_move(board.last_move().unwrap());
             board.undo()?;
         }
         println!("{}", board.game_string());
