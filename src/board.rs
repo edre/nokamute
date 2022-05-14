@@ -123,9 +123,17 @@ impl Bug {
         }
     }
 
+    pub fn to_char(&self) -> char {
+        self.name().chars().next().unwrap()
+    }
+
     // Whether this bug can only move (itself) by crawling.
     pub(crate) fn crawler(&self) -> bool {
         matches!(*self, Bug::Ant | Bug::Queen | Bug::Spider | Bug::Pillbug)
+    }
+
+    fn initial_quantity() -> &'static [u8; 8] {
+        &[1, 3, 2, 3, 2, 0, 0, 0]
     }
 }
 
@@ -548,6 +556,63 @@ impl Board {
         self.fancy_fmt(&mut buffer, highlights).unwrap();
         writer.print(&buffer).unwrap();
     }
+
+    fn id_name(&self, id: Id, out: &mut String) {
+        if self.occupied(id) {
+            self.tile_name(self.node(id), out);
+            return;
+        }
+        // Name this relative to an adjacent tile.
+        for (dir, adj) in (0..6).zip(adjacent(id).into_iter()) {
+            if self.occupied(adj) {
+                // Reverse directions; they're from the other bug's perspective.
+                out.push_str(match dir {
+                    3 => "\\",
+                    2 => "-",
+                    1 => "/",
+                    _ => "",
+                });
+                self.tile_name(self.node(adj), out);
+                out.push_str(match dir {
+                    4 => "/",
+                    5 => "-",
+                    0 => "\\",
+                    _ => "",
+                });
+                return;
+            }
+        }
+        out.push_str("??");
+    }
+
+    fn tile_name(&self, node: Node, out: &mut String) {
+        out.push(match node.color() {
+            Color::White => 'w',
+            Color::Black => 'b',
+        });
+        out.push(node.bug().to_char().to_ascii_uppercase());
+        if matches!(node.bug(), Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
+            // TODO: figure out some non-expensive way to encode bug number.
+            // This function can be super slow, but we want apply and undo to be fast.
+            // * keep the occupied_ids in placement order, and update the id in place (ignores height)
+            //      it's one extra bit of state to record which beetle is on top if both beetles of one color are in the same stack.
+            //      this means when stacked there will be duplicates in occupied_ids, needing more deduping (count the underworld?)
+            out.push('?');
+        }
+    }
+
+    fn new_tile_name(&self, bug: Bug, out: &mut String) {
+        out.push(match self.to_move() {
+            Color::White => 'w',
+            Color::Black => 'b',
+        });
+        out.push(bug.to_char().to_ascii_uppercase());
+        if matches!(bug, Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
+            let bug_num =
+                Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
+            out.push(char::from_digit(bug_num as u32, 10).unwrap());
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -600,6 +665,32 @@ impl minimax::Move for Move {
             }
             Move::Pass => {}
         }
+    }
+
+    fn notation(&self, board: &Board) -> Option<String> {
+        let mut out = String::new();
+        match *self {
+            Move::Movement(start, _) => {
+                if !board.occupied(start) {
+                    return None;
+                }
+                board.tile_name(board.node(start), &mut out);
+            }
+            Move::Place(_, bug) => board.new_tile_name(bug, &mut out),
+            Move::Pass => return Some("pass".to_string()),
+        };
+
+        if board.move_num == 0 {
+            return Some(out);
+        }
+        out.push(' ');
+
+        match *self {
+            Move::Movement(_, end) => board.id_name(end, &mut out),
+            Move::Place(id, _) => board.id_name(id, &mut out),
+            Move::Pass => unreachable!(),
+        }
+        Some(out)
     }
 }
 
