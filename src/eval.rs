@@ -107,7 +107,7 @@ impl Evaluator for BasicEvaluator {
                         if board.occupied(adj) {
                             let bug = board.node(adj).bug();
                             if bug != Bug::Queen {
-                                bug_score = value(Bug::Queen);
+                                bug_score = value(bug);
                             }
                             if bug == Bug::Beetle {
                                 beetle_powers = true;
