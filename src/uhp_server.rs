@@ -29,9 +29,12 @@ impl UhpServer {
     }
 
     fn new_game(&mut self, args: &str) -> Result<()> {
+        eprintln!("new_game args={}", args);
         let args = if args.is_empty() { "Base" } else { args };
         self.board = Some(UhpBoard::from_game_string(args)?);
-        self.engine = Some(self.config.new_player());
+        let mut engine = self.config.new_player();
+        engine.new_game(args);
+        self.engine = Some(engine);
         println!("{}", self.board.as_mut().unwrap().game_string());
         Ok(())
     }
