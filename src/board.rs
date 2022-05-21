@@ -233,7 +233,7 @@ impl Board {
         // I don't really want to multiply the table by another factor of 7*8, so
         // just realign the existing random bits.
         // Also include the color to move hash.
-        hash.rotate_left((height << 3) | bug as u32) ^ 0xa6c11b626b105b7c
+        hash.rotate_left((height << 3) | bug as u32)
     }
 
     fn insert_underworld(&mut self, node: Node) -> u8 {
@@ -645,6 +645,8 @@ impl minimax::Move for Move {
             Move::Pass => 0,
         };
         board.move_num += 1;
+        // Encode positions differently based on who is to move.
+        board.zobrist_hash ^= 0xa6c11b626b105b7c;
         board.zobrist_history.push(board.zobrist_hash);
         // TODO: only put Movements in move history
         board.move_history.push(dest);
@@ -665,6 +667,8 @@ impl minimax::Move for Move {
             }
             Move::Pass => {}
         }
+        // Encode positions differently based on who is to move.
+        board.zobrist_hash ^= 0xa6c11b626b105b7c;
     }
 
     fn notation(&self, board: &Board) -> Option<String> {
@@ -1245,6 +1249,10 @@ impl minimax::Game for Rules {
         } else {
             None
         }
+    }
+
+    fn null_move(_: &Board) -> Option<Move> {
+        Some(Move::Pass)
     }
 }
 
