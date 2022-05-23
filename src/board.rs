@@ -152,10 +152,8 @@ impl Color {
 // bit 7: Color
 // bits 4-6: Bug
 // bits 3-4: Bug num
-// bits 0-1:
-//   0 => empty
-//   1 => single tile
-//   2 => stacked; see underworld
+// bits 0-1: tile height; capped at 3
+//   see underworld for covered tiles.
 // All zeros when node is empty.
 #[derive(Clone, Copy)]
 pub(crate) struct Node(u8);
@@ -167,6 +165,11 @@ impl Node {
 
     fn new_occupied(bug: Bug, color: Color, bug_num: u8, clipped_height: u8) -> Self {
         Node(((color as u8) << 7) | ((bug as u8) << 4) | (bug_num << 2) | clipped_height)
+    }
+
+    fn with_height(self, height: u8) -> Self {
+        let clipped_height = min(height, 3);
+        Node((self.0 & !3) | clipped_height)
     }
 
     pub(crate) fn color(self) -> Color {
@@ -208,8 +211,7 @@ struct UnderNode {
 
 impl UnderNode {
     fn new(node: Node, id: Id, height: u8) -> Self {
-        let clipped_height = min(height, 2);
-        Self { node: Node((node.0 & !3) | clipped_height), id, height }
+        Self { node: node.with_height(height), id, height }
     }
 
     fn empty() -> Self {
@@ -222,8 +224,9 @@ pub struct Board {
     // Indexed by Id.
     pub(crate) nodes: [Node; GRID_SIZE],
     // Tiles that are under other tiles.
-    // TODO: sort by height and keep compacted?
+    // Sorted by height (for each id) and no gaps.
     underworld: [UnderNode; 8],
+    underworld_size: usize,
     remaining: [[u8; 8]; 2],
     pub(crate) queens: [Id; 2],
     pub(crate) occupied_ids: [Vec<Id>; 2],
@@ -264,30 +267,24 @@ impl Board {
     }
 
     fn insert_underworld(&mut self, node: Node, id: Id) {
-        let height = 1 + self
-            .underworld
-            .iter()
-            .map(|under| if under.node.occupied() && under.id == id { under.height } else { 0 })
-            .max()
-            .unwrap_or(0);
-        for under in self.underworld.iter_mut() {
-            if !under.node.occupied() {
-                *under = UnderNode::new(node, id, height);
-                return;
-            }
+        let height = self.underworld_height(id, node);
+        if self.underworld_size >= self.underworld.len() {
+            unreachable!("underworld overflowed");
         }
-        unreachable!("underworld overflowed");
+        self.underworld[self.underworld_size] = UnderNode::new(node, id, height);
+        self.underworld_size += 1;
     }
 
     fn remove_underworld(&mut self, id: Id) -> Node {
-        let under = self
-            .underworld
-            .iter_mut()
-            .max_by_key(|under| if under.id == id { under.height } else { 0 })
-            .unwrap();
-        let node = under.node;
-        *under = UnderNode::empty();
-        node
+        for i in (0..self.underworld_size).rev() {
+            if self.underworld[i].id == id {
+                let node = self.underworld[i].node;
+                self.underworld[i..self.underworld_size].rotate_left(1);
+                self.underworld_size -= 1;
+                return node;
+            }
+        }
+        unreachable!("underworld not found");
     }
 
     fn occupied_add(&mut self, color: Color, id: Id) {
@@ -310,12 +307,10 @@ impl Board {
         } else {
             self.occupied_add(color, id);
         }
-        let clipped_height = if prev.occupied() {
+        if prev.occupied() {
             self.insert_underworld(prev, id);
-            2
-        } else {
-            1
-        };
+        }
+        let clipped_height = min(prev.clipped_height() + 1, 3);
         self.nodes[id as usize] = Node::new_occupied(bug, color, bug_num, clipped_height);
         self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
 
@@ -349,18 +344,18 @@ impl Board {
         (bug, prev.bug_num(), color)
     }
 
-    fn height(&self, id: Id) -> u8 {
-        let height = self.node(id).clipped_height();
-        if height > 1 {
-            1 + self
-                .underworld
-                .iter()
-                .map(|under| if under.id == id { under.height } else { 0 })
-                .max()
-                .unwrap()
+    fn underworld_height(&self, id: Id, node: Node) -> u8 {
+        let height = node.clipped_height();
+        if height > 2 {
+            1 + self.underworld[0..self.underworld_size]
+                .iter().rev().filter(|under| under.id == id).next().unwrap().height
         } else {
             height
         }
+    }
+
+    fn height(&self, id: Id) -> u8 {
+        self.underworld_height(id, self.node(id))
     }
 
     pub(crate) fn occupied(&self, id: Id) -> bool {
@@ -409,6 +404,7 @@ impl Board {
         Board {
             nodes: [Node::empty(); GRID_SIZE],
             underworld: [UnderNode::empty(); 8],
+            underworld_size: 0,
             remaining: [remaining; 2],
             queens: [START_ID; 2],
             occupied_ids: [Vec::new(), Vec::new()],
