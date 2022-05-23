@@ -133,7 +133,7 @@ impl Bug {
     }
 
     fn initial_quantity() -> &'static [u8; 8] {
-        &[1, 3, 2, 3, 2, 0, 0, 0]
+        &[1, 3, 2, 3, 2, 1, 1, 1]
     }
 }
 
@@ -151,21 +151,22 @@ impl Color {
 
 // bit 7: Color
 // bits 4-6: Bug
-// bits 0-3:
+// bits 3-4: Bug num
+// bits 0-1:
 //   0 => empty
 //   1 => single tile
-//   2+ => stacked; index into underworld
+//   2 => stacked; see underworld
 // All zeros when node is empty.
 #[derive(Clone, Copy)]
 pub(crate) struct Node(u8);
 
 impl Node {
-    fn new() -> Self {
+    fn empty() -> Self {
         Node(0)
     }
 
-    fn new_occupied(bug: Bug, color: Color, under_bits: u8) -> Self {
-        Node(((color as u8) << 7) | ((bug as u8) << 4) | under_bits)
+    fn new_occupied(bug: Bug, color: Color, bug_num: u8, clipped_height: u8) -> Self {
+        Node(((color as u8) << 7) | ((bug as u8) << 4) | (bug_num << 2) | clipped_height)
     }
 
     pub(crate) fn color(self) -> Color {
@@ -178,16 +179,41 @@ impl Node {
         unsafe { std::mem::transmute::<u8, Bug>((self.0 >> 4) & 7) }
     }
 
+    pub(crate) fn bug_num(self) -> u8 {
+        (self.0 >> 2) & 3
+    }
+
     pub(crate) fn occupied(self) -> bool {
         self.0 != 0
     }
 
     pub(crate) fn is_stacked(self) -> bool {
-        self.under_bits() > 1
+        self.clipped_height() > 1
     }
 
-    fn under_bits(self) -> u8 {
-        self.0 & 0xf
+    fn clipped_height(self) -> u8 {
+        self.0 & 0x3
+    }
+}
+
+#[derive(Copy, Clone)]
+struct UnderNode {
+    // What bug is here.
+    node: Node,
+    // Where is this stack.
+    id: Id,
+    // What is the height of this piece.
+    height: u8,
+}
+
+impl UnderNode {
+    fn new(node: Node, id: Id, height: u8) -> Self {
+        let clipped_height = min(height, 2);
+        Self { node: Node((node.0 & !3) | clipped_height), id, height }
+    }
+
+    fn empty() -> Self {
+        Self { node: Node::empty(), id: 0, height: 0 }
     }
 }
 
@@ -196,7 +222,8 @@ pub struct Board {
     // Indexed by Id.
     pub(crate) nodes: [Node; GRID_SIZE],
     // Tiles that are under other tiles.
-    underworld: [Node; 8],
+    // TODO: sort by height and keep compacted?
+    underworld: [UnderNode; 8],
     remaining: [[u8; 8]; 2],
     pub(crate) queens: [Id; 2],
     pub(crate) occupied_ids: [Vec<Id>; 2],
@@ -228,27 +255,38 @@ impl Board {
         self.nodes[id as usize]
     }
 
-    fn zobrist(&self, id: Id, bug: Bug, color: Color, height: u32) -> u64 {
+    fn zobrist(&self, id: Id, bug: Bug, color: Color, height: u8) -> u64 {
         let hash = self.zobrist_table[(id as usize) << 1 | (color as usize)];
         // I don't really want to multiply the table by another factor of 7*8, so
         // just realign the existing random bits.
         // Also include the color to move hash.
-        hash.rotate_left((height << 3) | bug as u32)
+        hash.rotate_left(((height as u32) << 3) | bug as u32)
     }
 
-    fn insert_underworld(&mut self, node: Node) -> u8 {
-        for i in 0..self.underworld.len() {
-            if !self.underworld[i].occupied() {
-                self.underworld[i] = node;
-                return i as u8 + 2;
+    fn insert_underworld(&mut self, node: Node, id: Id) {
+        let height = 1 + self
+            .underworld
+            .iter()
+            .map(|under| if under.node.occupied() && under.id == id { under.height } else { 0 })
+            .max()
+            .unwrap_or(0);
+        for under in self.underworld.iter_mut() {
+            if !under.node.occupied() {
+                *under = UnderNode::new(node, id, height);
+                return;
             }
         }
         unreachable!("underworld overflowed");
     }
 
-    fn remove_underworld(&mut self, under_bits: u8) -> Node {
-        let node = self.underworld[under_bits as usize - 2];
-        self.underworld[under_bits as usize - 2] = Node::new();
+    fn remove_underworld(&mut self, id: Id) -> Node {
+        let under = self
+            .underworld
+            .iter_mut()
+            .max_by_key(|under| if under.id == id { under.height } else { 0 })
+            .unwrap();
+        let node = under.node;
+        *under = UnderNode::empty();
         node
     }
 
@@ -262,7 +300,7 @@ impl Board {
         vec.swap_remove(i);
     }
 
-    fn insert(&mut self, id: Id, bug: Bug, color: Color) {
+    fn insert(&mut self, id: Id, bug: Bug, bug_num: u8, color: Color) {
         let prev = self.node(id);
         if prev.occupied() {
             if prev.color() != color {
@@ -272,8 +310,13 @@ impl Board {
         } else {
             self.occupied_add(color, id);
         }
-        let under_bits = if prev.occupied() { self.insert_underworld(prev) } else { 1 };
-        self.nodes[id as usize] = Node::new_occupied(bug, color, under_bits);
+        let clipped_height = if prev.occupied() {
+            self.insert_underworld(prev, id);
+            2
+        } else {
+            1
+        };
+        self.nodes[id as usize] = Node::new_occupied(bug, color, bug_num, clipped_height);
         self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
 
         if bug == Bug::Queen {
@@ -282,14 +325,11 @@ impl Board {
     }
 
     // Asserts that there is something there.
-    fn remove(&mut self, id: Id) -> (Bug, Color) {
+    fn remove(&mut self, id: Id) -> (Bug, u8, Color) {
         let height = self.height(id);
         let prev = self.node(id);
-        let under_bits = prev.under_bits();
-        debug_assert!(under_bits != 0);
 
-        let new_node =
-            if under_bits > 1 { self.remove_underworld(under_bits) } else { Node::new() };
+        let new_node = if height > 1 { self.remove_underworld(id) } else { Node::empty() };
         self.nodes[id as usize] = new_node;
         let bug = prev.bug();
         let color = prev.color();
@@ -306,19 +346,20 @@ impl Board {
         if bug == Bug::Queen {
             self.queens[color as usize] = START_ID;
         }
-        (bug, color)
+        (bug, prev.bug_num(), color)
     }
 
-    fn height(&self, id: Id) -> u32 {
-        let mut height = 0;
-        let mut node = self.node(id);
-        loop {
-            let under_bits = node.under_bits();
-            if under_bits < 2 {
-                return height + under_bits as u32;
-            }
-            height += 1;
-            node = self.underworld[under_bits as usize - 2];
+    fn height(&self, id: Id) -> u8 {
+        let height = self.node(id).clipped_height();
+        if height > 1 {
+            1 + self
+                .underworld
+                .iter()
+                .map(|under| if under.id == id { under.height } else { 0 })
+                .max()
+                .unwrap()
+        } else {
+            height
         }
     }
 
@@ -366,8 +407,8 @@ impl Board {
 
     fn new(remaining: [u8; 8]) -> Self {
         Board {
-            nodes: [Node::new(); GRID_SIZE],
-            underworld: [Node::new(); 8],
+            nodes: [Node::empty(); GRID_SIZE],
+            underworld: [UnderNode::empty(); 8],
             remaining: [remaining; 2],
             queens: [START_ID; 2],
             occupied_ids: [Vec::new(), Vec::new()],
@@ -592,12 +633,7 @@ impl Board {
         });
         out.push(node.bug().to_char().to_ascii_uppercase());
         if matches!(node.bug(), Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
-            // TODO: figure out some non-expensive way to encode bug number.
-            // This function can be super slow, but we want apply and undo to be fast.
-            // * keep the occupied_ids in placement order, and update the id in place (ignores height)
-            //      it's one extra bit of state to record which beetle is on top if both beetles of one color are in the same stack.
-            //      this means when stacked there will be duplicates in occupied_ids, needing more deduping (count the underworld?)
-            out.push('?');
+            out.push(char::from_digit(node.bug_num() as u32, 10).unwrap());
         }
     }
 
@@ -633,13 +669,15 @@ impl minimax::Move for Move {
     fn apply(&self, board: &mut Board) {
         let dest = match *self {
             Move::Place(id, bug) => {
-                board.insert(id, bug, board.to_move());
+                let bug_num =
+                    Bug::initial_quantity()[bug as usize] - board.get_remaining()[bug as usize] + 1;
+                board.insert(id, bug, bug_num, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
                 id
             }
             Move::Movement(start, end) => {
-                let (bug, color) = board.remove(start);
-                board.insert(end, bug, color);
+                let (bug, bug_num, color) = board.remove(start);
+                board.insert(end, bug, bug_num, color);
                 end
             }
             Move::Pass => 0,
@@ -662,8 +700,8 @@ impl minimax::Move for Move {
                 board.mut_remaining()[bug as usize] += 1;
             }
             Move::Movement(start, end) => {
-                let (bug, color) = board.remove(end);
-                board.insert(start, bug, color);
+                let (bug, bug_num, color) = board.remove(end);
+                board.insert(start, bug, bug_num, color);
             }
             Move::Pass => {}
         }
@@ -1293,7 +1331,7 @@ mod tests {
 
     impl Board {
         fn insert_loc(&mut self, loc: Loc, bug: Bug, color: Color) {
-            self.insert(loc_to_id(loc), bug, color);
+            self.insert(loc_to_id(loc), bug, 0, color);
         }
 
         fn remove_loc(&mut self, loc: Loc) {
@@ -1302,7 +1340,7 @@ mod tests {
 
         fn fill_board(&mut self, locs: &[Loc], bug: Bug) {
             for &loc in locs {
-                self.insert(loc_to_id(loc), bug, Color::Black);
+                self.insert(loc_to_id(loc), bug, 0, Color::Black);
             }
         }
 
@@ -1344,8 +1382,8 @@ mod tests {
             board.remaining[0][i] = 0;
             board.remaining[1][i] = 0;
         }
-        board.insert(loc_to_id((0, 0)), Bug::Queen, Color::White);
-        board.insert(loc_to_id((1, 0)), Bug::Queen, Color::Black);
+        board.insert_loc((0, 0), Bug::Queen, Color::White);
+        board.insert_loc((1, 0), Bug::Queen, Color::Black);
         let mut moves = Vec::new();
         board.generate_placements(&mut moves);
         board.assert_placements(

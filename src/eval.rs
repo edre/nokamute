@@ -241,7 +241,7 @@ mod tests {
         crate::Move::Place(loc_to_id((1, 1)), Bug::Queen).apply(&mut board);
         crate::Move::Place(loc_to_id((2, 2)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
-        for depth in 0..2 {
+        for depth in 1..3 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement(loc_to_id((-1, 1)), loc_to_id((2, 1)))), m);
@@ -261,7 +261,7 @@ mod tests {
         crate::Move::Place(loc_to_id((0, 1)), Bug::Grasshopper).apply(&mut board);
         crate::Move::Place(loc_to_id((-1, 0)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
-        for depth in 0..3 {
+        for depth in 1..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
             assert_eq!(Some(crate::Move::Movement(loc_to_id((0, 0)), loc_to_id((0, -1)))), m);
