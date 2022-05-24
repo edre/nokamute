@@ -16,7 +16,16 @@ commands:
         Perft, but with multiple threads to get the answer sooner
  perft-debug game_state depth engine_command
         Find discrepancies between nokamute and another UHP engine
-        from the specified starting position at the specified depth"#,
+        from the specified starting position at the specified depth
+
+engine flags:
+ --verbose
+ --strategy=iterative|ybw|mcts|mtdf|random
+ --table-mb=[int]
+ --num-threads=[int]|all
+ --aspiration-window=[int]
+ --double-step
+ --null-move-pruning"#,
         env!("CARGO_PKG_VERSION")
     );
 }

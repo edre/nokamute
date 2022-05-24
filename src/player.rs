@@ -5,7 +5,7 @@ use crate::uhp_client::UhpPlayer;
 use crate::{BasicEvaluator, Board, Rules};
 use minimax::{
     Game, IterativeOptions, IterativeSearch, LazySmp, LazySmpOptions, MCTSOptions,
-    MonteCarloTreeSearch, Move, Random, Strategy,
+    MonteCarloTreeSearch, Move, ParallelYbw, Random, Strategy, YbwOptions,
 };
 use std::time::Duration;
 
@@ -169,6 +169,52 @@ impl Player for LazySmpPlayer {
     }
 }
 
+struct YbwPlayer {
+    board: Board,
+    strategy: ParallelYbw<BasicEvaluator>,
+}
+
+impl YbwPlayer {
+    fn new(mut strategy: ParallelYbw<BasicEvaluator>) -> Self {
+        strategy.set_timeout(Duration::from_secs(5));
+        YbwPlayer { board: Board::default(), strategy }
+    }
+}
+
+impl Player for YbwPlayer {
+    fn name(&self) -> String {
+        "nokamute-ybw".to_owned()
+    }
+
+    fn new_game(&mut self, game_type: &str) {
+        self.board = Board::from_game_type(game_type).unwrap();
+    }
+
+    fn play_move(&mut self, m: crate::Move) {
+        m.apply(&mut self.board);
+    }
+
+    fn undo_move(&mut self, m: crate::Move) {
+        m.undo(&mut self.board);
+    }
+
+    fn generate_move(&mut self) -> crate::Move {
+        self.strategy.choose_move(&self.board).unwrap()
+    }
+
+    fn principal_variation(&self) -> Vec<crate::Move> {
+        self.strategy.principal_variation().to_vec()
+    }
+
+    fn set_max_depth(&mut self, depth: u8) {
+        self.strategy.set_max_depth(depth as usize);
+    }
+
+    fn set_timeout(&mut self, time: Duration) {
+        self.strategy.set_timeout(time);
+    }
+}
+
 struct MctsPlayer {
     board: Board,
     strategy: MonteCarloTreeSearch,
@@ -243,6 +289,7 @@ fn exit(msg: String) -> ! {
 
 pub(crate) enum PlayerStrategy {
     Iterative(LazySmpOptions),
+    Ybw(YbwOptions),
     Random,
     Mcts(MCTSOptions),
 }
@@ -297,6 +344,7 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
             config.opts = config.opts.with_mtdf();
             PlayerStrategy::Iterative(LazySmpOptions::new())
         }
+        "ybw" => PlayerStrategy::Ybw(YbwOptions::new()),
         "iterative" => {
             let mut smp_opts = LazySmpOptions::new();
             if args.contains("--differing-depths") {
@@ -330,6 +378,11 @@ impl PlayerConfig {
                 }
                 Box::new(MctsPlayer::new(opts))
             }
+            PlayerStrategy::Ybw(ybw_opts) => Box::new(YbwPlayer::new(ParallelYbw::new(
+                self.eval.clone(),
+                self.opts,
+                ybw_opts.clone(),
+            ))),
             PlayerStrategy::Iterative(smp_opts) => {
                 let num_threads = self.num_threads.unwrap_or(1);
                 if num_threads == 1 {
