@@ -25,7 +25,7 @@ pub const ROW_SIZE: Id = 16;
 pub const ROW_SIZE: Id = 32;
 
 const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
-const GRID_MASK: Id = (GRID_SIZE as Id).wrapping_sub(1);
+pub(super) const GRID_MASK: Id = (GRID_SIZE as Id).wrapping_sub(1);
 // In the middle of the columns and the rows.
 // To slightly increase cache locality in the early game,
 // and to make formatting slightly simpler.
@@ -132,7 +132,7 @@ impl Bug {
         matches!(*self, Bug::Ant | Bug::Queen | Bug::Spider | Bug::Pillbug)
     }
 
-    fn initial_quantity() -> &'static [u8; 8] {
+    pub(crate) fn initial_quantity() -> &'static [u8; 8] {
         &[1, 3, 2, 3, 2, 1, 1, 1]
     }
 }
@@ -235,8 +235,10 @@ pub struct Board {
     zobrist_table: &'static [u64; GRID_SIZE * 2],
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
-    // History of move destinations.
-    move_history: Vec<Id>,
+    // Board history.
+    pub(super) move_history: Vec<Move>,
+
+    pub(super) game_type_bits: u8,
 }
 
 impl minimax::Zobrist for Board {
@@ -348,7 +350,12 @@ impl Board {
         let height = node.clipped_height();
         if height > 2 {
             1 + self.underworld[0..self.underworld_size]
-                .iter().rev().filter(|under| under.id == id).next().unwrap().height
+                .iter()
+                .rev()
+                .filter(|under| under.id == id)
+                .next()
+                .unwrap()
+                .height
         } else {
             height
         }
@@ -400,7 +407,13 @@ impl Board {
         out
     }
 
-    fn new(remaining: [u8; 8]) -> Self {
+    pub(super) fn new(remaining: [u8; 8]) -> Self {
+        let mut game_type_bits = 0u8;
+        for i in 0..8 {
+            if remaining[i] > 0 {
+                game_type_bits |= 1 << i;
+            }
+        }
         Board {
             nodes: [Node::empty(); GRID_SIZE],
             underworld: [UnderNode::empty(); 8],
@@ -413,6 +426,7 @@ impl Board {
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
             move_history: Vec::new(),
+            game_type_bits,
         }
     }
 
@@ -422,26 +436,6 @@ impl Board {
 
     pub fn new_expansions() -> Self {
         Self::new([1, 3, 2, 3, 2, 1, 1, 1])
-    }
-
-    // New board from UHP GameTypeString, e.g. "Base+MLP"
-    pub fn new_from_game_type(game_type: &str) -> Option<Self> {
-        let mut starting = [1, 3, 2, 3, 2, 0, 0, 0];
-        let mut toks = game_type.split('+');
-        if toks.next()? != "Base" {
-            return None;
-        }
-        if let Some(exts) = toks.next() {
-            for ext in exts.chars() {
-                match ext {
-                    'M' => starting[Bug::Mosquito as usize] = 1,
-                    'L' => starting[Bug::Ladybug as usize] = 1,
-                    'P' => starting[Bug::Pillbug as usize] = 1,
-                    _ => return None,
-                }
-            }
-        }
-        Some(Board::new(starting))
     }
 }
 
@@ -593,58 +587,6 @@ impl Board {
         self.fancy_fmt(&mut buffer, highlights).unwrap();
         writer.print(&buffer).unwrap();
     }
-
-    fn id_name(&self, id: Id, out: &mut String) {
-        if self.occupied(id) {
-            self.tile_name(self.node(id), out);
-            return;
-        }
-        // Name this relative to an adjacent tile.
-        for (dir, adj) in (0..6).zip(adjacent(id).into_iter()) {
-            if self.occupied(adj) {
-                // Reverse directions; they're from the other bug's perspective.
-                out.push_str(match dir {
-                    3 => "\\",
-                    2 => "-",
-                    1 => "/",
-                    _ => "",
-                });
-                self.tile_name(self.node(adj), out);
-                out.push_str(match dir {
-                    4 => "/",
-                    5 => "-",
-                    0 => "\\",
-                    _ => "",
-                });
-                return;
-            }
-        }
-        out.push_str("??");
-    }
-
-    fn tile_name(&self, node: Node, out: &mut String) {
-        out.push(match node.color() {
-            Color::White => 'w',
-            Color::Black => 'b',
-        });
-        out.push(node.bug().to_char().to_ascii_uppercase());
-        if matches!(node.bug(), Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
-            out.push(char::from_digit(node.bug_num() as u32, 10).unwrap());
-        }
-    }
-
-    fn new_tile_name(&self, bug: Bug, out: &mut String) {
-        out.push(match self.to_move() {
-            Color::White => 'w',
-            Color::Black => 'b',
-        });
-        out.push(bug.to_char().to_ascii_uppercase());
-        if matches!(bug, Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
-            let bug_num =
-                Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
-            out.push(char::from_digit(bug_num as u32, 10).unwrap());
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -663,27 +605,24 @@ impl Default for Move {
 impl minimax::Move for Move {
     type G = Rules;
     fn apply(&self, board: &mut Board) {
-        let dest = match *self {
+        match *self {
             Move::Place(id, bug) => {
                 let bug_num =
                     Bug::initial_quantity()[bug as usize] - board.get_remaining()[bug as usize] + 1;
                 board.insert(id, bug, bug_num, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
-                id
             }
             Move::Movement(start, end) => {
                 let (bug, bug_num, color) = board.remove(start);
                 board.insert(end, bug, bug_num, color);
-                end
             }
-            Move::Pass => 0,
+            _ => {}
         };
         board.move_num += 1;
         // Encode positions differently based on who is to move.
         board.zobrist_hash ^= 0xa6c11b626b105b7c;
         board.zobrist_history.push(board.zobrist_hash);
-        // TODO: only put Movements in move history
-        board.move_history.push(dest);
+        board.move_history.push(*self);
     }
 
     fn undo(&self, board: &mut Board) {
@@ -706,29 +645,7 @@ impl minimax::Move for Move {
     }
 
     fn notation(&self, board: &Board) -> Option<String> {
-        let mut out = String::new();
-        match *self {
-            Move::Movement(start, _) => {
-                if !board.occupied(start) {
-                    return None;
-                }
-                board.tile_name(board.node(start), &mut out);
-            }
-            Move::Place(_, bug) => board.new_tile_name(bug, &mut out),
-            Move::Pass => return Some("pass".to_string()),
-        };
-
-        if board.move_num == 0 {
-            return Some(out);
-        }
-        out.push(' ');
-
-        match *self {
-            Move::Movement(_, end) => board.id_name(end, &mut out),
-            Move::Place(id, _) => board.id_name(id, &mut out),
-            Move::Pass => unreachable!(),
-        }
-        Some(out)
+        Some(board.to_move_string(*self))
     }
 }
 
@@ -1078,7 +995,10 @@ impl Board {
 
     fn generate_movements(&self, moves: &mut Vec<Move>) {
         let mut immovable = self.find_cut_vertexes();
-        let stunned = self.move_history.last();
+        let stunned = match self.move_history.last() {
+            Some(Move::Movement(_, dest)) => Some(dest),
+            _ => None,
+        };
         if let Some(moved) = stunned {
             // Can't move pieces that were moved on the opponent's turn.
             immovable.set(*moved);

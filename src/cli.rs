@@ -114,7 +114,7 @@ impl Player for CliPlayer {
     }
 
     fn new_game(&mut self, game_type: &str) {
-        self.board = Board::new_from_game_type(game_type).unwrap();
+        self.board = Board::from_game_type(game_type).unwrap();
     }
 
     fn play_move(&mut self, m: crate::Move) {

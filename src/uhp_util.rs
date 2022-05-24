@@ -1,37 +1,13 @@
 extern crate minimax;
-use crate::{adjacent, Board, Bug, Color, Id, Rules, START_ID};
+use crate::{adjacent, Board, Bug, Color, Id, Node, Rules, GRID_MASK, ROW_SIZE, START_ID};
 use minimax::{Game, Move};
-use std::collections::HashMap;
-
-pub(crate) struct UhpBoard {
-    board: Board,
-    // Maps "wA1" to its location or None if not placed yet.
-    name_to_id: HashMap<String, Option<Id>>,
-    // Reverse map for pieces in play.
-    id_to_name_stack: HashMap<Id, Vec<String>>,
-    game_type: String,
-    move_history: Vec<crate::Move>,
-}
-
-fn bug_name(color: Color, bug: Bug, number: u8) -> String {
-    let mut name = match color {
-        // Standard seems to be white goes first.
-        Color::Black => "b",
-        Color::White => "w",
-    }
-    .to_string();
-    name.push(bug.name().chars().next().unwrap().to_ascii_uppercase());
-    if bug == Bug::Ant || bug == Bug::Spider || bug == Bug::Grasshopper || bug == Bug::Beetle {
-        name.push((number + 48) as u8 as char);
-    }
-    name
-}
 
 #[derive(Debug)]
-pub(crate) enum UhpError {
+pub enum UhpError {
     IoError(std::io::Error),
     UnknownPiece(String),
     InvalidGameString(String),
+    InvalidGameType(String),
     InvalidMove(String),
     GameNotStarted,
     UnrecognizedCommand(String),
@@ -45,256 +21,152 @@ impl From<std::io::Error> for UhpError {
     }
 }
 
-pub(crate) type Result<T> = std::result::Result<T, UhpError>;
+pub type Result<T> = std::result::Result<T, UhpError>;
 
-impl UhpBoard {
-    pub(crate) fn new(game_type: &str) -> Self {
-        // Generate names of all pieces.
-        let mut name_to_id = HashMap::new();
-        let board = Board::new_from_game_type(game_type).expect("unrecognized game type");
-        for &color in &[Color::Black, Color::White] {
-            for (bug, num_bugs) in board.get_available_bugs().iter() {
-                for num in 0..*num_bugs {
-                    name_to_id.insert(bug_name(color, *bug, num + 1), None);
+impl Board {
+    // New board from UHP GameTypeString, e.g. "Base+MLP"
+    pub fn from_game_type(game_type: &str) -> Result<Self> {
+        let err = || UhpError::InvalidGameType(game_type.to_owned());
+        let mut starting = [1, 3, 2, 3, 2, 0, 0, 0];
+        let mut toks = game_type.split('+');
+        if toks.next().ok_or_else(err)? != "Base" {
+            return Err(err());
+        }
+        if let Some(exts) = toks.next() {
+            for ext in exts.chars() {
+                match ext {
+                    'M' => starting[Bug::Mosquito as usize] = 1,
+                    'L' => starting[Bug::Ladybug as usize] = 1,
+                    'P' => starting[Bug::Pillbug as usize] = 1,
+                    _ => return Err(err()),
                 }
             }
         }
-        UhpBoard {
-            board,
-            name_to_id,
-            id_to_name_stack: HashMap::new(),
-            game_type: game_type.to_string(),
-            move_history: Vec::new(),
-        }
+        Ok(Board::new(starting))
     }
 
-    // Returns the location of the piece.
-    // Err if the string is invalid.
-    // Ok(None) if the piece is not on the board.
-    pub(crate) fn to_id(&self, piece_string: &str) -> Result<Option<Id>> {
-        if let Some(id) = self.name_to_id.get(piece_string) {
-            return Ok(*id);
+    pub(super) fn id_name(&self, id: Id, out: &mut String) {
+        if self.occupied(id) {
+            self.tile_name(self.node(id), out);
+            return;
         }
-        Ok(Some(if "\\-/".contains(&piece_string[..1]) {
-            let name = &piece_string[1..];
-            let neighbors = adjacent(self.to_id(name)?.unwrap());
-            match &piece_string[..1] {
-                "\\" => neighbors[0],
-                "-" => neighbors[5],
-                "/" => neighbors[4],
-                _ => return Err(UhpError::UnknownPiece(piece_string.to_owned())),
-            }
-        } else if "\\-/".contains(&piece_string[piece_string.len() - 1..]) {
-            let name = &piece_string[..piece_string.len() - 1];
-            let neighbors = adjacent(self.to_id(name)?.unwrap());
-            match &piece_string[piece_string.len() - 1..] {
-                "/" => neighbors[1],
-                "-" => neighbors[2],
-                "\\" => neighbors[3],
-                _ => return Err(UhpError::UnknownPiece(piece_string.to_owned())),
-            }
-        } else {
-            return Err(UhpError::UnknownPiece(piece_string.to_owned()));
-        }))
-    }
-
-    // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
-    pub(crate) fn from_move_string(&self, move_string: &str) -> Result<crate::Move> {
-        if move_string == "pass" {
-            return Ok(crate::Move::Pass);
-        }
-        let tokens = move_string.split(' ').collect::<Vec<_>>();
-        let start: Option<Id> = self.to_id(tokens[0])?;
-        let bug = Bug::from_char(tokens[0].chars().nth(1).unwrap()).unwrap();
-        if self.move_history.is_empty() {
-            if tokens.len() != 1 {
-                return Err(UhpError::InvalidMove(move_string.to_owned()));
-            }
-            return Ok(crate::Move::Place(START_ID, bug));
-        }
-        if tokens.len() != 2 {
-            return Err(UhpError::InvalidMove(move_string.to_owned()));
-        }
-        let end: Id = self.to_id(tokens[1])?.unwrap();
-        Ok(if start.is_some() && self.board.occupied(start.unwrap()) {
-            crate::Move::Movement(start.unwrap(), end)
-        } else {
-            crate::Move::Place(end, bug)
-        })
-    }
-
-    fn next_bug_num(&self, bug: Bug) -> u8 {
-        [1, 3, 2, 3, 2, 1, 1, 1][bug as usize] - self.board.get_remaining()[bug as usize] + 1
-    }
-
-    pub(crate) fn to_move_string(&self, m: crate::Move) -> String {
-        let mut move_string = match m {
-            crate::Move::Place(_, bug) => {
-                bug_name(self.board.to_move(), bug, self.next_bug_num(bug))
-            }
-            crate::Move::Movement(start, _) => {
-                self.id_to_name_stack.get(&start).unwrap().last().unwrap().clone()
-            }
-            crate::Move::Pass => return "pass".to_owned(),
-        };
-        if self.move_history.is_empty() {
-            return move_string;
-        }
-        move_string.push(' ');
-
-        let end = match m {
-            crate::Move::Place(id, _) => id,
-            crate::Move::Movement(_, end) => end,
-            crate::Move::Pass => unreachable!(),
-        };
-        if let Some(name) = self.id_to_name_stack.get(&end).map(|stack| stack.last()).flatten() {
-            move_string.push_str(name);
-            return move_string;
-        }
-        for (dir, adj) in adjacent(end).iter().enumerate() {
-            if self.board.occupied(*adj) {
-                let name = self.id_to_name_stack.get(adj).unwrap().last().unwrap().clone();
+        // Name this relative to an adjacent tile.
+        for (dir, adj) in (0..6).zip(adjacent(id).into_iter()) {
+            if self.occupied(adj) {
                 // Reverse directions; they're from the other bug's perspective.
-                move_string.push_str(match dir {
+                out.push_str(match dir {
                     3 => "\\",
                     2 => "-",
                     1 => "/",
                     _ => "",
                 });
-                move_string.push_str(&name);
-                move_string.push_str(match dir {
+                self.tile_name(self.node(adj), out);
+                out.push_str(match dir {
                     4 => "/",
                     5 => "-",
                     0 => "\\",
                     _ => "",
                 });
-                return move_string;
+                return;
             }
         }
-        unreachable!("no neighboring pieces")
+        out.push_str("??");
     }
 
-    pub(crate) fn apply_untrusted(&mut self, m: crate::Move) -> Result<()> {
-        let mut moves = Vec::new();
-        Rules::generate_moves(&self.board, &mut moves);
-        if !moves.contains(&m) {
-            return Err(UhpError::InvalidMove("That is not a valid move".to_string()));
+    pub(super) fn tile_name(&self, node: Node, out: &mut String) {
+        out.push(match node.color() {
+            Color::White => 'w',
+            Color::Black => 'b',
+        });
+        out.push(node.bug().to_char().to_ascii_uppercase());
+        if matches!(node.bug(), Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
+            out.push(char::from_digit(node.bug_num() as u32, 10).unwrap());
         }
-        self.apply(m)
     }
 
-    pub(crate) fn apply(&mut self, m: crate::Move) -> Result<()> {
-        match m {
-            crate::Move::Place(id, bug) => {
-                let color = self.board.to_move();
-                let name = bug_name(color, bug, self.next_bug_num(bug));
-                self.name_to_id.insert(name.clone(), Some(id));
-                self.id_to_name_stack.insert(id, vec![name]);
-            }
-            crate::Move::Movement(start, end) => {
-                let name = self.id_to_name_stack.get_mut(&start).unwrap().pop().unwrap();
-                self.name_to_id.insert(name.clone(), Some(end));
-                self.id_to_name_stack.entry(end).or_insert_with(Vec::new).push(name);
-            }
-            crate::Move::Pass => {}
+    pub(super) fn new_tile_name(&self, bug: Bug, out: &mut String) {
+        out.push(match self.to_move() {
+            Color::White => 'w',
+            Color::Black => 'b',
+        });
+        out.push(bug.to_char().to_ascii_uppercase());
+        if matches!(bug, Bug::Ant | Bug::Grasshopper | Bug::Beetle | Bug::Spider) {
+            let bug_num =
+                Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
+            out.push(char::from_digit(bug_num as u32, 10).unwrap());
         }
-        m.apply(&mut self.board);
-        self.move_history.push(m);
-        Ok(())
     }
 
-    pub(crate) fn undo(&mut self) -> Result<()> {
-        let m = self.move_history.pop().ok_or(UhpError::TooManyUndos)?;
-        match m {
-            crate::Move::Place(id, _) => {
-                let name = self.id_to_name_stack.get_mut(&id).unwrap().pop().unwrap();
-                self.name_to_id.insert(name, None);
-            }
-            crate::Move::Movement(start, end) => {
-                let name = self.id_to_name_stack.get_mut(&end).unwrap().pop().unwrap();
-                self.name_to_id.insert(name.clone(), Some(start));
-                self.id_to_name_stack.entry(start).or_insert_with(Vec::new).push(name);
-            }
-            crate::Move::Pass => {}
-        }
-        m.undo(&mut self.board);
-        Ok(())
-    }
-
-    pub(crate) fn from_game_string(s: &str) -> Result<Self> {
-        let mut toks = s.split(';');
-        let game_type = toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
-        let mut board = UhpBoard::new(game_type);
-        // We don't actually care about the game state, but
-        // we'll just treat this like a game type if it's
-        if toks.next().is_none() {
-            return Ok(board);
-        }
-        // Don't care about turn string either, although it would say which
-        // bug moved first?
-        toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
-        // The rest are move strings.
-        for move_string in toks {
-            let m = board.from_move_string(move_string)?;
-            board.apply(m)?;
-        }
-        Ok(board)
-    }
-
-    pub(crate) fn into_inner(self) -> Board {
-        self.board
-    }
-
-    pub(crate) fn inner(&self) -> &Board {
-        &self.board
-    }
-
-    pub(crate) fn last_move(&self) -> Option<crate::Move> {
-        self.move_history.last().copied()
-    }
-
-    pub(crate) fn valid_moves(&self) -> String {
-        let mut moves = Vec::new();
-        Rules::generate_moves(&self.board, &mut moves);
+    pub(super) fn to_move_string(&self, m: crate::Move) -> String {
         let mut out = String::new();
-        for m in moves {
-            out.push_str(&self.to_move_string(m));
-            out.push(';');
+        match m {
+            crate::Move::Movement(start, _) => {
+                if !self.occupied(start) {
+                    return "??".to_string();
+                }
+                self.tile_name(self.node(start), &mut out);
+            }
+            crate::Move::Place(_, bug) => self.new_tile_name(bug, &mut out),
+            crate::Move::Pass => return "pass".to_string(),
         }
-        if out.ends_with(';') {
-            out.pop();
+
+        if self.move_num == 0 {
+            return out;
+        }
+        out.push(' ');
+
+        match m {
+            crate::Move::Movement(_, end) => self.id_name(end, &mut out),
+            crate::Move::Place(id, _) => self.id_name(id, &mut out),
+            crate::Move::Pass => unreachable!(),
         }
         out
     }
 
-    pub(crate) fn game_log(&mut self) -> String {
-        let history = self.move_history.clone();
-        for _ in 0..history.len() {
-            self.undo().unwrap();
+    pub fn game_string(&self) -> String {
+        let mut out = self.game_type();
+        out.push(';');
+        out.push_str(self.game_state_string());
+        out.push(';');
+        out.push_str(&self.turn_string());
+        if !self.move_history.is_empty() {
+            out.push(';');
+            out.push_str(&self.game_log());
         }
-        let mut log = String::new();
-        for &m in history.iter() {
-            log.push_str(&self.to_move_string(m));
-            log.push(';');
-            self.apply(m).unwrap();
-        }
-        if log.ends_with(';') {
-            log.pop();
-        }
-        log
+        out
     }
 
-    fn game_state_string(&self) -> &'static str {
+    pub fn game_type(&self) -> String {
+        let mut game_type = "Base".to_string();
+        let mosquito = self.game_type_bits & (1 << Bug::Mosquito as u32) != 0;
+        let ladybug = self.game_type_bits & (1 << Bug::Ladybug as u32) != 0;
+        let pillbug = self.game_type_bits & (1 << Bug::Pillbug as u32) != 0;
+        if mosquito || ladybug || pillbug {
+            game_type.push('+');
+        }
+        if mosquito {
+            game_type.push('M');
+        }
+        if ladybug {
+            game_type.push('L');
+        }
+        if pillbug {
+            game_type.push('P');
+        }
+        game_type
+    }
+
+    pub fn game_state_string(&self) -> &'static str {
         if self.move_history.is_empty() {
             return "NotStarted";
         }
-        match Rules::get_winner(&self.board) {
+        match Rules::get_winner(&self) {
             Some(minimax::Winner::Draw) => "Draw",
-            Some(minimax::Winner::PlayerToMove) => match self.board.to_move() {
+            Some(minimax::Winner::PlayerToMove) => match self.to_move() {
                 Color::Black => "BlackWins",
                 Color::White => "WhiteWins",
             },
-            Some(minimax::Winner::PlayerJustMoved) => match self.board.to_move() {
+            Some(minimax::Winner::PlayerJustMoved) => match self.to_move() {
                 Color::White => "BlackWins",
                 Color::Black => "WhiteWins",
             },
@@ -303,18 +175,165 @@ impl UhpBoard {
     }
 
     fn turn_string(&self) -> String {
-        format!("{:?}[{}]", self.board.to_move(), self.move_history.len() / 2 + 1)
+        format!("{:?}[{}]", self.to_move(), self.move_history.len() / 2 + 1)
     }
 
-    pub(crate) fn game_string(&mut self) -> String {
-        let mut out = self.game_type.clone();
-        out.push(';');
-        out.push_str(self.game_state_string());
-        out.push(';');
-        out.push_str(&self.turn_string());
-        if !self.move_history.is_empty() {
+    pub fn game_log(&self) -> String {
+        let mut board = Board::from_game_type(&self.game_type()).unwrap();
+        let mut log = String::new();
+        for &m in &self.move_history {
+            log.push_str(&board.to_move_string(m));
+            log.push(';');
+            m.apply(&mut board);
+        }
+        if log.ends_with(';') {
+            log.pop();
+        }
+        log
+    }
+
+    // From e.g. "wB2-", returns bug, num, color, delta (White, Beetle, 2, 1)
+    fn parse_piece_name(&self, mut piece_string: &str) -> Option<(Color, Bug, u8, Id)> {
+        let first = piece_string.chars().next()?;
+        let last = piece_string.chars().rev().next()?;
+        let delta = if "\\-/".contains(first) {
+            piece_string = &piece_string[1..];
+            match first {
+                '\\' => (ROW_SIZE + 1).wrapping_neg(),
+                '-' => (1 as Id).wrapping_neg(),
+                '/' => ROW_SIZE,
+                _ => return None,
+            }
+        } else if "\\-/".contains(last) {
+            piece_string = &piece_string[..piece_string.len() - 1];
+            match last {
+                '/' => ROW_SIZE.wrapping_neg(),
+                '-' => 1,
+                '\\' => ROW_SIZE + 1,
+                _ => return None,
+            }
+        } else {
+            0
+        };
+
+        let mut chars = piece_string.chars();
+        let color = match chars.next()? {
+            'w' => Color::White,
+            'b' => Color::Black,
+            _ => return None,
+        };
+        let bug = Bug::from_char(chars.next()?)?;
+        let bug_num = if Bug::initial_quantity()[bug as usize] > 1 {
+            char::to_digit(chars.next()?, 10)? as u8
+        } else if chars.next().is_some() {
+            return None;
+        } else {
+            1
+        };
+        Some((color, bug, bug_num, delta))
+    }
+
+    // Returns the location of the piece, or None if it is not visible on the board.
+    pub(crate) fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Id> {
+        self.occupied_ids[color as usize].iter().copied().find(|&id| {
+            let node = self.node(id);
+            node.bug() == bug && node.bug_num() == bug_num
+        })
+    }
+
+    // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
+    pub(crate) fn from_move_string(&self, move_string: &str) -> Result<crate::Move> {
+        let err = || UhpError::InvalidMove(move_string.to_owned());
+        if move_string == "pass" {
+            return Ok(crate::Move::Pass);
+        }
+        let tokens = move_string.split(' ').collect::<Vec<_>>();
+        let (color, bug, bug_num, delta) = self.parse_piece_name(tokens[0]).ok_or_else(err)?;
+        if delta != 0 {
+            return Err(err());
+        }
+        if self.move_history.is_empty() {
+            if tokens.len() != 1 {
+                return Err(err());
+            }
+            return Ok(crate::Move::Place(START_ID, bug));
+        }
+        if tokens.len() != 2 {
+            return Err(err());
+        }
+        let start: Option<Id> = self.find_bug(color, bug, bug_num);
+        let end: Id = {
+            let (color, bug, bug_num, delta) = self.parse_piece_name(tokens[1]).ok_or_else(err)?;
+            let id = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
+            id.wrapping_add(delta) & GRID_MASK
+        };
+        Ok(if start.is_some() && self.occupied(start.unwrap()) {
+            crate::Move::Movement(start.unwrap(), end)
+        } else {
+            if color != self.to_move() {
+                return Err(err());
+            }
+            let expected_bug_num =
+                Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
+            if bug_num != expected_bug_num {
+                return Err(err());
+            }
+            crate::Move::Place(end, bug)
+        })
+    }
+
+    pub(crate) fn from_game_string(s: &str) -> Result<Self> {
+        let mut toks = s.split(';');
+        let game_type = toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
+        let mut board = Board::from_game_type(game_type)?;
+        // We don't actually care about the game state, but
+        // we'll just treat this like a game type if it's
+        if toks.next().is_none() {
+            return Ok(board);
+        }
+        // Don't care about turn string either.
+        // Although it would say which color moved first?
+        toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
+        // The rest are move strings.
+        for move_string in toks {
+            let m = board.from_move_string(move_string)?;
+            board.apply_untrusted(m)?;
+        }
+        Ok(board)
+    }
+
+    pub(crate) fn apply_untrusted(&mut self, m: crate::Move) -> Result<()> {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&self, &mut moves);
+        if !moves.contains(&m) {
+            return Err(UhpError::InvalidMove("That is not a valid move".to_string()));
+        }
+        m.apply(self);
+        Ok(())
+    }
+
+    pub(crate) fn undo_count(&mut self, count: usize) -> Result<()> {
+        for _ in 0..count {
+            let m = self.move_history.last().copied().ok_or(UhpError::TooManyUndos)?;
+            m.undo(self);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn last_move(&self) -> Option<crate::Move> {
+        self.move_history.last().copied()
+    }
+
+    pub(crate) fn valid_moves(&self) -> String {
+        let mut moves = Vec::new();
+        Rules::generate_moves(&self, &mut moves);
+        let mut out = String::new();
+        for m in moves {
+            out.push_str(&self.to_move_string(m));
             out.push(';');
-            out.push_str(&self.game_log());
+        }
+        if out.ends_with(';') {
+            out.pop();
         }
         out
     }
@@ -330,32 +349,30 @@ mod tests {
 
     #[test]
     fn test_move_string_round_trip() {
-        let mut b = UhpBoard::new("Base+MLP");
+        let mut board = Board::from_game_type("Base+MLP").unwrap();
         let mut rng = rand::thread_rng();
+        let mut moves = Vec::new();
         for iter in 0..20 {
-            let mut moves = Vec::new();
             let mut depth = 0;
             for _ in 0..20 {
                 depth += 1;
                 moves.clear();
-                Rules::generate_moves(&b.board, &mut moves);
+                Rules::generate_moves(&board, &mut moves);
                 let m = moves[rng.gen_range(0, moves.len())];
-                let move_string = b.to_move_string(m);
+                let move_string = board.to_move_string(m);
                 assert_eq!(
                     m,
-                    b.from_move_string(&move_string).unwrap(),
+                    board.from_move_string(&move_string).unwrap(),
                     "iter={}, move_string={}",
                     iter,
                     move_string,
                 );
-                b.apply(m).unwrap();
-                if Rules::get_winner(&b.board).is_some() {
+                board.apply_untrusted(m).unwrap();
+                if Rules::get_winner(&board).is_some() {
                     break;
                 }
             }
-            for _ in 0..depth {
-                b.undo().unwrap();
-            }
+            board.undo_count(depth).unwrap();
         }
     }
 }

@@ -1,13 +1,13 @@
 extern crate minimax;
 
-use crate::uhp_util::{Result, UhpBoard, UhpError};
-use crate::{Player, PlayerConfig, Rules};
+use crate::uhp_util::{Result, UhpError};
+use crate::{Board, Player, PlayerConfig, Rules};
 
 use std::io::stdin;
 use std::time::Duration;
 
 pub struct UhpServer {
-    board: Option<UhpBoard>,
+    board: Option<Board>,
     config: PlayerConfig,
     engine: Option<Box<dyn Player>>,
 }
@@ -31,7 +31,7 @@ impl UhpServer {
     fn new_game(&mut self, args: &str) -> Result<()> {
         eprintln!("new_game args={}", args);
         let args = if args.is_empty() { "Base" } else { args };
-        self.board = Some(UhpBoard::from_game_string(args)?);
+        self.board = Some(Board::from_game_string(args)?);
         let mut engine = self.config.new_player();
         engine.new_game(args);
         self.engine = Some(engine);
@@ -54,9 +54,7 @@ impl UhpServer {
     }
 
     fn best_move(&mut self, args: &str) -> Result<()> {
-        if self.board.is_none() {
-            return Err(UhpError::GameNotStarted);
-        }
+        let board = self.board.as_ref().ok_or(UhpError::GameNotStarted)?;
         if let Some(arg) = args.strip_prefix("depth ") {
             let depth =
                 arg.parse::<u8>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?;
@@ -68,7 +66,6 @@ impl UhpServer {
         } else {
             return Err(UhpError::UnrecognizedCommand(args.to_string()));
         }
-        let board = self.board.as_ref().unwrap();
         let m = self.engine.as_mut().unwrap().generate_move();
         println!("{}", board.to_move_string(m));
         Ok(())
@@ -81,9 +78,12 @@ impl UhpServer {
         } else {
             args.parse::<usize>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?
         };
+        if num_undo > board.move_history.len() {
+            return Err(UhpError::TooManyUndos);
+        }
         for _ in 0..num_undo {
             self.engine.as_mut().unwrap().undo_move(board.last_move().unwrap());
-            board.undo()?;
+            board.undo_count(1)?;
         }
         println!("{}", board.game_string());
         Ok(())
@@ -97,7 +97,7 @@ impl UhpServer {
     // Bonus undocumented command.
     fn perft(&mut self, args: &str) -> Result<()> {
         let depth = args.parse::<usize>().unwrap_or(20);
-        let mut b = self.board.as_ref().ok_or(UhpError::GameNotStarted)?.inner().clone();
+        let mut b = self.board.as_ref().ok_or(UhpError::GameNotStarted)?.clone();
         minimax::perft::<Rules>(&mut b, depth, false);
         Ok(())
     }

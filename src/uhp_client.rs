@@ -1,8 +1,8 @@
 extern crate minimax;
 
 use crate::player::Player;
-use crate::uhp_util::{Result, UhpBoard, UhpError};
-use crate::Color;
+use crate::uhp_util::{Result, UhpError};
+use crate::{Board, Color};
 
 use minimax::Winner;
 use std::io::{BufRead, BufReader, Write};
@@ -15,7 +15,7 @@ pub(crate) struct UhpClient {
     proc: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
-    board: UhpBoard,
+    board: Board,
 }
 
 impl UhpClient {
@@ -27,7 +27,7 @@ impl UhpClient {
             .spawn()?;
         let input = proc.stdin.take().unwrap();
         let output = BufReader::new(proc.stdout.take().unwrap());
-        let mut client = UhpClient { proc, input, output, board: UhpBoard::new("Base") };
+        let mut client = UhpClient { proc, input, output, board: Board::new_core_set() };
         // Eat the first output
         client.consume_output()?;
         Ok(client)
@@ -59,7 +59,7 @@ impl UhpClient {
         let mut command = "newgame ".to_owned();
         command.push_str(game_type);
         self.command(&command)?;
-        self.board = UhpBoard::new(game_type);
+        self.board = Board::from_game_string(game_type)?;
         Ok(())
     }
 
@@ -70,15 +70,15 @@ impl UhpClient {
         if out.starts_with("invalid") {
             return Err(UhpError::InvalidMove(command + ": " + &out));
         }
-        self.board.apply(m)?;
+        self.board.apply_untrusted(m)?;
         Ok(match out.split(";").nth(1).unwrap_or_default() {
             "Draw" => Some(Winner::Draw),
-            "WhiteWins" => Some(if self.board.inner().to_move() == Color::White {
+            "WhiteWins" => Some(if self.board.to_move() == Color::White {
                 Winner::PlayerToMove
             } else {
                 Winner::PlayerJustMoved
             }),
-            "BlackWins" => Some(if self.board.inner().to_move() == Color::Black {
+            "BlackWins" => Some(if self.board.to_move() == Color::Black {
                 Winner::PlayerToMove
             } else {
                 Winner::PlayerJustMoved
@@ -89,9 +89,7 @@ impl UhpClient {
 
     pub(crate) fn undo(&mut self, num_undo: usize) -> Result<()> {
         self.command(&format!("undo {}", num_undo))?;
-        for _ in 0..num_undo {
-            self.board.undo()?;
-        }
+        self.board.undo_count(num_undo)?;
         Ok(())
     }
 

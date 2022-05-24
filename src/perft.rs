@@ -1,7 +1,6 @@
 extern crate rand;
 
 use crate::uhp_client::UhpClient;
-use crate::uhp_util::UhpBoard;
 use crate::{Board, Rules};
 use minimax::{Game, Move};
 use rand::Rng;
@@ -16,7 +15,7 @@ fn standard_games(game_string: &str) -> &str {
 pub fn perft_single_thread(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
-    let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
+    let mut b = Board::from_game_string(game_string).unwrap();
     if game_string.contains(';') {
         b.println();
     }
@@ -26,7 +25,7 @@ pub fn perft_single_thread(game_string: &str) {
 pub fn perft_multi_thread(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
-    let mut b = UhpBoard::from_game_string(game_string).unwrap().into_inner();
+    let mut b = Board::from_game_string(game_string).unwrap();
     if game_string.contains(';') {
         b.println();
     }
@@ -37,7 +36,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     engine.new_game(game_string).unwrap();
-    let mut board = UhpBoard::from_game_string(game_string).unwrap().into_inner();
+    let mut board = Board::from_game_string(game_string).unwrap();
     // Generate random positions at the given depth, and compare output.
     let mut rng = rand::thread_rng();
     let mut moves = Vec::new();
@@ -144,11 +143,11 @@ fn find_dups(moves: &[crate::Move]) -> Vec<crate::Move> {
 
 #[test]
 fn test_perft() {
-    let mut b = Board::new_from_game_type("Base").unwrap();
+    let mut b = Board::from_game_type("Base").unwrap();
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 4, 96, 1440, 21600]);
 
-    b = Board::new_from_game_type("Base+MLP").unwrap();
+    b = Board::from_game_type("Base+MLP").unwrap();
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
 }
@@ -157,14 +156,14 @@ fn test_perft() {
 
 #[test]
 fn test_winner_fail() {
-    let b = UhpBoard::from_game_string(r#"Base+MLP;InProgress;Black[99];wP;bB1 \wP;wG1 wP-;bA1 -bB1;wL /wP;bP /bA1;wQ wP\;bQ -bA1;wQ \wG1;bG1 /bP;wL \bB1;bB2 bP\;wQ bA1\;bL -bQ;wL bB1/;wQ bL\;wG1 /wP"#).unwrap().into_inner();
+    let b = Board::from_game_string(r#"Base+MLP;InProgress;Black[99];wP;bB1 \wP;wG1 wP-;bA1 -bB1;wL /wP;bP /bA1;wQ wP\;bQ -bA1;wQ \wG1;bG1 /bP;wL \bB1;bB2 bP\;wQ bA1\;bL -bQ;wL bB1/;wQ bL\;wG1 /wP"#).unwrap();
     assert_eq!(None, Rules::get_winner(&b));
 }
 
 #[test]
 fn test_mosquito_throw() {
     // TODO: fix
-    //let b = UhpBoard::new(r#"Base+MLP;InProgress;wM;bP \wM;wS1 /wM;bB1 bP/;wB1 -wS1;bM \bB1;wQ wM\;bQ /bM;wG1 /wB1;bG1 -bM;wP -wG1;bM bB1;wQ /bP;bG2 bG1/;wP wP\;bB2 -bG1;wB2 wB1\;wQ bM\;wA1 -wB1;bA1 bM/"#).into_inner();
+    //let b = UhpBoard::new(r#"Base+MLP;InProgress;wM;bP \wM;wS1 /wM;bB1 bP/;wB1 -wS1;bM \bB1;wQ wM\;bQ /bM;wG1 /wB1;bG1 -bM;wP -wG1;bM bB1;wQ /bP;bG2 bG1/;wP wP\;bB2 -bG1;wB2 wB1\;wQ bM\;wA1 -wB1;bA1 bM/"#);
     // assert the mosquito can throw the pillbug
     // another: r#"Base+MLP;wM;bB1 /wM;wP wM/;bG1 bB1\;wG1 wP/;bS1 bG1\;wQ wG1\;bQ bS1-;wG1 wP\;bM /bB1;wA1 wG1\;bM \wQ;wP -bM;bL /bG1;wP wP\;bS2 bS1\;wB1 wA1-;wQ -bM"#
     // Assert pillbug can throw mosquito
