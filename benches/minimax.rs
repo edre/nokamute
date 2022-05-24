@@ -3,7 +3,10 @@ extern crate minimax;
 extern crate nokamute;
 extern crate rand;
 
-use minimax::{Game, IterativeOptions, IterativeSearch, Move, Strategy};
+use minimax::{
+    Game, IterativeOptions, IterativeSearch, LazySmp, LazySmpOptions, Move, ParallelYbw, Strategy,
+    YbwOptions,
+};
 use nokamute::{loc_to_id, Board, Bug, Rules};
 use rand::Rng;
 
@@ -45,7 +48,7 @@ fn full_board_depth(depth: usize) {
     assert!(m.is_some());
 }
 
-fn playout(mut depth: usize) {
+fn playout(mut depth: usize) -> Board {
     let mut board = Board::default();
     let mut moves = Vec::new();
     let mut rng = rand::thread_rng();
@@ -55,6 +58,22 @@ fn playout(mut depth: usize) {
         Rules::generate_moves(&board, &mut moves);
         let m = moves[rng.gen_range(0, moves.len())];
         m.apply(&mut board);
+    }
+    board
+}
+
+// Find one random position and run the iterative strategies at a deeper level to compare timings.
+fn deep_iterations() {
+    let board = playout(20);
+    let opts = IterativeOptions::new().verbose().with_table_byte_size(32 << 20);
+    let eval = nokamute::BasicEvaluator::default();
+    let strategies: [Box<dyn minimax::Strategy<nokamute::Rules>>; 3] = [
+        Box::new(IterativeSearch::new(eval.clone(), opts)),
+        Box::new(LazySmp::new(eval.clone(), opts, LazySmpOptions::new())),
+        Box::new(ParallelYbw::new(eval.clone(), opts, YbwOptions::new())),
+    ];
+    for mut strategy in strategies {
+        strategy.choose_move(&board);
     }
 }
 
@@ -71,5 +90,10 @@ fn main() {
     }
     if "random playout".contains(&filter) {
         println!("random playout: {}", easybench::bench(|| playout(200)));
+    }
+
+    if "deep iterations".contains(&filter) {
+        println!("deep iterations:");
+        deep_iterations();
     }
 }
