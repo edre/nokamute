@@ -7,7 +7,12 @@ use std::time::Duration;
 fn read_line(prompt: &str) -> String {
     print!("{}", prompt);
     io::stdout().flush().unwrap();
-    io::stdin().lock().lines().next().unwrap().unwrap()
+    if let Some(input) = io::stdin().lock().lines().next() {
+        input.unwrap()
+    } else {
+        println!("");
+        std::process::exit(0);
+    }
 }
 
 fn input_id(board: &Board, prompt: &str, options: &[Id]) -> Option<Id> {
@@ -188,6 +193,7 @@ pub fn terminal_game_interface(config: PlayerConfig) {
                 player.set_timeout(Duration::from_secs(5));
             }
             let m = player.generate_move();
+            player.play_move(m);
             prev_pv_board = board.clone();
             prev_pv = player.principal_variation();
             history.push(m);
