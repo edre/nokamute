@@ -156,7 +156,7 @@ impl Color {
 //   see underworld for covered tiles.
 // All zeros when node is empty.
 #[derive(Clone, Copy)]
-pub(crate) struct Node(u8);
+pub struct Node(u8);
 
 impl Node {
     fn empty() -> Self {
@@ -200,7 +200,7 @@ impl Node {
 }
 
 #[derive(Copy, Clone)]
-struct UnderNode {
+pub struct UnderNode {
     // What bug is here.
     node: Node,
     // Where is this stack.
@@ -216,6 +216,13 @@ impl UnderNode {
 
     fn empty() -> Self {
         Self { node: Node::empty(), id: 0, height: 0 }
+    }
+
+    pub fn node(&self) -> Node {
+        self.node
+    }
+    pub fn id(&self) -> Id {
+        self.id
     }
 }
 
@@ -266,6 +273,10 @@ impl Board {
         // just realign the existing random bits.
         // Also include the color to move hash.
         hash.rotate_left(((height as u32) << 3) | bug as u32)
+    }
+
+    pub fn get_underworld(&self) -> &[UnderNode] {
+        &self.underworld[0..self.underworld_size]
     }
 
     fn insert_underworld(&mut self, node: Node, id: Id) {

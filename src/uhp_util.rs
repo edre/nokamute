@@ -233,12 +233,25 @@ impl Board {
         Some((color, bug, bug_num, delta))
     }
 
-    // Returns the location of the piece, or None if it is not visible on the board.
+    // Returns the location of the piece, or None if it is not on the board.
     pub(crate) fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Id> {
-        self.occupied_ids[color as usize].iter().copied().find(|&id| {
-            let node = self.node(id);
-            node.bug() == bug && node.bug_num() == bug_num
-        })
+        self.occupied_ids[color as usize]
+            .iter()
+            .copied()
+            .find(|&id| {
+                let node = self.node(id);
+                node.bug() == bug && node.bug_num() == bug_num
+            })
+            .or_else(|| {
+                self.get_underworld()
+                    .iter()
+                    .find(|under| {
+                        under.node().color() == color
+                            && under.node().bug() == bug
+                            && under.node().bug_num() == bug_num
+                    })
+                    .map(|under| under.id())
+            })
     }
 
     // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
