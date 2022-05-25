@@ -183,7 +183,7 @@ impl YbwPlayer {
 
 impl Player for YbwPlayer {
     fn name(&self) -> String {
-        "nokamute-ybw".to_owned()
+        "nokamute".to_owned()
     }
 
     fn new_game(&mut self, game_type: &str) {
@@ -207,7 +207,7 @@ impl Player for YbwPlayer {
     }
 
     fn set_max_depth(&mut self, depth: u8) {
-        self.strategy.set_max_depth(depth as usize);
+        self.strategy.set_max_depth(depth);
     }
 
     fn set_timeout(&mut self, time: Duration) {
@@ -344,7 +344,13 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
             config.opts = config.opts.with_mtdf();
             PlayerStrategy::Iterative(LazySmpOptions::new())
         }
-        "ybw" => PlayerStrategy::Ybw(YbwOptions::new()),
+        "ybw" => {
+            let mut ybw_opts = YbwOptions::new();
+            if args.contains("--background-ponder") {
+                ybw_opts = ybw_opts.with_background_pondering();
+            }
+            PlayerStrategy::Ybw(ybw_opts)
+        }
         "iterative" => {
             let mut smp_opts = LazySmpOptions::new();
             if args.contains("--differing-depths") {
@@ -378,11 +384,14 @@ impl PlayerConfig {
                 }
                 Box::new(MctsPlayer::new(opts))
             }
-            PlayerStrategy::Ybw(ybw_opts) => Box::new(YbwPlayer::new(ParallelYbw::new(
-                self.eval.clone(),
-                self.opts,
-                ybw_opts.clone(),
-            ))),
+            PlayerStrategy::Ybw(opts) => {
+                let mut opts = opts.clone();
+                let num_threads = self.num_threads.unwrap_or(0);
+                if num_threads > 0 {
+                    opts = opts.with_num_threads(num_threads as usize);
+                }
+                Box::new(YbwPlayer::new(ParallelYbw::new(self.eval.clone(), self.opts, opts)))
+            }
             PlayerStrategy::Iterative(smp_opts) => {
                 let num_threads = self.num_threads.unwrap_or(1);
                 if num_threads == 1 {
