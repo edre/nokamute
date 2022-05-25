@@ -227,7 +227,7 @@ pub struct Board {
     // Sorted by height (for each id) and no gaps.
     underworld: [UnderNode; 8],
     underworld_size: usize,
-    remaining: [[u8; 8]; 2],
+    pub(crate) remaining: [[u8; 8]; 2],
     pub(crate) queens: [Id; 2],
     pub(crate) occupied_ids: [Vec<Id>; 2],
 
@@ -1094,81 +1094,6 @@ impl minimax::Game for Rules {
 
         if moves.is_empty() {
             moves.push(Move::Pass);
-        }
-    }
-
-    // Simulate a race by only returning valid moves that attack the enemy
-    // queen or run away from our queen.
-    // TODO: include placements that are in range of attacking position? Sounds expensive.
-    fn generate_noisy_moves(board: &Board, moves: &mut Vec<Move>) {
-        if board.get_remaining()[Bug::Queen as usize] == 1 || board.queen_required() {
-            return;
-        }
-
-        let queen_adjacent = adjacent(board.queens[board.to_move() as usize]);
-        let enemy_queen = board.queens[board.to_move().other()];
-        let enemy_queen_adjacent = adjacent(enemy_queen);
-
-        // Generate all movements, then sift through and keep the noisy ones.
-        board.generate_movements(moves);
-        moves.retain(|m| {
-            match m {
-                Move::Movement(start, end) => {
-                    let node = board.node(*start);
-                    if node.bug() == Bug::Queen {
-                        // Possible queen escape.
-                        let liberties_start =
-                            adjacent(*start).iter().filter(|&adj| !board.occupied(*adj)).count();
-                        let liberties_end = adjacent(*end)
-                            .iter()
-                            .filter(|&adj| adj == start || !board.occupied(*adj))
-                            .count();
-                        if node.color() == board.to_move() {
-                            return liberties_end > liberties_start;
-                        } else {
-                            return liberties_start > liberties_end;
-                        }
-                    }
-                    if !node.is_stacked()
-                        && queen_adjacent.contains(start)
-                        && !queen_adjacent.contains(end)
-                    {
-                        // Defending move.
-                        return true;
-                    }
-                    if !board.occupied(*end)
-                        && enemy_queen_adjacent.contains(end)
-                        && !enemy_queen_adjacent.contains(start)
-                    {
-                        // Attacking move.
-                        return true;
-                    }
-                    false
-                }
-                _ => false,
-            }
-        });
-
-        if board.node(enemy_queen).color() == board.to_move() {
-            // Enemy queen is covered, check for direct drop attacks.
-            for liberty in enemy_queen_adjacent {
-                if board.occupied(liberty) {
-                    continue;
-                }
-                if adjacent(liberty)
-                    .into_iter()
-                    .any(|adj| board.occupied(adj) && board.node(adj).color() != board.to_move())
-                {
-                    // Not placeable.
-                    continue;
-                }
-                // Generate one arbitrary placement. (TODO: random?)
-                let available =
-                    board.get_available_bugs().into_iter().filter(|(_, count)| *count > 0).next();
-                if let Some((bug, _)) = available {
-                    moves.push(Move::Place(liberty, bug));
-                }
-            }
         }
     }
 

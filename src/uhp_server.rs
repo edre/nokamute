@@ -96,7 +96,7 @@ impl UhpServer {
 
     // Bonus undocumented command.
     fn perft(&mut self, args: &str) -> Result<()> {
-        let depth = args.parse::<usize>().unwrap_or(20);
+        let depth = args.parse::<u8>().unwrap_or(20);
         let mut b = self.board.as_ref().ok_or(UhpError::GameNotStarted)?.clone();
         minimax::perft::<Rules>(&mut b, depth, false);
         Ok(())

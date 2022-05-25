@@ -115,7 +115,7 @@ impl Player for IterativePlayer {
     }
 
     fn set_max_depth(&mut self, depth: u8) {
-        self.strategy.set_max_depth(depth as usize);
+        self.strategy.set_max_depth(depth);
     }
 
     fn set_timeout(&mut self, time: Duration) {
@@ -161,7 +161,7 @@ impl Player for LazySmpPlayer {
     }
 
     fn set_max_depth(&mut self, depth: u8) {
-        self.strategy.set_max_depth(depth as usize);
+        self.strategy.set_max_depth(depth);
     }
 
     fn set_timeout(&mut self, time: Duration) {
@@ -295,7 +295,7 @@ pub(crate) enum PlayerStrategy {
 }
 
 pub struct PlayerConfig {
-    pub(crate) num_threads: Option<u32>,
+    pub(crate) num_threads: Option<usize>,
     pub(crate) opts: IterativeOptions,
     pub(crate) strategy: PlayerStrategy,
     pub(crate) eval: BasicEvaluator,
@@ -323,12 +323,15 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
     if args.contains("--null-move-pruning") {
         config.opts = config.opts.with_null_move_depth(3);
     }
+    if args.contains("--noisy-search") {
+        config.opts = config.opts.with_quiescence_search_depth(8);
+    }
 
     // 0 for num_cpu threads; >0 for specific count.
     config.num_threads = args.opt_value_from_str("--num-threads")?.map(|thread_arg: String| {
         if thread_arg == "max" || thread_arg == "all" {
             0
-        } else if let Ok(num) = thread_arg.parse::<u32>() {
+        } else if let Ok(num) = thread_arg.parse::<usize>() {
             num
         } else {
             exit(format!("Could not parse num_threads={}. Expected int or 'max'", thread_arg));
@@ -388,7 +391,7 @@ impl PlayerConfig {
                 let mut opts = opts.clone();
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
-                    opts = opts.with_num_threads(num_threads as usize);
+                    opts = opts.with_num_threads(num_threads);
                 }
                 Box::new(YbwPlayer::new(ParallelYbw::new(self.eval.clone(), self.opts, opts)))
             }
@@ -402,7 +405,7 @@ impl PlayerConfig {
                 } else {
                     let mut smp_opts = smp_opts.clone();
                     if num_threads > 0 {
-                        smp_opts = smp_opts.with_num_threads(num_threads as usize);
+                        smp_opts = smp_opts.with_num_threads(num_threads);
                     }
                     Box::new(LazySmpPlayer::new(LazySmp::new(
                         self.eval.clone(),

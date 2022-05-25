@@ -218,6 +218,32 @@ impl Evaluator for BasicEvaluator {
             - pillbug_defense_score[board.to_move().other()];
         queen_score + beetle_attack_score + pillbug_defense_score + score
     }
+
+    // Simulate a race by including moves that attack the enemy queen.
+    // TODO: Also include defensive moves, but this is a lot more moves.
+    // TODO: include placements that are in range of attacking position? Sounds expensive.
+    fn is_noisy_move(&self, board: &Board, m: Move) -> bool {
+        if board.remaining[board.to_move().other()][Bug::Queen as usize] > 0 {
+            // Nothing is noisy before enemy queen is placed.
+            return false;
+        }
+        let enemy_queen = board.queens[board.to_move().other()];
+        match m {
+            Move::Movement(start, end) => {
+                // TODO: queen movement?
+                let enemy_adjacent = adjacent(enemy_queen);
+                (!enemy_adjacent.contains(&start) || board.node(start).is_stacked())
+                    && enemy_adjacent.contains(&end)
+                    && !board.occupied(end)
+            }
+            Move::Place(id, _) => {
+                // TODO: only count a single bug for each noisy placement.
+                board.node(enemy_queen).color() == board.to_move()
+                    && adjacent(enemy_queen).contains(&id)
+            }
+            Move::Pass => false,
+        }
+    }
 }
 
 #[cfg(test)]
