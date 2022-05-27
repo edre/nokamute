@@ -25,6 +25,7 @@ engine flags:
  --num-threads=[int]|all
  --aspiration-window=[int]
  --double-step
+ --quiet-search
  --null-move-pruning"#,
         env!("CARGO_PKG_VERSION")
     );

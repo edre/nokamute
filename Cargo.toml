@@ -9,7 +9,7 @@ license = "MIT"
 
 [dependencies]
 lazy_static = "^1.4.0"
-minimax = { git = "https://github.com/edre/minimax-rs", rev = "1b8bfeac74d7b1c6808ce9f3aeec06c6b7cd1175" }
+minimax = { git = "https://github.com/edre/minimax-rs", rev = "4581f76b9f8d3425a15c609d9c30f87741c7556d" }
 pico-args = "0.4"
 rand = "0.4.*"
 termcolor = "^1.1"

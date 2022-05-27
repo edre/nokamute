@@ -323,8 +323,8 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
     if args.contains("--null-move-pruning") {
         config.opts = config.opts.with_null_move_depth(3);
     }
-    if args.contains("--noisy-search") {
-        config.opts = config.opts.with_quiescence_search_depth(8);
+    if args.contains("--quiet-search") {
+        config.opts = config.opts.with_quiescence_search_depth(2);
     }
 
     // 0 for num_cpu threads; >0 for specific count.

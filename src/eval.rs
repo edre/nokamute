@@ -219,30 +219,44 @@ impl Evaluator for BasicEvaluator {
         queen_score + beetle_attack_score + pillbug_defense_score + score
     }
 
-    // Simulate a race by including moves that attack the enemy queen.
-    // TODO: Also include defensive moves, but this is a lot more moves.
-    // TODO: include placements that are in range of attacking position? Sounds expensive.
-    fn is_noisy_move(&self, board: &Board, m: Move) -> bool {
-        if board.remaining[board.to_move().other()][Bug::Queen as usize] > 0 {
-            // Nothing is noisy before enemy queen is placed.
-            return false;
+    // The idea here is to use quiescence search to avoid ending on a
+    // placement. This is based on the hypothesis that new pieces are placed
+    // with the intention of moving them on the next turn. Stopping the search
+    // just after placing a piece can give bad results because it would
+    // usually pins one of your own pieces and doesn't put the new piece where
+    // it will be useful. Thus, each player can get a bonus move to move a
+    // piece that they have just placed (but not other pieces).
+    fn generate_noisy_moves(&self, board: &Board, moves: &mut Vec<Move>) {
+        if board.move_history.len() < 4 || board.get_remaining()[Bug::Queen as usize] == 0 {
+            // Wait until movements are at least possible.
+            return;
         }
-        let enemy_queen = board.queens[board.to_move().other()];
-        match m {
-            Move::Movement(start, end) => {
-                // TODO: queen movement?
-                let enemy_adjacent = adjacent(enemy_queen);
-                (!enemy_adjacent.contains(&start) || board.node(start).is_stacked())
-                    && enemy_adjacent.contains(&end)
-                    && !board.occupied(end)
+        let enemy_last_move = board.move_history[board.move_history.len() - 1];
+        let my_last_move = board.move_history[board.move_history.len() - 2];
+
+        if let Move::Place(id, _) = my_last_move {
+            // Drop attack is quiet enough.
+            if !adjacent(board.queens[board.to_move().other()]).contains(&id) {
+                // TODO: just generate from this spot (ignoring throws?).
+                board.generate_movements(moves);
+                moves.retain(
+                    |m| if let Move::Movement(start, _) = *m { start == id } else { false },
+                );
+                // If the piece became pinned or covered, this will return no
+                // moves, which means the search will terminate.
+                return;
             }
-            Move::Place(id, _) => {
-                // TODO: only count a single bug for each noisy placement.
-                board.node(enemy_queen).color() == board.to_move()
-                    && adjacent(enemy_queen).contains(&id)
-            }
-            Move::Pass => false,
         }
+
+        if let Move::Place(id, _) = enemy_last_move {
+            if !adjacent(board.queens[board.to_move() as usize]).contains(&id) {
+                // We didn't just place, but opponent did. Do some movement to
+                // give them a chance to quiesce.
+                board.generate_movements(moves);
+            }
+        }
+
+        // If no one just placed something, return nothing and stop the search.
     }
 }
 

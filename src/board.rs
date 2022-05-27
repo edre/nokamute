@@ -406,7 +406,7 @@ impl Board {
         ]
     }
 
-    fn queen_required(&self) -> bool {
+    pub(crate) fn queen_required(&self) -> bool {
         self.move_num > 5 && self.get_remaining()[Bug::Queen as usize] > 0
     }
 
@@ -1004,7 +1004,7 @@ impl Board {
         }
     }
 
-    fn generate_movements(&self, moves: &mut Vec<Move>) {
+    pub(crate) fn generate_movements(&self, moves: &mut Vec<Move>) {
         let mut immovable = self.find_cut_vertexes();
         let stunned = match self.move_history.last() {
             Some(Move::Movement(_, dest)) => Some(dest),
