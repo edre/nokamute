@@ -626,12 +626,18 @@ impl minimax::Move for Move {
             Move::Movement(start, end) => {
                 let (bug, bug_num, color) = board.remove(start);
                 board.insert(end, bug, bug_num, color);
+                // Encode a marker of last moved location for pillbug throwability.
+                board.zobrist_hash ^= end as u64;
             }
             _ => {}
         };
         board.move_num += 1;
         // Encode positions differently based on who is to move.
         board.zobrist_hash ^= 0xa6c11b626b105b7c;
+        // Undo last-moved zobrist bits.
+        if let Some(Move::Movement(_, end)) = board.move_history.last() {
+            board.zobrist_hash ^= *end as u64;
+        }
         board.zobrist_history.push(board.zobrist_hash);
         board.move_history.push(*self);
     }
@@ -640,6 +646,9 @@ impl minimax::Move for Move {
         board.move_num -= 1;
         board.zobrist_history.pop();
         board.move_history.pop();
+        if let Some(Move::Movement(_, end)) = board.move_history.last() {
+            board.zobrist_hash ^= *end as u64;
+        }
         match *self {
             Move::Place(id, bug) => {
                 board.remove(id);
@@ -648,6 +657,7 @@ impl minimax::Move for Move {
             Move::Movement(start, end) => {
                 let (bug, bug_num, color) = board.remove(end);
                 board.insert(start, bug, bug_num, color);
+                board.zobrist_hash ^= end as u64;
             }
             Move::Pass => {}
         }
