@@ -881,23 +881,30 @@ impl Board {
     }
 
     fn generate_walk3(&self, orig: Id, moves: &mut Vec<Move>) {
-        fn dfs(id: Id, orig: Id, board: &Board, path: &mut Vec<Id>, moves: &mut Vec<Move>) {
+        fn dfs(
+            id: Id, orig: Id, board: &Board, path: &mut Vec<Id>, visited: &mut NodeSet,
+            moves: &mut Vec<Move>,
+        ) {
             if path.contains(&id) {
                 return;
             }
             if path.len() == 3 {
-                moves.push(Move::Movement(orig, id));
+                if !visited.get(id) {
+                    moves.push(Move::Movement(orig, id));
+                    visited.set(id);
+                }
                 return;
             }
             path.push(id);
             let mut buf = [0; 6];
             for adj in board.slidable_adjacent(&mut buf, orig, id) {
-                dfs(adj, orig, board, path, moves);
+                dfs(adj, orig, board, path, visited, moves);
             }
             path.pop();
         }
         let mut path = Vec::with_capacity(3);
-        dfs(orig, orig, self, &mut path, moves);
+        let mut visited = NodeSet::new();
+        dfs(orig, orig, self, &mut path, &mut visited, moves);
     }
 
     fn generate_walk_all(&self, orig: Id, moves: &mut Vec<Move>) {
@@ -941,7 +948,7 @@ impl Board {
         }
     }
 
-    fn generate_throws(&self, immovable: &NodeSet, id: Id, moves: &mut Vec<Move>) {
+    fn generate_throws(&self, immovable: &NodeSet, id: Id, moves: &mut Vec<Move>) -> bool {
         let mut starts = [0; 6];
         let mut num_starts = 0;
         let mut ends = [0; 6];
@@ -968,6 +975,7 @@ impl Board {
                 moves.push(Move::Movement(start, end));
             }
         }
+        num_starts > 0 && num_ends > 0
     }
 
     fn generate_mosquito(&self, id: Id, moves: &mut Vec<Move>) {
@@ -979,6 +987,7 @@ impl Board {
             }
         }
 
+        let mut i = moves.len();
         if targets[Bug::Ant as usize] {
             self.generate_walk_all(id, moves);
         } else {
@@ -1001,6 +1010,19 @@ impl Board {
         }
         if targets[Bug::Ladybug as usize] {
             self.generate_ladybug(id, moves);
+        }
+
+        // Remove duplicates.
+        let mut dests = NodeSet::new();
+        while i < moves.len() {
+            if let Move::Movement(_, dest) = moves[i] {
+                if dests.get(dest) {
+                    moves.swap_remove(i);
+                } else {
+                    dests.set(dest);
+                    i += 1;
+                }
+            }
         }
     }
 
@@ -1033,8 +1055,7 @@ impl Board {
                     }));
             // However pillbugs just thrown cannot throw.
             if pillbug_powers && stunned != Some(&id) {
-                self.generate_throws(&immovable, id, moves);
-                dedup = true;
+                dedup |= self.generate_throws(&immovable, id, moves);
             }
             if immovable.get(id) {
                 continue;
@@ -1048,10 +1069,7 @@ impl Board {
                     self.generate_walk1(id, moves);
                     self.generate_stack_walking(id, moves);
                 }
-                Bug::Mosquito => {
-                    self.generate_mosquito(id, moves);
-                    dedup = true;
-                }
+                Bug::Mosquito => self.generate_mosquito(id, moves),
                 Bug::Ladybug => self.generate_ladybug(id, moves),
                 Bug::Pillbug => self.generate_walk1(id, moves),
             }
