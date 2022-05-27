@@ -68,9 +68,27 @@ fn get_player(name: &str, config: &PlayerConfig) -> Box<dyn Player> {
     }
 }
 
-pub fn play_game(config: PlayerConfig, game_type: &str, name1: &str, name2: &str) {
-    let player1 = get_player(name1, &config);
-    let player2 = get_player(name2, &config);
+pub fn play_game(
+    config: PlayerConfig, game_type: &str, name1: &str, name2: &str, depth: Option<u8>,
+    timeout: Option<String>,
+) {
+    let mut player1 = get_player(name1, &config);
+    let mut player2 = get_player(name2, &config);
+    if let Some(depth) = depth {
+        player1.set_max_depth(depth);
+        player2.set_max_depth(depth);
+    } else if let Some(input) = timeout {
+        let timeout = if input.ends_with("s") {
+            input[..input.len() - 1].parse::<u64>().map(Duration::from_secs)
+        } else if input.ends_with("m") {
+            input[..input.len() - 1].parse::<u64>().map(|m| Duration::from_secs(m * 60))
+        } else {
+            exit("Could not parse --timeout (add units)".to_string());
+        }
+        .unwrap_or_else(|_| exit("Could not parse --timeout (add units)".to_string()));
+        player1.set_timeout(timeout);
+        player2.set_timeout(timeout);
+    }
     match face_off(game_type, player1, player2) {
         None => println!("Game over: draw."),
         Some(name) => println!("Game over: {} won.", name),

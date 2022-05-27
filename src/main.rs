@@ -1,4 +1,5 @@
 use nokamute::*;
+use std::ffi::OsString;
 
 fn help() {
     println!(
@@ -7,7 +8,7 @@ fn help() {
 commands:
  cli:   Interactive interface to a board
  uhp:   Run as a Universal Hive Protocol engine
- play [game_type] [player1] [player2]:
+ play [--game-type=] [--depth=] [--timeout=] [player1] [player2]:
         Play a game, with each player being "human", "ai|nokamute",
         or a path to a UHP engine
  perft [game_state]:
@@ -41,10 +42,19 @@ fn main() {
             UhpServer::new(config).serve();
         }
         "play" => {
-            let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base+MLP");
-            let player1 = args.get(2).map(|s| s.as_ref()).unwrap_or("human");
-            let player2 = args.get(3).map(|s| s.as_ref()).unwrap_or("ai");
-            play_game(config, game_type, player1, player2);
+            let mut args = pico_args::Arguments::from_vec(
+                args.iter().map(|s| s.into()).collect::<Vec<OsString>>(),
+            );
+            let game_type =
+                args.opt_value_from_str("--game-type").unwrap().unwrap_or("Base+MLP".to_owned());
+            let depth: Option<u8> = args.opt_value_from_str("--depth").unwrap();
+            let timeout: Option<String> = args.opt_value_from_str("--timeout").unwrap();
+            let args =
+                args.finish().into_iter().map(|s| s.into_string().unwrap()).collect::<Vec<_>>();
+
+            let player1 = args.get(1).map(|s| s.as_ref()).unwrap_or("human");
+            let player2 = args.get(2).map(|s| s.as_ref()).unwrap_or("ai");
+            play_game(config, &game_type, player1, player2, depth, timeout);
         }
         "perft" => {
             // For engine performance comparisons.
