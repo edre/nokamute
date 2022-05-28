@@ -306,8 +306,8 @@ fn exit(msg: String) -> ! {
 }
 
 pub(crate) enum PlayerStrategy {
-    Iterative(LazySmpOptions),
-    Ybw(YbwOptions),
+    Iterative(YbwOptions),
+    LazySmp(LazySmpOptions),
     Random,
     Mcts(MCTSOptions),
 }
@@ -363,21 +363,22 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
         "mcts" => PlayerStrategy::Mcts(MCTSOptions::default().with_max_rollout_depth(200)),
         "mtdf" => {
             config.opts = config.opts.with_mtdf();
-            PlayerStrategy::Iterative(LazySmpOptions::new())
+            config.num_threads = Some(1);
+            PlayerStrategy::Iterative(YbwOptions::new())
         }
-        "ybw" => {
+        "iterative" | "ybw" => {
             let mut ybw_opts = YbwOptions::new();
             if args.contains("--background-ponder") {
                 ybw_opts = ybw_opts.with_background_pondering();
             }
-            PlayerStrategy::Ybw(ybw_opts)
+            PlayerStrategy::Iterative(ybw_opts)
         }
-        "iterative" => {
+        "lazysmp" => {
             let mut smp_opts = LazySmpOptions::new();
             if args.contains("--differing-depths") {
                 smp_opts = smp_opts.with_differing_depths();
             }
-            PlayerStrategy::Iterative(smp_opts)
+            PlayerStrategy::LazySmp(smp_opts)
         }
         _ => exit(format!("Unrecognized strategy: {}", strategy.unwrap_or_default())),
     };
@@ -389,7 +390,7 @@ impl PlayerConfig {
         Self {
             num_threads: None,
             opts: IterativeOptions::new(),
-            strategy: PlayerStrategy::Iterative(LazySmpOptions::new()),
+            strategy: PlayerStrategy::Iterative(YbwOptions::new()),
             eval: BasicEvaluator::default(),
         }
     }
@@ -405,32 +406,32 @@ impl PlayerConfig {
                 }
                 Box::new(MctsPlayer::new(opts))
             }
-            PlayerStrategy::Ybw(opts) => {
-                let mut opts = opts.clone();
+            PlayerStrategy::Iterative(ybw_opts) => {
+                let mut ybw_opts = ybw_opts.clone();
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
-                    opts = opts.with_num_threads(num_threads);
+                    ybw_opts = ybw_opts.with_num_threads(num_threads);
                 }
-                Box::new(YbwPlayer::new(ParallelYbw::new(self.eval.clone(), self.opts, opts)))
-            }
-            PlayerStrategy::Iterative(smp_opts) => {
-                let num_threads = self.num_threads.unwrap_or(1);
                 if num_threads == 1 {
                     Box::new(IterativePlayer::new(IterativeSearch::new(
                         self.eval.clone(),
                         self.opts,
                     )))
                 } else {
-                    let mut smp_opts = smp_opts.clone();
-                    if num_threads > 0 {
-                        smp_opts = smp_opts.with_num_threads(num_threads);
-                    }
-                    Box::new(LazySmpPlayer::new(LazySmp::new(
+                    Box::new(YbwPlayer::new(ParallelYbw::new(
                         self.eval.clone(),
                         self.opts,
-                        smp_opts,
+                        ybw_opts,
                     )))
                 }
+            }
+            PlayerStrategy::LazySmp(smp_opts) => {
+                let mut smp_opts = smp_opts.clone();
+                let num_threads = self.num_threads.unwrap_or(1);
+                if num_threads > 0 {
+                    smp_opts = smp_opts.with_num_threads(num_threads);
+                }
+                Box::new(LazySmpPlayer::new(LazySmp::new(self.eval.clone(), self.opts, smp_opts)))
             }
         }
     }
