@@ -5,7 +5,7 @@ use crate::uhp_client::UhpPlayer;
 use crate::{BasicEvaluator, Board, Rules};
 use minimax::{
     Game, IterativeOptions, IterativeSearch, LazySmp, LazySmpOptions, MCTSOptions,
-    MonteCarloTreeSearch, Move, ParallelYbw, Random, Strategy, YbwOptions,
+    MonteCarloTreeSearch, Move, ParallelYbw, Strategy, YbwOptions,
 };
 use std::time::Duration;
 
@@ -95,21 +95,26 @@ pub fn play_game(
     }
 }
 
-struct IterativePlayer {
+struct NokamutePlayer {
     board: Board,
-    strategy: IterativeSearch<BasicEvaluator>,
+    strategy: Box<dyn Strategy<Rules>>,
+    name: String,
 }
 
-impl IterativePlayer {
-    fn new(mut strategy: IterativeSearch<BasicEvaluator>) -> Self {
+impl NokamutePlayer {
+    fn new(strategy: Box<dyn Strategy<Rules>>) -> Self {
+        Self::new_with_name("nokamute", strategy)
+    }
+
+    fn new_with_name(name: &str, mut strategy: Box<dyn Strategy<Rules>>) -> Self {
         strategy.set_timeout(Duration::from_secs(5));
-        IterativePlayer { board: Board::default(), strategy }
+        NokamutePlayer { board: Board::default(), strategy, name: name.to_owned() }
     }
 }
 
-impl Player for IterativePlayer {
+impl Player for NokamutePlayer {
     fn name(&self) -> String {
-        "nokamute".to_owned()
+        self.name.clone()
     }
 
     fn new_game(&mut self, game_type: &str) {
@@ -129,7 +134,7 @@ impl Player for IterativePlayer {
     }
 
     fn principal_variation(&self) -> Vec<crate::Move> {
-        self.strategy.principal_variation().to_vec()
+        self.strategy.principal_variation()
     }
 
     fn set_max_depth(&mut self, depth: u8) {
@@ -138,165 +143,6 @@ impl Player for IterativePlayer {
 
     fn set_timeout(&mut self, time: Duration) {
         self.strategy.set_timeout(time);
-    }
-}
-
-struct LazySmpPlayer {
-    board: Board,
-    strategy: LazySmp<BasicEvaluator>,
-}
-
-impl LazySmpPlayer {
-    fn new(mut strategy: LazySmp<BasicEvaluator>) -> Self {
-        strategy.set_timeout(Duration::from_secs(5));
-        LazySmpPlayer { board: Board::default(), strategy }
-    }
-}
-
-impl Player for LazySmpPlayer {
-    fn name(&self) -> String {
-        "nokamute".to_owned()
-    }
-
-    fn new_game(&mut self, game_type: &str) {
-        self.board = Board::from_game_type(game_type).unwrap();
-    }
-
-    fn play_move(&mut self, m: crate::Move) {
-        m.apply(&mut self.board);
-    }
-
-    fn undo_move(&mut self, m: crate::Move) {
-        m.undo(&mut self.board);
-    }
-
-    fn generate_move(&mut self) -> crate::Move {
-        self.strategy.choose_move(&self.board).unwrap()
-    }
-
-    fn principal_variation(&self) -> Vec<crate::Move> {
-        self.strategy.principal_variation().to_vec()
-    }
-
-    fn set_max_depth(&mut self, depth: u8) {
-        self.strategy.set_max_depth(depth);
-    }
-
-    fn set_timeout(&mut self, time: Duration) {
-        self.strategy.set_timeout(time);
-    }
-}
-
-struct YbwPlayer {
-    board: Board,
-    strategy: ParallelYbw<BasicEvaluator>,
-}
-
-impl YbwPlayer {
-    fn new(mut strategy: ParallelYbw<BasicEvaluator>) -> Self {
-        strategy.set_timeout(Duration::from_secs(5));
-        YbwPlayer { board: Board::default(), strategy }
-    }
-}
-
-impl Player for YbwPlayer {
-    fn name(&self) -> String {
-        "nokamute".to_owned()
-    }
-
-    fn new_game(&mut self, game_type: &str) {
-        self.board = Board::from_game_type(game_type).unwrap();
-    }
-
-    fn play_move(&mut self, m: crate::Move) {
-        m.apply(&mut self.board);
-    }
-
-    fn undo_move(&mut self, m: crate::Move) {
-        m.undo(&mut self.board);
-    }
-
-    fn generate_move(&mut self) -> crate::Move {
-        self.strategy.choose_move(&self.board).unwrap()
-    }
-
-    fn principal_variation(&self) -> Vec<crate::Move> {
-        self.strategy.principal_variation().to_vec()
-    }
-
-    fn set_max_depth(&mut self, depth: u8) {
-        self.strategy.set_max_depth(depth);
-    }
-
-    fn set_timeout(&mut self, time: Duration) {
-        self.strategy.set_timeout(time);
-    }
-}
-
-struct MctsPlayer {
-    board: Board,
-    strategy: MonteCarloTreeSearch,
-}
-
-impl MctsPlayer {
-    fn new(opts: MCTSOptions) -> Self {
-        let mut strategy = MonteCarloTreeSearch::new(opts);
-        strategy.set_timeout(Duration::from_secs(5));
-        MctsPlayer { board: Board::default(), strategy }
-    }
-}
-
-impl Player for MctsPlayer {
-    fn name(&self) -> String {
-        "nokamute-mcts".to_owned()
-    }
-
-    fn new_game(&mut self, game_type: &str) {
-        self.board = Board::from_game_type(game_type).unwrap();
-    }
-
-    fn play_move(&mut self, m: crate::Move) {
-        m.apply(&mut self.board);
-    }
-
-    fn undo_move(&mut self, m: crate::Move) {
-        m.undo(&mut self.board);
-    }
-
-    fn generate_move(&mut self) -> crate::Move {
-        (&mut self.strategy as &mut dyn Strategy<Rules>).choose_move(&self.board).unwrap()
-    }
-
-    fn set_timeout(&mut self, time: Duration) {
-        self.strategy.set_timeout(time);
-    }
-}
-
-#[derive(Default)]
-struct RandomPlayer {
-    board: Board,
-    strategy: Random,
-}
-
-impl Player for RandomPlayer {
-    fn name(&self) -> String {
-        "random".to_owned()
-    }
-
-    fn new_game(&mut self, game_type: &str) {
-        self.board = Board::from_game_type(game_type).unwrap();
-    }
-
-    fn play_move(&mut self, m: crate::Move) {
-        m.apply(&mut self.board);
-    }
-
-    fn undo_move(&mut self, m: crate::Move) {
-        m.undo(&mut self.board);
-    }
-
-    fn generate_move(&mut self) -> crate::Move {
-        (&mut self.strategy as &mut dyn Strategy<Rules>).choose_move(&self.board).unwrap()
     }
 }
 
@@ -396,15 +242,17 @@ impl PlayerConfig {
     }
 
     pub(crate) fn new_player(&self) -> Box<dyn Player> {
-        match &self.strategy {
-            PlayerStrategy::Random => Box::new(RandomPlayer::default()),
+        Box::new(match &self.strategy {
+            PlayerStrategy::Random => {
+                NokamutePlayer::new_with_name("random", Box::new(minimax::Random::default()))
+            }
             PlayerStrategy::Mcts(opts) => {
                 let mut opts = opts.clone();
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
                     opts = opts.with_num_threads(num_threads);
                 }
-                Box::new(MctsPlayer::new(opts))
+                NokamutePlayer::new(Box::new(MonteCarloTreeSearch::new(opts)))
             }
             PlayerStrategy::Iterative(ybw_opts) => {
                 let mut ybw_opts = ybw_opts.clone();
@@ -412,18 +260,11 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     ybw_opts = ybw_opts.with_num_threads(num_threads);
                 }
-                if num_threads == 1 {
-                    Box::new(IterativePlayer::new(IterativeSearch::new(
-                        self.eval.clone(),
-                        self.opts,
-                    )))
+                NokamutePlayer::new(if num_threads == 1 {
+                    Box::new(IterativeSearch::new(self.eval.clone(), self.opts))
                 } else {
-                    Box::new(YbwPlayer::new(ParallelYbw::new(
-                        self.eval.clone(),
-                        self.opts,
-                        ybw_opts,
-                    )))
-                }
+                    Box::new(ParallelYbw::new(self.eval.clone(), self.opts, ybw_opts))
+                })
             }
             PlayerStrategy::LazySmp(smp_opts) => {
                 let mut smp_opts = smp_opts.clone();
@@ -431,8 +272,8 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     smp_opts = smp_opts.with_num_threads(num_threads);
                 }
-                Box::new(LazySmpPlayer::new(LazySmp::new(self.eval.clone(), self.opts, smp_opts)))
+                NokamutePlayer::new(Box::new(LazySmp::new(self.eval.clone(), self.opts, smp_opts)))
             }
-        }
+        })
     }
 }
