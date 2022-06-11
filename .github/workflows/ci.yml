@@ -1,0 +1,34 @@
+name: CI Build
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  ci_build:
+    name: CI Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Install x86_64-pc-windows-gnu
+      run: rustup target add x86_64-pc-windows-gnu
+
+    - name: Build Release
+      run: |
+        chmod +x ./release.sh
+        ./release.sh
+
+    - name: Upload Linux Build Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: nokamute_linux_amd64.tar.gz
+        path: nokamute_linux_amd64.tar.gz
+    
+    - name: Upload Windows Build Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: nokamute_win64.zip
+        path: nokamute_win64.zip
