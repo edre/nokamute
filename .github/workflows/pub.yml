@@ -1,0 +1,61 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+  pub_create_github_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  pub_build:
+    name: Publish Build
+    runs-on: ubuntu-latest
+    needs: pub_create_github_release
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Install x86_64-pc-windows-gnu
+      run: rustup target add x86_64-pc-windows-gnu
+
+    - name: Build Release
+      run: sh ./release.sh
+    
+    - name: Upload Linux Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.pub_create_github_release.outputs.upload_url }}
+        asset_path: nokamute_linux_amd64.tar.gz
+        asset_name: nokamute_linux_amd64.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Windows Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.pub_create_github_release.outputs.upload_url }}
+        asset_path: nokamute_win64.zip
+        asset_name: nokamute_win64.zip
+        asset_content_type: application/zip
