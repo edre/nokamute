@@ -117,8 +117,8 @@ impl Player for NokamutePlayer {
         self.name.clone()
     }
 
-    fn new_game(&mut self, game_type: &str) {
-        self.board = Board::from_game_type(game_type).unwrap();
+    fn new_game(&mut self, game_string: &str) {
+        self.board = Board::from_game_string(game_string).unwrap();
     }
 
     fn play_move(&mut self, m: crate::Move) {
