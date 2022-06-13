@@ -16,10 +16,11 @@ jobs:
     - name: Install x86_64-pc-windows-gnu
       run: rustup target add x86_64-pc-windows-gnu
 
+    - name: Run Tests
+      run: cargo test
+
     - name: Build Release
-      run: |
-        chmod +x ./release.sh
-        ./release.sh
+      run: sh ./release.sh
 
     - name: Upload Linux Build Artifacts
       uses: actions/upload-artifact@v2
