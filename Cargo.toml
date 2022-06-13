@@ -1,6 +1,6 @@
 [package]
 name = "nokamute"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/edre/nokamute"
