@@ -38,9 +38,7 @@ jobs:
       run: rustup target add x86_64-pc-windows-gnu
 
     - name: Build Release
-      run: |
-        chmod +x ./release.sh
-        ./release.sh
+      run: sh ./release.sh
     
     - name: Upload Linux Release Asset
       uses: actions/upload-release-asset@v1
