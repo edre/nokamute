@@ -117,7 +117,7 @@ impl UhpServer {
             };
             let line = line.trim();
             let space = line.find(' ');
-            let command = if let Some(i) = space { &line[..i] } else { &line };
+            let command = if let Some(i) = space { &line[..i] } else { line };
             let args = if let Some(i) = space { &line[i + 1..] } else { "" };
             let result = match command {
                 "info" => self.info(),

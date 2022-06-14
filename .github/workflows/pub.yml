@@ -34,9 +34,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
 
-    - name: Install x86_64-pc-windows-gnu
-      run: rustup target add x86_64-pc-windows-gnu
-
     - name: Build Release
       run: sh ./release.sh
     

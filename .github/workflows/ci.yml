@@ -13,9 +13,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
 
-    - name: Install x86_64-pc-windows-gnu
-      run: rustup target add x86_64-pc-windows-gnu
-      
     - name: Run Tests
       run: cargo test
 
@@ -23,6 +20,7 @@ jobs:
       run: cargo fmt -- --check
 
     - name: Run linter
+      run: cargo clippy --version
       run: cargo clippy --no-deps -- -D warnings
 
     - name: Build Release

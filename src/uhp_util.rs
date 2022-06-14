@@ -255,6 +255,7 @@ impl Board {
     }
 
     // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn from_move_string(&self, move_string: &str) -> Result<crate::Move> {
         let err = || UhpError::InvalidMove(move_string.to_owned());
         if move_string == "pass" {
