@@ -19,6 +19,12 @@ jobs:
     - name: Run Tests
       run: cargo test
 
+    - name: Check formatting
+      run: cargo fmt -- --check
+
+    - name: Run linter
+      run: cargo clippy --no-deps -- -D warnings
+
     - name: Build Release
       run: sh ./release.sh
 
