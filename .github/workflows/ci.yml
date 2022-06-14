@@ -20,8 +20,7 @@ jobs:
       run: cargo fmt -- --check
 
     - name: Run linter
-      run: cargo clippy --version
-      run: cargo clippy --no-deps -- -D warnings
+      run: cargo clippy --version && cargo clippy --no-deps -- -D warnings
 
     - name: Build Release
       run: sh ./release.sh
