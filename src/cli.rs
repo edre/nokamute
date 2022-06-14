@@ -241,6 +241,15 @@ pub fn terminal_game_interface(config: PlayerConfig) {
                 m.undo(&mut prev_pv_board);
             }
             println!("Current board:");
+        } else if line.starts_with("newgame") {
+            let game_string = read_line("Game type? ");
+            board = if let Ok(b) = Board::from_game_string(&game_string) {
+                b
+            } else {
+                println!("Invalid game string");
+                continue;
+            };
+            player.new_game(&game_string);
         } else if line.starts_with('q') || line.starts_with("exit") {
             break;
         } else {
