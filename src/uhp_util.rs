@@ -160,7 +160,7 @@ impl Board {
         if self.move_history.is_empty() {
             return "NotStarted";
         }
-        match Rules::get_winner(&self) {
+        match Rules::get_winner(self) {
             Some(minimax::Winner::Draw) => "Draw",
             Some(minimax::Winner::PlayerToMove) => match self.to_move() {
                 Color::Black => "BlackWins",
@@ -280,19 +280,20 @@ impl Board {
             let id = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
             id.wrapping_add(delta) & GRID_MASK
         };
-        Ok(if start.is_some() && self.occupied(start.unwrap()) {
-            crate::Move::Movement(start.unwrap(), end)
-        } else {
-            if color != self.to_move() {
-                return Err(err());
+        if let Some(start) = start {
+            if self.occupied(start) {
+                return Ok(crate::Move::Movement(start, end));
             }
-            let expected_bug_num =
-                Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
-            if bug_num != expected_bug_num {
-                return Err(err());
-            }
-            crate::Move::Place(end, bug)
-        })
+        }
+        if color != self.to_move() {
+            return Err(err());
+        }
+        let expected_bug_num =
+            Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
+        if bug_num != expected_bug_num {
+            return Err(err());
+        }
+        Ok(crate::Move::Place(end, bug))
     }
 
     pub(crate) fn from_game_string(s: &str) -> Result<Self> {
@@ -317,7 +318,7 @@ impl Board {
 
     pub(crate) fn apply_untrusted(&mut self, m: crate::Move) -> Result<()> {
         let mut moves = Vec::new();
-        Rules::generate_moves(&self, &mut moves);
+        Rules::generate_moves(self, &mut moves);
         if !moves.contains(&m) {
             return Err(UhpError::InvalidMove("That is not a valid move".to_string()));
         }
@@ -339,7 +340,7 @@ impl Board {
 
     pub(crate) fn valid_moves(&self) -> String {
         let mut moves = Vec::new();
-        Rules::generate_moves(&self, &mut moves);
+        Rules::generate_moves(self, &mut moves);
         let mut out = String::new();
         for m in moves {
             out.push_str(&self.to_move_string(m));

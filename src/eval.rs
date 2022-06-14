@@ -52,7 +52,7 @@ fn distance(start: Id, end: Id) -> Id {
             return 2;
         }
     }
-    return 3;
+    3
 }
 
 impl Evaluator for BasicEvaluator {

@@ -363,8 +363,7 @@ impl Board {
             1 + self.underworld[0..self.underworld_size]
                 .iter()
                 .rev()
-                .filter(|under| under.id == id)
-                .next()
+                .find(|under| under.id == id)
                 .unwrap()
                 .height
         } else {
@@ -420,8 +419,8 @@ impl Board {
 
     pub(super) fn new(remaining: [u8; 8]) -> Self {
         let mut game_type_bits = 0u8;
-        for i in 0..8 {
-            if remaining[i] > 0 {
+        for (i, &remain) in remaining.iter().enumerate() {
+            if remain > 0 {
                 game_type_bits |= 1 << i;
             }
         }
@@ -1146,11 +1145,8 @@ impl minimax::Game for Rules {
             // Last move is at zobrist_history[n-1], so offset by 1.
             let start = if n < 35 { (n - 1) % 4 } else { n - 33 };
             let recent_past = &board.zobrist_history[start..n];
-            let position_repeat_count = recent_past
-                .into_iter()
-                .step_by(4)
-                .filter(|&&hash| hash == board.zobrist_hash)
-                .count();
+            let position_repeat_count =
+                recent_past.iter().step_by(4).filter(|&&hash| hash == board.zobrist_hash).count();
             if position_repeat_count >= 2 {
                 // Draw by stalemate.
                 return Some(minimax::Winner::Draw);

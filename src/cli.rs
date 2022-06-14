@@ -10,7 +10,7 @@ fn read_line(prompt: &str) -> String {
     if let Some(input) = io::stdin().lock().lines().next() {
         input.unwrap()
     } else {
-        println!("");
+        println!();
         std::process::exit(0);
     }
 }
@@ -52,7 +52,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
         .iter()
         .filter_map(|m| if let crate::Move::Movement(start, _) = m { Some(*start) } else { None })
         .collect::<Vec<_>>();
-    starts.sort();
+    starts.sort_unstable();
     starts.dedup();
     if starts.is_empty() {
         println!("No movements available.");
@@ -74,7 +74,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
             }
         })
         .collect::<Vec<_>>();
-    ends.sort();
+    ends.sort_unstable();
     ends.dedup();
     let end = input_id(board, "Move to where? ", &ends)?;
 
@@ -86,7 +86,7 @@ fn input_placement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> 
         .iter()
         .filter_map(|m| if let crate::Move::Place(place, _) = m { Some(*place) } else { None })
         .collect::<Vec<_>>();
-    places.sort();
+    places.sort_unstable();
     places.dedup();
     if places.is_empty() {
         println!("No placements available.");

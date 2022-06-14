@@ -71,7 +71,7 @@ impl UhpClient {
             return Err(UhpError::InvalidMove(command + ": " + &out));
         }
         self.board.apply_untrusted(m)?;
-        Ok(match out.split(";").nth(1).unwrap_or_default() {
+        Ok(match out.split(';').nth(1).unwrap_or_default() {
             "Draw" => Some(Winner::Draw),
             "WhiteWins" => Some(if self.board.to_move() == Color::White {
                 Winner::PlayerToMove
@@ -173,7 +173,7 @@ impl Player for UhpPlayer {
         if let Some(depth) = self.depth {
             self.client.best_move_depth(depth).unwrap()
         } else {
-            self.client.best_move(self.timeout.unwrap_or(Duration::from_secs(5))).unwrap()
+            self.client.best_move(self.timeout.unwrap_or_else(|| Duration::from_secs(5))).unwrap()
         }
     }
 

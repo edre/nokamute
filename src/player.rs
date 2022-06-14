@@ -78,9 +78,9 @@ pub fn play_game(
         player1.set_max_depth(depth);
         player2.set_max_depth(depth);
     } else if let Some(input) = timeout {
-        let timeout = if input.ends_with("s") {
+        let timeout = if input.ends_with('m') {
             input[..input.len() - 1].parse::<u64>().map(Duration::from_secs)
-        } else if input.ends_with("m") {
+        } else if input.ends_with('m') {
             input[..input.len() - 1].parse::<u64>().map(|m| Duration::from_secs(m * 60))
         } else {
             exit("Could not parse --timeout (add units)".to_string());
@@ -204,7 +204,7 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
 
     // Configure specific strategy.
     let strategy: Option<String> = args.opt_value_from_str("--strategy")?;
-    config.strategy = match strategy.as_ref().map(String::as_str).unwrap_or("iterative") {
+    config.strategy = match strategy.as_deref().unwrap_or("iterative") {
         "random" => PlayerStrategy::Random,
         "mcts" => PlayerStrategy::Mcts(MCTSOptions::default().with_max_rollout_depth(200)),
         "mtdf" => {
@@ -255,24 +255,24 @@ impl PlayerConfig {
                 NokamutePlayer::new(Box::new(MonteCarloTreeSearch::new(opts)))
             }
             PlayerStrategy::Iterative(ybw_opts) => {
-                let mut ybw_opts = ybw_opts.clone();
+                let mut ybw_opts = *ybw_opts;
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
                     ybw_opts = ybw_opts.with_num_threads(num_threads);
                 }
                 NokamutePlayer::new(if num_threads == 1 {
-                    Box::new(IterativeSearch::new(self.eval.clone(), self.opts))
+                    Box::new(IterativeSearch::new(self.eval, self.opts))
                 } else {
-                    Box::new(ParallelYbw::new(self.eval.clone(), self.opts, ybw_opts))
+                    Box::new(ParallelYbw::new(self.eval, self.opts, ybw_opts))
                 })
             }
             PlayerStrategy::LazySmp(smp_opts) => {
-                let mut smp_opts = smp_opts.clone();
+                let mut smp_opts = *smp_opts;
                 let num_threads = self.num_threads.unwrap_or(1);
                 if num_threads > 0 {
                     smp_opts = smp_opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(Box::new(LazySmp::new(self.eval.clone(), self.opts, smp_opts)))
+                NokamutePlayer::new(Box::new(LazySmp::new(self.eval, self.opts, smp_opts)))
             }
         })
     }

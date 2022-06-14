@@ -45,8 +45,10 @@ fn main() {
             let mut args = pico_args::Arguments::from_vec(
                 args.iter().map(|s| s.into()).collect::<Vec<OsString>>(),
             );
-            let game_type =
-                args.opt_value_from_str("--game-type").unwrap().unwrap_or("Base+MLP".to_owned());
+            let game_type = args
+                .opt_value_from_str("--game-type")
+                .unwrap()
+                .unwrap_or_else(|| "Base+MLP".to_owned());
             let depth: Option<u8> = args.opt_value_from_str("--depth").unwrap();
             let timeout: Option<String> = args.opt_value_from_str("--timeout").unwrap();
             let args =
