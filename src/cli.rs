@@ -1,6 +1,6 @@
 use crate::player::{Player, PlayerConfig};
 use crate::{Board, Bug, Id, Rules};
-use minimax::{Game, Move};
+use minimax::{Game, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
 
@@ -200,14 +200,13 @@ pub fn terminal_game_interface(config: PlayerConfig) {
             m.apply(&mut board);
         } else if line.starts_with("mcts") {
             let opts = minimax::MCTSOptions::default().with_max_rollout_depth(200);
-            let mut mcts = minimax::MonteCarloTreeSearch::new(opts);
+            let mut mcts = minimax::MonteCarloTreeSearch::<Rules>::new(opts);
             for arg in line.split(' ').skip(1) {
                 if let Ok(num) = arg.parse::<u32>() {
                     mcts.set_max_rollouts(num);
                 }
             }
-            let strat: &mut dyn minimax::Strategy<Rules> = &mut mcts;
-            if let Some(m) = strat.choose_move(&board) {
+            if let Some(m) = mcts.choose_move(&board) {
                 history.push(m);
                 m.apply(&mut board);
                 player.play_move(m);

@@ -354,24 +354,19 @@ impl Board {
 
 #[cfg(test)]
 mod tests {
-    extern crate rand;
     use super::*;
     use crate::Rules;
-    use minimax::Game;
-    use rand::Rng;
+    use minimax::{Game, Strategy};
 
     #[test]
     fn test_move_string_round_trip() {
         let mut board = Board::from_game_type("Base+MLP").unwrap();
-        let mut rng = rand::thread_rng();
-        let mut moves = Vec::new();
+        let mut rand = minimax::Random::<Rules>::new();
         for iter in 0..20 {
             let mut depth = 0;
             for _ in 0..20 {
                 depth += 1;
-                moves.clear();
-                Rules::generate_moves(&board, &mut moves);
-                let m = moves[rng.gen_range(0, moves.len())];
+                let m = rand.choose_move(&board).unwrap();
                 let move_string = board.to_move_string(m);
                 assert_eq!(
                     m,

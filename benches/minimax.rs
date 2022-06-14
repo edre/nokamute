@@ -1,16 +1,14 @@
 extern crate easybench;
 extern crate minimax;
 extern crate nokamute;
-extern crate rand;
 
 use minimax::{
     Game, IterativeOptions, IterativeSearch, LazySmp, LazySmpOptions, Move, ParallelYbw, Strategy,
     YbwOptions,
 };
 use nokamute::{loc_to_id, Board, Bug, Rules};
-use rand::Rng;
 
-fn empty_board_depth(depth: usize) {
+fn empty_board_depth(depth: u8) {
     let mut board = Board::default();
     let options = IterativeOptions::new().with_table_byte_size(16000).with_null_window_search(true);
     let mut strategy = IterativeSearch::new(nokamute::BasicEvaluator::default(), options);
@@ -19,7 +17,7 @@ fn empty_board_depth(depth: usize) {
     assert!(m.is_some());
 }
 
-fn full_board_depth(depth: usize) {
+fn full_board_depth(depth: u8) {
     let mut board = Board::default();
     // From some game I found online, subbed out some expansion pieces.
     nokamute::Move::Place(loc_to_id((4, 0)), Bug::Queen).apply(&mut board);
@@ -50,13 +48,10 @@ fn full_board_depth(depth: usize) {
 
 fn playout(mut depth: usize) -> Board {
     let mut board = Board::default();
-    let mut moves = Vec::new();
-    let mut rng = rand::thread_rng();
+    let mut rand = minimax::Random::<Rules>::new();
     while depth > 0 && Rules::get_winner(&board).is_none() {
         depth -= 1;
-        moves.clear();
-        Rules::generate_moves(&board, &mut moves);
-        let m = moves[rng.gen_range(0, moves.len())];
+        let m = rand.choose_move(&board).unwrap();
         m.apply(&mut board);
     }
     board

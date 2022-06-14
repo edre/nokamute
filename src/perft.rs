@@ -1,9 +1,6 @@
-extern crate rand;
-
 use crate::uhp_client::UhpClient;
 use crate::{Board, Rules};
-use minimax::{Game, Move};
-use rand::Rng;
+use minimax::{Game, Move, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
     match game_string {
@@ -38,7 +35,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     engine.new_game(game_string).unwrap();
     let mut board = Board::from_game_string(game_string).unwrap();
     // Generate random positions at the given depth, and compare output.
-    let mut rng = rand::thread_rng();
+    let mut rand = minimax::Random::<Rules>::new();
     let mut moves = Vec::new();
     for iter in 0.. {
         if iter % 100 == 0 {
@@ -57,7 +54,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
                 return;
             }
 
-            let m = moves[rng.gen_range(0, moves.len())];
+            let m = rand.choose_move(&board).unwrap();
             stack.push(m);
             m.apply(&mut board);
             let board_winner = Rules::get_winner(&board);
