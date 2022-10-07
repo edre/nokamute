@@ -39,7 +39,7 @@ fn main() {
             terminal_game_interface(config);
         }
         "uhp" => {
-            UhpServer::new(config).serve();
+            uhp_serve(config);
         }
         "play" => {
             let mut args = pico_args::Arguments::from_vec(

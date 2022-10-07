@@ -3,28 +3,33 @@ extern crate minimax;
 use crate::uhp_util::{Result, UhpError};
 use crate::{Board, Player, PlayerConfig, Rules};
 
-use std::io::stdin;
+use std::io::Write;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+use std::io::{stdin, stdout};
 use std::time::Duration;
 
-pub struct UhpServer {
+pub struct UhpServer<W: Write> {
     board: Option<Board>,
     config: PlayerConfig,
     engine: Option<Box<dyn Player>>,
+    output: W,
 }
 
-impl UhpServer {
-    pub fn new(config: PlayerConfig) -> Self {
-        let server = UhpServer { board: None, config, engine: None };
-        server.info().unwrap();
-        println!("ok");
-        server
+impl<W: Write> UhpServer<W> {
+    pub fn new(config: PlayerConfig, output: W) -> Self {
+        UhpServer { board: None, config, engine: None, output }
     }
 
-    fn info(&self) -> Result<()> {
+    pub fn swap_output(&mut self, mut output: W) -> W {
+        std::mem::swap(&mut output, &mut self.output);
+        output
+    }
+
+    fn info(&mut self) -> Result<()> {
         // Version string
-        println!("id {} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        writeln!(self.output, "id {} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))?;
         // Capabilities
-        println!("Mosquito;Ladybug;Pillbug");
+        writeln!(self.output, "Mosquito;Ladybug;Pillbug")?;
         Ok(())
     }
 
@@ -34,12 +39,16 @@ impl UhpServer {
         let mut engine = self.config.new_player();
         engine.new_game(args);
         self.engine = Some(engine);
-        println!("{}", self.board.as_mut().unwrap().game_string());
+        writeln!(self.output, "{}", self.board.as_mut().unwrap().game_string())?;
         Ok(())
     }
 
-    fn valid_moves(&self) -> Result<()> {
-        println!("{}", self.board.as_ref().ok_or(UhpError::GameNotStarted)?.valid_moves());
+    fn valid_moves(&mut self) -> Result<()> {
+        writeln!(
+            self.output,
+            "{}",
+            self.board.as_ref().ok_or(UhpError::GameNotStarted)?.valid_moves()
+        )?;
         Ok(())
     }
 
@@ -48,7 +57,7 @@ impl UhpServer {
         let m = board.from_move_string(args)?;
         board.apply_untrusted(m)?;
         self.engine.as_mut().unwrap().play_move(m);
-        println!("{}", board.game_string());
+        writeln!(self.output, "{}", board.game_string())?;
         Ok(())
     }
 
@@ -66,7 +75,7 @@ impl UhpServer {
             return Err(UhpError::UnrecognizedCommand(args.to_string()));
         }
         let m = self.engine.as_mut().unwrap().generate_move();
-        println!("{}", board.to_move_string(m));
+        writeln!(self.output, "{}", board.to_move_string(m))?;
         Ok(())
     }
 
@@ -84,12 +93,12 @@ impl UhpServer {
             self.engine.as_mut().unwrap().undo_move(board.last_move().unwrap());
             board.undo_count(1)?;
         }
-        println!("{}", board.game_string());
+        writeln!(self.output, "{}", board.game_string())?;
         Ok(())
     }
 
     fn options(&mut self, _args: &str) -> Result<()> {
-        // unimplemented
+        // unimplemented, but the idea is to mutate PlayerConfig
         Ok(())
     }
 
@@ -101,46 +110,57 @@ impl UhpServer {
         Ok(())
     }
 
-    pub fn serve(&mut self) {
-        loop {
-            let mut line = String::new();
-            match stdin().read_line(&mut line) {
-                Ok(size) => {
-                    if size == 0 {
-                        return;
-                    }
-                }
-                Err(err) => {
-                    eprintln!("{}", err);
+    pub fn command(&mut self, line: &str) -> bool {
+        let line = line.trim();
+        let space = line.find(' ');
+        let command = if let Some(i) = space { &line[..i] } else { line };
+        let args = if let Some(i) = space { &line[i + 1..] } else { "" };
+        let result = match command {
+            "info" => self.info(),
+            "newgame" => self.new_game(args),
+            "validmoves" => self.valid_moves(),
+            "play" => self.play(args),
+            "pass" => self.play("pass"),
+            "bestmove" => self.best_move(args),
+            "undo" => self.undo(args),
+            "options" => self.options(args),
+            "perft" => self.perft(args),
+            "exit" => return true,
+            _ => Err(UhpError::UnrecognizedCommand(command.to_string())),
+        };
+        if let Err(err) = result {
+            if let UhpError::InvalidMove(invalid) = err {
+                writeln!(self.output, "invalidmove {}", invalid).unwrap();
+            } else {
+                writeln!(self.output, "err {:?}", err).unwrap();
+            }
+        }
+        false
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub fn uhp_serve(config: PlayerConfig) {
+    let mut server = UhpServer::new(config, stdout());
+    server.info().unwrap();
+    println!("ok");
+    loop {
+        let mut line = String::new();
+        match stdin().read_line(&mut line) {
+            Ok(size) => {
+                if size == 0 {
                     return;
                 }
-            };
-            let line = line.trim();
-            let space = line.find(' ');
-            let command = if let Some(i) = space { &line[..i] } else { line };
-            let args = if let Some(i) = space { &line[i + 1..] } else { "" };
-            let result = match command {
-                "info" => self.info(),
-                "newgame" => self.new_game(args),
-                "validmoves" => self.valid_moves(),
-                "play" => self.play(args),
-                "pass" => self.play("pass"),
-                "bestmove" => self.best_move(args),
-                "undo" => self.undo(args),
-                "options" => self.options(args),
-                "perft" => self.perft(args),
-                "exit" => return,
-                _ => Err(UhpError::UnrecognizedCommand(command.to_string())),
-            };
-            if let Err(err) = result {
-                if let UhpError::InvalidMove(invalid) = err {
-                    println!("invalidmove {}", invalid);
-                } else {
-                    println!("err {:?}", err);
-                }
             }
-            println!("ok");
+            Err(err) => {
+                eprintln!("{}", err);
+                return;
+            }
+        };
+        if server.command(&line) {
+            return;
         }
+        println!("ok");
     }
 }
 
