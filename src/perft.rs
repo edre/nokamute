@@ -159,6 +159,7 @@ fn test_perft() {
 
 #[test]
 fn test_winner_fail() {
+    use minimax::Game;
     let b = Board::from_game_string(r#"Base+MLP;InProgress;Black[99];wP;bB1 \wP;wG1 wP-;bA1 -bB1;wL /wP;bP /bA1;wQ wP\;bQ -bA1;wQ \wG1;bG1 /bP;wL \bB1;bB2 bP\;wQ bA1\;bL -bQ;wL bB1/;wQ bL\;wG1 /wP"#).unwrap();
     assert_eq!(None, Rules::get_winner(&b));
 }
