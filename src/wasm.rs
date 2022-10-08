@@ -60,4 +60,11 @@ pub mod test {
         let best = uhp("bestmove depth 1");
         assert!(["wA1", "wB1", "wG1", "wS1"].contains(&best.as_str()));
     }
+
+    #[wasm_bindgen_test]
+    fn bestmove_time_test() {
+        uhp("newgame Base");
+        let best = uhp("bestmove time 00:00:01");
+        assert!(["wA1", "wB1", "wG1", "wS1"].contains(&best.as_str()));
+    }
 }
