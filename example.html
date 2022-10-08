@@ -1,0 +1,35 @@
+<html>
+  <head>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+  </head>
+  <body>
+    See console logs.
+    <script type="module">
+      // This is an example file for how to use the nokamute.js interface.
+      import init, { uhp } from './pkg/nokamute.js';
+      async function run() {
+	  // Wait for wasm library to load and initialize.
+	  await init();
+
+	  // The only exported function is `uhp`.
+	  // It accepts a single UHP command,
+	  // and returns the output string.
+	  console.log(uhp("info"));
+	  let game_state = uhp("newgame Base+MLP");
+	  console.log(uhp("validmoves"));
+	  while (true) {
+	      let start = performance.now();
+	      let move = uhp("bestmove depth 4");
+	      console.log(move + " - " + (performance.now()-start) + "ms");
+	      game_state = uhp("play " + move);
+	      if (!game_state.includes("InProgress")) {
+		  break;
+	      }
+	  }
+	  console.log(game_state);
+      }
+
+      run();
+    </script>
+  </body>
+</html>
