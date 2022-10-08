@@ -137,7 +137,7 @@ impl Bug {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Color {
     Black = 1,
     White = 0,

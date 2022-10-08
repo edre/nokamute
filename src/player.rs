@@ -238,6 +238,12 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
     Ok((config, args.finish().into_iter().map(|s| s.into_string().unwrap()).collect::<Vec<_>>()))
 }
 
+impl Default for PlayerConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PlayerConfig {
     pub fn new() -> Self {
         Self {
