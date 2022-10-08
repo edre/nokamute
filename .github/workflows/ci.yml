@@ -13,17 +13,17 @@ jobs:
     - name: Run Tests
       run: cargo test
 
-    - uses: jetli/wasm-pack-action@v0.3.0
-    - uses: jetli/wasm-bindgen-action@v0.1.0
-    - run: rustup target add wasm32-unknown-unknown
-    - name: Wasm Tests
-      run: wasm-pack test --firefox --headless
-
     - name: Check formatting
       run: cargo fmt -- --check
 
     - name: Run linter
       run: cargo clippy --version && cargo clippy --no-deps -- -D warnings
+
+    - uses: jetli/wasm-pack-action@v0.3.0
+    - uses: jetli/wasm-bindgen-action@v0.1.0
+    - run: rustup target add wasm32-unknown-unknown
+    - name: Wasm Tests
+      run: wasm-pack test --firefox --headless
 
     - name: Build Release
       run: sh ./release.sh
@@ -39,3 +39,12 @@ jobs:
       with:
         name: nokamute_win64.zip
         path: nokamute_win64.zip
+
+    - name: Build Wasm Release
+      run: wasm-pack build --target web && zip nokamute_wasm32.zip pkg/*
+
+    - name: Upload Wasm Build Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: nokamute_wasm32.zip
+        path: nokamute_wasm32.zip
