@@ -1,7 +1,7 @@
 extern crate minimax;
 
+use crate::notation::{Result, UhpError};
 use crate::player::Player;
-use crate::uhp_util::{Result, UhpError};
 use crate::{Board, Color};
 
 use minimax::Winner;

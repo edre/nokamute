@@ -192,7 +192,7 @@ impl Board {
         log
     }
 
-    // From e.g. "wB2-", returns bug, num, color, delta (White, Beetle, 2, 1)
+    // From e.g. "wB2-", returns color, bug, num, delta (White, Beetle, 2, 1)
     fn parse_piece_name(&self, mut piece_string: &str) -> Option<(Color, Bug, u8, Id)> {
         let first = piece_string.chars().next()?;
         let last = piece_string.chars().rev().next()?;

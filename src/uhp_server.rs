@@ -1,6 +1,6 @@
 extern crate minimax;
 
-use crate::uhp_util::{Result, UhpError};
+use crate::notation::{Result, UhpError};
 use crate::{Board, Player, PlayerConfig, Rules};
 
 use std::io::Write;
