@@ -1,5 +1,5 @@
 extern crate minimax;
-use crate::{adjacent, Board, Bug, Color, Id, Node, Rules, GRID_MASK, ROW_SIZE, START_ID};
+use crate::{adjacent, Board, Bug, Color, Direction, Id, Node, Rules, START_ID};
 use minimax::{Game, Move};
 
 #[derive(Debug)]
@@ -192,28 +192,28 @@ impl Board {
         log
     }
 
-    // From e.g. "wB2-", returns color, bug, num, delta (White, Beetle, 2, 1)
-    fn parse_piece_name(&self, mut piece_string: &str) -> Option<(Color, Bug, u8, Id)> {
+    // From e.g. "wB2-", returns color, bug, num, dir (White, Beetle, 2, NW)
+    fn parse_piece_name(&self, mut piece_string: &str) -> Option<(Color, Bug, u8, Direction)> {
         let first = piece_string.chars().next()?;
         let last = piece_string.chars().rev().next()?;
-        let delta = if "\\-/".contains(first) {
+        let dir = if "\\-/".contains(first) {
             piece_string = &piece_string[1..];
             match first {
-                '\\' => (ROW_SIZE + 1).wrapping_neg(),
-                '-' => (1 as Id).wrapping_neg(),
-                '/' => ROW_SIZE,
+                '\\' => Direction::NW,
+                '-' => Direction::W,
+                '/' => Direction::SW,
                 _ => return None,
             }
         } else if "\\-/".contains(last) {
             piece_string = &piece_string[..piece_string.len() - 1];
             match last {
-                '/' => ROW_SIZE.wrapping_neg(),
-                '-' => 1,
-                '\\' => ROW_SIZE + 1,
+                '/' => Direction::NE,
+                '-' => Direction::E,
+                '\\' => Direction::SE,
                 _ => return None,
             }
         } else {
-            0
+            Direction::None
         };
 
         let mut chars = piece_string.chars();
@@ -230,7 +230,7 @@ impl Board {
         } else {
             1
         };
-        Some((color, bug, bug_num, delta))
+        Some((color, bug, bug_num, dir))
     }
 
     // Returns the location of the piece, or None if it is not on the board.
@@ -262,8 +262,8 @@ impl Board {
             return Ok(crate::Move::Pass);
         }
         let tokens = move_string.split(' ').collect::<Vec<_>>();
-        let (color, bug, bug_num, delta) = self.parse_piece_name(tokens[0]).ok_or_else(err)?;
-        if delta != 0 {
+        let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[0]).ok_or_else(err)?;
+        if dir != Direction::None {
             return Err(err());
         }
         if self.move_history.is_empty() {
@@ -277,9 +277,9 @@ impl Board {
         }
         let start: Option<Id> = self.find_bug(color, bug, bug_num);
         let end: Id = {
-            let (color, bug, bug_num, delta) = self.parse_piece_name(tokens[1]).ok_or_else(err)?;
+            let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[1]).ok_or_else(err)?;
             let id = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
-            id.wrapping_add(delta) & GRID_MASK
+            dir.apply(id)
         };
         if let Some(start) = start {
             if self.occupied(start) {

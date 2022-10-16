@@ -806,19 +806,17 @@ impl Board {
 
     // Jumping over contiguous linear lines of tiles.
     fn generate_jumps(&self, id: Id, moves: &mut Vec<Move>) {
-        for delta in [
-            GRID_MASK & (ROW_SIZE + 1).wrapping_neg(),
-            GRID_MASK & ROW_SIZE.wrapping_neg(),
-            GRID_MASK & (1 as Id).wrapping_neg(),
-            1,
-            ROW_SIZE,
-            ROW_SIZE + 1,
-        ] {
-            let mut jump = id.wrapping_add(delta) & GRID_MASK;
+        for dir in Direction::all() {
+            let mut jump = dir.apply(id);
             let mut dist = 1;
             while self.occupied(jump) {
-                jump = jump.wrapping_add(delta) & GRID_MASK;
+                jump = dir.apply(jump);
                 dist += 1;
+                if jump == id {
+                    // Exit out if we'd infinitey loop.
+                    dist = 0;
+                    break;
+                }
             }
             if dist > 1 {
                 moves.push(Move::Movement(id, jump));
@@ -907,7 +905,7 @@ impl Board {
         let mut ends = [0; 6];
         let mut num_ends = 0;
         let mut buf = [0; 6];
-        let origin = id.wrapping_add(5) & GRID_MASK; // something not adjacent
+        let origin = Direction::NW.apply(Direction::NW.apply(id)); // something not adjacent
         for adj in self.slidable_adjacent_beetle(&mut buf, origin, id) {
             match self.height(adj) {
                 0 => {
