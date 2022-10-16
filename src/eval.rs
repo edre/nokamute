@@ -1,4 +1,5 @@
 use crate::board::*;
+use crate::hex_grid::*;
 
 use minimax::{Evaluation, Evaluator};
 use std::cmp::max;

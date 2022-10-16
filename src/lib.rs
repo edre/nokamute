@@ -9,6 +9,8 @@ mod cli;
 pub use cli::*;
 mod eval;
 pub use eval::*;
+mod hex_grid;
+pub use hex_grid::*;
 mod notation;
 mod perft;
 pub use perft::*;

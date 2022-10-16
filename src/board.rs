@@ -1,6 +1,7 @@
 extern crate minimax;
 extern crate termcolor;
 
+use crate::hex_grid::*;
 use std::borrow::Borrow;
 use std::cmp::{max, min};
 use std::collections::hash_map::DefaultHasher;
@@ -8,40 +9,6 @@ use std::default::Default;
 use std::hash::Hasher;
 use std::io::Write;
 use termcolor::WriteColor;
-
-// Board representation: wrapping grid of tile locations.
-// Rows wrap around, and each row wraps to the next row.
-// It's like a spiral around a torus.
-
-// Index of a board location.
-#[cfg(not(feature = "larger-grid"))]
-pub type Id = u8;
-#[cfg(feature = "larger-grid")]
-pub type Id = u16;
-
-#[cfg(not(feature = "larger-grid"))]
-pub const ROW_SIZE: Id = 16;
-#[cfg(feature = "larger-grid")]
-pub const ROW_SIZE: Id = 32;
-
-const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
-pub(super) const GRID_MASK: Id = (GRID_SIZE as Id).wrapping_sub(1);
-// In the middle of the columns and the rows.
-// To slightly increase cache locality in the early game,
-// and to make formatting slightly simpler.
-pub(crate) const START_ID: Id = ROW_SIZE / 2 * (ROW_SIZE + 1);
-
-pub(crate) fn adjacent(id: Id) -> [Id; 6] {
-    // In clockwise order
-    [
-        GRID_MASK & id.wrapping_sub(ROW_SIZE + 1),
-        GRID_MASK & id.wrapping_sub(ROW_SIZE),
-        GRID_MASK & id.wrapping_add(1),
-        GRID_MASK & id.wrapping_add(ROW_SIZE + 1),
-        GRID_MASK & id.wrapping_add(ROW_SIZE),
-        GRID_MASK & id.wrapping_sub(1),
-    ]
-}
 
 lazy_static! {
     static ref ZOBRIST_TABLE: Box<[u64; GRID_SIZE * 2]> = {
@@ -666,29 +633,6 @@ impl minimax::Move for Move {
 
     fn notation(&self, board: &Board) -> Option<String> {
         Some(board.to_move_string(*self))
-    }
-}
-
-// Efficient set utility.
-const NODESET_NUM_WORDS: usize = GRID_SIZE / 32;
-const NODESET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
-const NODESET_MASK: usize = NODESET_NUM_WORDS - 1;
-
-pub(crate) struct NodeSet {
-    table: [u32; NODESET_NUM_WORDS],
-}
-
-impl NodeSet {
-    pub(crate) fn new() -> NodeSet {
-        NodeSet { table: [0; NODESET_NUM_WORDS] }
-    }
-
-    pub(crate) fn set(&mut self, id: Id) {
-        self.table[id as usize & NODESET_MASK] |= 1 << (id as u32 >> NODESET_SHIFT);
-    }
-
-    pub(crate) fn get(&self, id: Id) -> bool {
-        (self.table[id as usize & NODESET_MASK] >> (id as u32 >> NODESET_SHIFT)) & 1 != 0
     }
 }
 
