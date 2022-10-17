@@ -108,24 +108,24 @@ fn test_direction() {
 }
 
 // Efficient set utility.
-const NODESET_NUM_WORDS: usize = GRID_SIZE / 32;
-const NODESET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
-const NODESET_MASK: usize = NODESET_NUM_WORDS - 1;
+const HEXSET_NUM_WORDS: usize = GRID_SIZE / 32;
+const HEXSET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
+const HEXSET_MASK: usize = HEXSET_NUM_WORDS - 1;
 
-pub(crate) struct NodeSet {
-    table: [u32; NODESET_NUM_WORDS],
+pub(crate) struct HexSet {
+    table: [u32; HEXSET_NUM_WORDS],
 }
 
-impl NodeSet {
-    pub(crate) fn new() -> NodeSet {
-        NodeSet { table: [0; NODESET_NUM_WORDS] }
+impl HexSet {
+    pub(crate) fn new() -> HexSet {
+        HexSet { table: [0; HEXSET_NUM_WORDS] }
     }
 
     pub(crate) fn set(&mut self, hex: Hex) {
-        self.table[hex as usize & NODESET_MASK] |= 1 << (hex as u32 >> NODESET_SHIFT);
+        self.table[hex as usize & HEXSET_MASK] |= 1 << (hex as u32 >> HEXSET_SHIFT);
     }
 
     pub(crate) fn get(&self, hex: Hex) -> bool {
-        (self.table[hex as usize & NODESET_MASK] >> (hex as u32 >> NODESET_SHIFT)) & 1 != 0
+        (self.table[hex as usize & HEXSET_MASK] >> (hex as u32 >> HEXSET_SHIFT)) & 1 != 0
     }
 }

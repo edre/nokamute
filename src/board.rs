@@ -410,14 +410,14 @@ impl minimax::Move for Move {
 
 impl Board {
     fn generate_placements(&self, moves: &mut Vec<Move>) {
-        let mut enemy_adjacent = NodeSet::new();
+        let mut enemy_adjacent = HexSet::new();
         for &enemy in self.occupied_hexes[self.to_move().other()].iter() {
             for adj in adjacent(enemy) {
                 enemy_adjacent.set(adj);
             }
         }
 
-        let mut visited = NodeSet::new();
+        let mut visited = HexSet::new();
         for &friend in self.occupied_hexes[self.to_move() as usize].iter() {
             for hex in adjacent(friend) {
                 if visited.get(hex) {
@@ -448,11 +448,11 @@ impl Board {
     // DFS iteration order is important.
     // Perhaps you can find the first-explored neighbor and restart the DFS search at that point?
     // This would be very fast for repeated insertion/removal of leaf nodes (Placement heavy parts of search).
-    pub(crate) fn find_cut_vertexes(&self) -> NodeSet {
+    pub(crate) fn find_cut_vertexes(&self) -> HexSet {
         struct State<'a> {
             board: &'a Board,
-            visited: NodeSet,
-            immovable: NodeSet,
+            visited: HexSet,
+            immovable: HexSet,
             // Visitation number in DFS traversal.
             num: [u8; GRID_SIZE],
             // Lowest-numbered node reachable using DFS edges and then at most
@@ -462,8 +462,8 @@ impl Board {
         }
         let mut state = State {
             board: self,
-            visited: NodeSet::new(),
-            immovable: NodeSet::new(),
+            visited: HexSet::new(),
+            immovable: HexSet::new(),
             num: [0; GRID_SIZE],
             low: [0; GRID_SIZE],
             visit_num: 1,
@@ -605,7 +605,7 @@ impl Board {
 
     fn generate_walk3(&self, orig: Hex, moves: &mut Vec<Move>) {
         fn dfs(
-            hex: Hex, orig: Hex, board: &Board, path: &mut Vec<Hex>, visited: &mut NodeSet,
+            hex: Hex, orig: Hex, board: &Board, path: &mut Vec<Hex>, visited: &mut HexSet,
             moves: &mut Vec<Move>,
         ) {
             if path.contains(&hex) {
@@ -626,12 +626,12 @@ impl Board {
             path.pop();
         }
         let mut path = Vec::with_capacity(3);
-        let mut visited = NodeSet::new();
+        let mut visited = HexSet::new();
         dfs(orig, orig, self, &mut path, &mut visited, moves);
     }
 
     fn generate_walk_all(&self, orig: Hex, moves: &mut Vec<Move>) {
-        let mut visited = NodeSet::new();
+        let mut visited = HexSet::new();
         let mut queue = vec![orig];
         let mut buf = [0; 6];
         while let Some(node) = queue.pop() {
@@ -652,8 +652,8 @@ impl Board {
         let mut buf1 = [0; 6];
         let mut buf2 = [0; 6];
         let mut buf3 = [0; 6];
-        let mut step2 = NodeSet::new();
-        let mut step3 = NodeSet::new();
+        let mut step2 = HexSet::new();
+        let mut step3 = HexSet::new();
         for s1 in self.slidable_adjacent_beetle(&mut buf1, hex, hex) {
             if self.occupied(s1) {
                 for s2 in self.slidable_adjacent_beetle(&mut buf2, hex, s1) {
@@ -671,7 +671,7 @@ impl Board {
         }
     }
 
-    fn generate_throws(&self, immovable: &NodeSet, hex: Hex, moves: &mut Vec<Move>) -> bool {
+    fn generate_throws(&self, immovable: &HexSet, hex: Hex, moves: &mut Vec<Move>) -> bool {
         let mut starts = [0; 6];
         let mut num_starts = 0;
         let mut ends = [0; 6];
@@ -736,7 +736,7 @@ impl Board {
         }
 
         // Remove duplicates.
-        let mut dests = NodeSet::new();
+        let mut dests = HexSet::new();
         while i < moves.len() {
             if let Move::Movement(_, dest) = moves[i] {
                 if dests.get(dest) {
@@ -1215,7 +1215,7 @@ mod tests {
         //．．💊💊．．
         // ．．💊💊．
         let mut moves = Vec::new();
-        let immovable = NodeSet::new();
+        let immovable = HexSet::new();
         let start = loc_to_hex((1, 1));
         board.generate_throws(&immovable, start, &mut moves);
         assert_eq!(4, moves.len());
