@@ -27,3 +27,5 @@ The single binary can run a [Universal Hive
 Protocol](https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol)
 engine, play against a human on the command line, or play against another UHP
 engine.
+
+For a graphical interface to play against nokamute, you can use [MzingaViewer](https://github.com/jonthysell/Mzinga/wiki/MzingaViewer) and under Viewer Options, set the Engine to your nokamute executable.
