@@ -1,5 +1,5 @@
 extern crate minimax;
-use crate::{adjacent, Board, Bug, Color, Direction, Id, Node, Rules, START_ID};
+use crate::{adjacent, Board, Bug, Color, Direction, Hex, Node, Rules, START_HEX};
 use minimax::{Game, Move};
 
 #[derive(Debug)]
@@ -45,13 +45,13 @@ impl Board {
         Ok(Board::new(starting))
     }
 
-    pub(super) fn id_name(&self, id: Id, out: &mut String) {
-        if self.occupied(id) {
-            self.tile_name(self.node(id), out);
+    pub(super) fn hex_name(&self, hex: Hex, out: &mut String) {
+        if self.occupied(hex) {
+            self.tile_name(self.node(hex), out);
             return;
         }
         // Name this relative to an adjacent tile.
-        for (dir, adj) in (0..6).zip(adjacent(id).into_iter()) {
+        for (dir, adj) in (0..6).zip(adjacent(hex).into_iter()) {
             if self.occupied(adj) {
                 // Reverse directions; they're from the other bug's perspective.
                 out.push_str(match dir {
@@ -116,8 +116,8 @@ impl Board {
         out.push(' ');
 
         match m {
-            crate::Move::Movement(_, end) => self.id_name(end, &mut out),
-            crate::Move::Place(id, _) => self.id_name(id, &mut out),
+            crate::Move::Movement(_, end) => self.hex_name(end, &mut out),
+            crate::Move::Place(hex, _) => self.hex_name(hex, &mut out),
             crate::Move::Pass => unreachable!(),
         }
         out
@@ -234,12 +234,12 @@ impl Board {
     }
 
     // Returns the location of the piece, or None if it is not on the board.
-    pub(crate) fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Id> {
-        self.occupied_ids[color as usize]
+    pub(crate) fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Hex> {
+        self.occupied_hexes[color as usize]
             .iter()
             .copied()
-            .find(|&id| {
-                let node = self.node(id);
+            .find(|&hex| {
+                let node = self.node(hex);
                 node.bug() == bug && node.bug_num() == bug_num
             })
             .or_else(|| {
@@ -250,7 +250,7 @@ impl Board {
                             && under.node().bug() == bug
                             && under.node().bug_num() == bug_num
                     })
-                    .map(|under| under.id())
+                    .map(|under| under.hex())
             })
     }
 
@@ -270,16 +270,16 @@ impl Board {
             if tokens.len() != 1 {
                 return Err(err());
             }
-            return Ok(crate::Move::Place(START_ID, bug));
+            return Ok(crate::Move::Place(START_HEX, bug));
         }
         if tokens.len() != 2 {
             return Err(err());
         }
-        let start: Option<Id> = self.find_bug(color, bug, bug_num);
-        let end: Id = {
+        let start: Option<Hex> = self.find_bug(color, bug, bug_num);
+        let end: Hex = {
             let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[1]).ok_or_else(err)?;
-            let id = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
-            dir.apply(id)
+            let hex = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
+            dir.apply(hex)
         };
         if let Some(start) = start {
             if self.occupied(start) {

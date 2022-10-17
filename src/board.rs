@@ -87,39 +87,39 @@ pub struct UnderNode {
     // What bug is here.
     node: Node,
     // Where is this stack.
-    id: Id,
+    hex: Hex,
     // What is the height of this piece.
     height: u8,
 }
 
 impl UnderNode {
-    fn new(node: Node, id: Id, height: u8) -> Self {
-        Self { node: node.with_height(height), id, height }
+    fn new(node: Node, hex: Hex, height: u8) -> Self {
+        Self { node: node.with_height(height), hex, height }
     }
 
     fn empty() -> Self {
-        Self { node: Node::empty(), id: 0, height: 0 }
+        Self { node: Node::empty(), hex: 0, height: 0 }
     }
 
     pub fn node(&self) -> Node {
         self.node
     }
-    pub fn id(&self) -> Id {
-        self.id
+    pub fn hex(&self) -> Hex {
+        self.hex
     }
 }
 
 #[derive(Clone)]
 pub struct Board {
-    // Indexed by Id.
+    // Indexed by Hex.
     pub(crate) nodes: [Node; GRID_SIZE],
     // Tiles that are under other tiles.
-    // Sorted by height (for each id) and no gaps.
+    // Sorted by height (for each hex) and no gaps.
     underworld: [UnderNode; 8],
     underworld_size: usize,
     pub(crate) remaining: [[u8; 8]; 2],
-    pub(crate) queens: [Id; 2],
-    pub(crate) occupied_ids: [Vec<Id>; 2],
+    pub(crate) queens: [Hex; 2],
+    pub(crate) occupied_hexes: [Vec<Hex>; 2],
 
     pub(crate) move_num: u16,
     zobrist_table: &'static [u64; GRID_SIZE * 2],
@@ -146,12 +146,12 @@ impl Board {
         }
     }
 
-    pub(crate) fn node(&self, id: Id) -> Node {
-        self.nodes[id as usize]
+    pub(crate) fn node(&self, hex: Hex) -> Node {
+        self.nodes[hex as usize]
     }
 
-    fn zobrist(&self, id: Id, bug: Bug, color: Color, height: u8) -> u64 {
-        let hash = self.zobrist_table[(id as usize) << 1 | (color as usize)];
+    fn zobrist(&self, hex: Hex, bug: Bug, color: Color, height: u8) -> u64 {
+        let hash = self.zobrist_table[(hex as usize) << 1 | (color as usize)];
         // I don't really want to multiply the table by another factor of 7*8, so
         // just realign the existing random bits.
         // Also include the color to move hash.
@@ -162,18 +162,18 @@ impl Board {
         &self.underworld[0..self.underworld_size]
     }
 
-    fn insert_underworld(&mut self, node: Node, id: Id) {
-        let height = self.underworld_height(id, node);
+    fn insert_underworld(&mut self, node: Node, hex: Hex) {
+        let height = self.underworld_height(hex, node);
         if self.underworld_size >= self.underworld.len() {
             unreachable!("underworld overflowed");
         }
-        self.underworld[self.underworld_size] = UnderNode::new(node, id, height);
+        self.underworld[self.underworld_size] = UnderNode::new(node, hex, height);
         self.underworld_size += 1;
     }
 
-    fn remove_underworld(&mut self, id: Id) -> Node {
+    fn remove_underworld(&mut self, hex: Hex) -> Node {
         for i in (0..self.underworld_size).rev() {
-            if self.underworld[i].id == id {
+            if self.underworld[i].hex == hex {
                 let node = self.underworld[i].node;
                 self.underworld[i..self.underworld_size].rotate_left(1);
                 self.underworld_size -= 1;
@@ -183,70 +183,70 @@ impl Board {
         unreachable!("underworld not found");
     }
 
-    fn occupied_add(&mut self, color: Color, id: Id) {
-        self.occupied_ids[color as usize].push(id);
+    fn occupied_add(&mut self, color: Color, hex: Hex) {
+        self.occupied_hexes[color as usize].push(hex);
     }
 
-    fn occupied_remove(&mut self, color: Color, id: Id) {
-        let vec = &mut self.occupied_ids[color as usize];
-        let i = vec.iter().position(|&x| x == id).unwrap();
+    fn occupied_remove(&mut self, color: Color, hex: Hex) {
+        let vec = &mut self.occupied_hexes[color as usize];
+        let i = vec.iter().position(|&x| x == hex).unwrap();
         vec.swap_remove(i);
     }
 
-    fn insert(&mut self, id: Id, bug: Bug, bug_num: u8, color: Color) {
-        let prev = self.node(id);
+    fn insert(&mut self, hex: Hex, bug: Bug, bug_num: u8, color: Color) {
+        let prev = self.node(hex);
         if prev.occupied() {
             if prev.color() != color {
-                self.occupied_remove(prev.color(), id);
-                self.occupied_add(color, id);
+                self.occupied_remove(prev.color(), hex);
+                self.occupied_add(color, hex);
             }
         } else {
-            self.occupied_add(color, id);
+            self.occupied_add(color, hex);
         }
         if prev.occupied() {
-            self.insert_underworld(prev, id);
+            self.insert_underworld(prev, hex);
         }
         let clipped_height = min(prev.clipped_height() + 1, 3);
-        self.nodes[id as usize] = Node::new_occupied(bug, color, bug_num, clipped_height);
-        self.zobrist_hash ^= self.zobrist(id, bug, color, self.height(id));
+        self.nodes[hex as usize] = Node::new_occupied(bug, color, bug_num, clipped_height);
+        self.zobrist_hash ^= self.zobrist(hex, bug, color, self.height(hex));
 
         if bug == Bug::Queen {
-            self.queens[color as usize] = id;
+            self.queens[color as usize] = hex;
         }
     }
 
     // Asserts that there is something there.
-    fn remove(&mut self, id: Id) -> (Bug, u8, Color) {
-        let height = self.height(id);
-        let prev = self.node(id);
+    fn remove(&mut self, hex: Hex) -> (Bug, u8, Color) {
+        let height = self.height(hex);
+        let prev = self.node(hex);
 
-        let new_node = if height > 1 { self.remove_underworld(id) } else { Node::empty() };
-        self.nodes[id as usize] = new_node;
+        let new_node = if height > 1 { self.remove_underworld(hex) } else { Node::empty() };
+        self.nodes[hex as usize] = new_node;
         let bug = prev.bug();
         let color = prev.color();
         if new_node.occupied() {
             if new_node.color() != color {
-                self.occupied_remove(color, id);
-                self.occupied_add(new_node.color(), id);
+                self.occupied_remove(color, hex);
+                self.occupied_add(new_node.color(), hex);
             }
         } else {
-            self.occupied_remove(color, id);
+            self.occupied_remove(color, hex);
         }
 
-        self.zobrist_hash ^= self.zobrist(id, bug, color, height);
+        self.zobrist_hash ^= self.zobrist(hex, bug, color, height);
         if bug == Bug::Queen {
-            self.queens[color as usize] = START_ID;
+            self.queens[color as usize] = START_HEX;
         }
         (bug, prev.bug_num(), color)
     }
 
-    fn underworld_height(&self, id: Id, node: Node) -> u8 {
+    fn underworld_height(&self, hex: Hex, node: Node) -> u8 {
         let height = node.clipped_height();
         if height > 2 {
             1 + self.underworld[0..self.underworld_size]
                 .iter()
                 .rev()
-                .find(|under| under.id == id)
+                .find(|under| under.hex == hex)
                 .unwrap()
                 .height
         } else {
@@ -254,12 +254,12 @@ impl Board {
         }
     }
 
-    fn height(&self, id: Id) -> u8 {
-        self.underworld_height(id, self.node(id))
+    fn height(&self, hex: Hex) -> u8 {
+        self.underworld_height(hex, self.node(hex))
     }
 
-    pub(crate) fn occupied(&self, id: Id) -> bool {
-        self.node(id).occupied()
+    pub(crate) fn occupied(&self, hex: Hex) -> bool {
+        self.node(hex).occupied()
     }
 
     pub(crate) fn get_remaining(&self) -> &[u8; 8] {
@@ -312,8 +312,8 @@ impl Board {
             underworld: [UnderNode::empty(); 8],
             underworld_size: 0,
             remaining: [remaining; 2],
-            queens: [START_ID; 2],
-            occupied_ids: [Vec::new(), Vec::new()],
+            queens: [START_HEX; 2],
+            occupied_hexes: [Vec::new(), Vec::new()],
             move_num: 0,
             zobrist_table: ZOBRIST_TABLE.borrow(),
             zobrist_hash: 0,
@@ -340,8 +340,8 @@ impl Default for Board {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Move {
-    Place(Id, Bug),
-    Movement(Id, Id),
+    Place(Hex, Bug),
+    Movement(Hex, Hex),
     Pass,
 }
 
@@ -355,10 +355,10 @@ impl minimax::Move for Move {
     type G = Rules;
     fn apply(&self, board: &mut Board) {
         match *self {
-            Move::Place(id, bug) => {
+            Move::Place(hex, bug) => {
                 let bug_num =
                     Bug::initial_quantity()[bug as usize] - board.get_remaining()[bug as usize] + 1;
-                board.insert(id, bug, bug_num, board.to_move());
+                board.insert(hex, bug, bug_num, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
             }
             Move::Movement(start, end) => {
@@ -388,8 +388,8 @@ impl minimax::Move for Move {
             board.zobrist_hash ^= *end as u64;
         }
         match *self {
-            Move::Place(id, bug) => {
-                board.remove(id);
+            Move::Place(hex, bug) => {
+                board.remove(hex);
                 board.mut_remaining()[bug as usize] += 1;
             }
             Move::Movement(start, end) => {
@@ -411,20 +411,20 @@ impl minimax::Move for Move {
 impl Board {
     fn generate_placements(&self, moves: &mut Vec<Move>) {
         let mut enemy_adjacent = NodeSet::new();
-        for &enemy in self.occupied_ids[self.to_move().other()].iter() {
+        for &enemy in self.occupied_hexes[self.to_move().other()].iter() {
             for adj in adjacent(enemy) {
                 enemy_adjacent.set(adj);
             }
         }
 
         let mut visited = NodeSet::new();
-        for &friend in self.occupied_ids[self.to_move() as usize].iter() {
-            for id in adjacent(friend) {
-                if visited.get(id) {
+        for &friend in self.occupied_hexes[self.to_move() as usize].iter() {
+            for hex in adjacent(friend) {
+                if visited.get(hex) {
                     continue;
                 }
-                visited.set(id);
-                if self.occupied(id) || enemy_adjacent.get(id) {
+                visited.set(hex);
+                if self.occupied(hex) || enemy_adjacent.get(hex) {
                     continue;
                 }
                 for (bug, num_left) in self.get_available_bugs().iter() {
@@ -432,7 +432,7 @@ impl Board {
                         continue;
                     }
                     if *num_left > 0 {
-                        moves.push(Move::Place(id, *bug));
+                        moves.push(Move::Place(hex, *bug));
                     }
                 }
             }
@@ -468,13 +468,13 @@ impl Board {
             low: [0; GRID_SIZE],
             visit_num: 1,
         };
-        fn dfs(state: &mut State, id: Id, parent: Id, root: bool) {
-            state.visited.set(id);
-            state.num[id as usize] = state.visit_num;
-            state.low[id as usize] = state.visit_num;
+        fn dfs(state: &mut State, hex: Hex, parent: Hex, root: bool) {
+            state.visited.set(hex);
+            state.num[hex as usize] = state.visit_num;
+            state.low[hex as usize] = state.visit_num;
             state.visit_num += 1;
             let mut children = 0;
-            for adj in adjacent(id) {
+            for adj in adjacent(hex) {
                 if !state.board.occupied(adj) {
                     continue;
                 }
@@ -482,18 +482,18 @@ impl Board {
                     continue;
                 }
                 if state.visited.get(adj) {
-                    state.low[id as usize] = min(state.low[id as usize], state.num[adj as usize]);
+                    state.low[hex as usize] = min(state.low[hex as usize], state.num[adj as usize]);
                 } else {
-                    dfs(state, adj, id, false);
-                    state.low[id as usize] = min(state.low[id as usize], state.low[adj as usize]);
-                    if state.low[adj as usize] >= state.num[id as usize] && !root {
-                        state.immovable.set(id);
+                    dfs(state, adj, hex, false);
+                    state.low[hex as usize] = min(state.low[hex as usize], state.low[adj as usize]);
+                    if state.low[adj as usize] >= state.num[hex as usize] && !root {
+                        state.immovable.set(hex);
                     }
                     children += 1;
                 }
             }
             if root && children > 1 {
-                state.immovable.set(id);
+                state.immovable.set(hex);
             }
         }
 
@@ -507,9 +507,9 @@ impl Board {
     // A slidable position has 2 empty slots next to an occupied slot.
     // For all 2^6 possibilities, there can be 0, 2, or 4 slidable neighbors.
     pub(crate) fn slidable_adjacent<'a>(
-        &self, neighbors: &'a mut [Id; 6], origin: Id, id: Id,
-    ) -> impl Iterator<Item = Id> + 'a {
-        *neighbors = adjacent(id);
+        &self, neighbors: &'a mut [Hex; 6], origin: Hex, hex: Hex,
+    ) -> impl Iterator<Item = Hex> + 'a {
+        *neighbors = adjacent(hex);
         // Each bit is whether neighbor is occupied.
         let mut occupied = 0;
         for neighbor in neighbors.iter().rev() {
@@ -523,9 +523,9 @@ impl Board {
         occupied |= occupied << 6 | occupied << 12;
         let slidable = (!occupied & (occupied << 1 ^ occupied >> 1)) >> 6;
 
-        neighbors.iter().enumerate().filter_map(move |(i, &id)| {
+        neighbors.iter().enumerate().filter_map(move |(i, &hex)| {
             if (slidable >> i) & 1 != 0 {
-                Some(id)
+                Some(hex)
             } else {
                 None
             }
@@ -538,14 +538,14 @@ impl Board {
     // source or dest heights.
     // https://www.boardgamegeek.com/thread/332467
     fn slidable_adjacent_beetle<'a>(
-        &self, out: &'a mut [Id; 6], orig: Id, id: Id,
-    ) -> impl Iterator<Item = Id> + 'a {
-        let mut self_height = self.height(id);
-        if orig == id {
+        &self, out: &'a mut [Hex; 6], orig: Hex, hex: Hex,
+    ) -> impl Iterator<Item = Hex> + 'a {
+        let mut self_height = self.height(hex);
+        if orig == hex {
             self_height -= 1;
         }
         let mut heights = [0; 6];
-        let neighbors = adjacent(id);
+        let neighbors = adjacent(hex);
         for i in 0..6 {
             heights[i] = self.height(neighbors[i]);
         }
@@ -569,58 +569,58 @@ impl Board {
     }
 
     // From any bug on top of a stack.
-    fn generate_stack_walking(&self, id: Id, moves: &mut Vec<Move>) {
+    fn generate_stack_walking(&self, hex: Hex, moves: &mut Vec<Move>) {
         let mut buf = [0; 6];
-        for adj in self.slidable_adjacent_beetle(&mut buf, id, id) {
-            moves.push(Move::Movement(id, adj));
+        for adj in self.slidable_adjacent_beetle(&mut buf, hex, hex) {
+            moves.push(Move::Movement(hex, adj));
         }
     }
 
     // Jumping over contiguous linear lines of tiles.
-    fn generate_jumps(&self, id: Id, moves: &mut Vec<Move>) {
+    fn generate_jumps(&self, hex: Hex, moves: &mut Vec<Move>) {
         for dir in Direction::all() {
-            let mut jump = dir.apply(id);
+            let mut jump = dir.apply(hex);
             let mut dist = 1;
             while self.occupied(jump) {
                 jump = dir.apply(jump);
                 dist += 1;
-                if jump == id {
+                if jump == hex {
                     // Exit out if we'd infinitey loop.
                     dist = 0;
                     break;
                 }
             }
             if dist > 1 {
-                moves.push(Move::Movement(id, jump));
+                moves.push(Move::Movement(hex, jump));
             }
         }
     }
 
-    fn generate_walk1(&self, id: Id, moves: &mut Vec<Move>) {
+    fn generate_walk1(&self, hex: Hex, moves: &mut Vec<Move>) {
         let mut buf = [0; 6];
-        for adj in self.slidable_adjacent(&mut buf, id, id) {
-            moves.push(Move::Movement(id, adj));
+        for adj in self.slidable_adjacent(&mut buf, hex, hex) {
+            moves.push(Move::Movement(hex, adj));
         }
     }
 
-    fn generate_walk3(&self, orig: Id, moves: &mut Vec<Move>) {
+    fn generate_walk3(&self, orig: Hex, moves: &mut Vec<Move>) {
         fn dfs(
-            id: Id, orig: Id, board: &Board, path: &mut Vec<Id>, visited: &mut NodeSet,
+            hex: Hex, orig: Hex, board: &Board, path: &mut Vec<Hex>, visited: &mut NodeSet,
             moves: &mut Vec<Move>,
         ) {
-            if path.contains(&id) {
+            if path.contains(&hex) {
                 return;
             }
             if path.len() == 3 {
-                if !visited.get(id) {
-                    moves.push(Move::Movement(orig, id));
-                    visited.set(id);
+                if !visited.get(hex) {
+                    moves.push(Move::Movement(orig, hex));
+                    visited.set(hex);
                 }
                 return;
             }
-            path.push(id);
+            path.push(hex);
             let mut buf = [0; 6];
-            for adj in board.slidable_adjacent(&mut buf, orig, id) {
+            for adj in board.slidable_adjacent(&mut buf, orig, hex) {
                 dfs(adj, orig, board, path, visited, moves);
             }
             path.pop();
@@ -630,7 +630,7 @@ impl Board {
         dfs(orig, orig, self, &mut path, &mut visited, moves);
     }
 
-    fn generate_walk_all(&self, orig: Id, moves: &mut Vec<Move>) {
+    fn generate_walk_all(&self, orig: Hex, moves: &mut Vec<Move>) {
         let mut visited = NodeSet::new();
         let mut queue = vec![orig];
         let mut buf = [0; 6];
@@ -648,21 +648,21 @@ impl Board {
         }
     }
 
-    fn generate_ladybug(&self, id: Id, moves: &mut Vec<Move>) {
+    fn generate_ladybug(&self, hex: Hex, moves: &mut Vec<Move>) {
         let mut buf1 = [0; 6];
         let mut buf2 = [0; 6];
         let mut buf3 = [0; 6];
         let mut step2 = NodeSet::new();
         let mut step3 = NodeSet::new();
-        for s1 in self.slidable_adjacent_beetle(&mut buf1, id, id) {
+        for s1 in self.slidable_adjacent_beetle(&mut buf1, hex, hex) {
             if self.occupied(s1) {
-                for s2 in self.slidable_adjacent_beetle(&mut buf2, id, s1) {
+                for s2 in self.slidable_adjacent_beetle(&mut buf2, hex, s1) {
                     if self.occupied(s2) && !step2.get(s2) {
                         step2.set(s2);
-                        for s3 in self.slidable_adjacent_beetle(&mut buf3, id, s2) {
+                        for s3 in self.slidable_adjacent_beetle(&mut buf3, hex, s2) {
                             if !self.occupied(s3) && !step3.get(s3) {
                                 step3.set(s3);
-                                moves.push(Move::Movement(id, s3));
+                                moves.push(Move::Movement(hex, s3));
                             }
                         }
                     }
@@ -671,14 +671,14 @@ impl Board {
         }
     }
 
-    fn generate_throws(&self, immovable: &NodeSet, id: Id, moves: &mut Vec<Move>) -> bool {
+    fn generate_throws(&self, immovable: &NodeSet, hex: Hex, moves: &mut Vec<Move>) -> bool {
         let mut starts = [0; 6];
         let mut num_starts = 0;
         let mut ends = [0; 6];
         let mut num_ends = 0;
         let mut buf = [0; 6];
-        let origin = Direction::NW.apply(Direction::NW.apply(id)); // something not adjacent
-        for adj in self.slidable_adjacent_beetle(&mut buf, origin, id) {
+        let origin = Direction::NW.apply(Direction::NW.apply(hex)); // something not adjacent
+        for adj in self.slidable_adjacent_beetle(&mut buf, origin, hex) {
             match self.height(adj) {
                 0 => {
                     ends[num_ends] = adj;
@@ -701,9 +701,9 @@ impl Board {
         num_starts > 0 && num_ends > 0
     }
 
-    fn generate_mosquito(&self, id: Id, moves: &mut Vec<Move>) {
+    fn generate_mosquito(&self, hex: Hex, moves: &mut Vec<Move>) {
         let mut targets = [false; 8];
-        for adj in adjacent(id) {
+        for adj in adjacent(hex) {
             let node = self.nodes[adj as usize];
             if node.occupied() {
                 targets[node.bug() as usize] = true;
@@ -712,27 +712,27 @@ impl Board {
 
         let mut i = moves.len();
         if targets[Bug::Ant as usize] {
-            self.generate_walk_all(id, moves);
+            self.generate_walk_all(hex, moves);
         } else {
             // Avoid adding strictly duplicative moves to the ant.
             if targets[Bug::Queen as usize]
                 || targets[Bug::Beetle as usize]
                 || targets[Bug::Pillbug as usize]
             {
-                self.generate_walk1(id, moves);
+                self.generate_walk1(hex, moves);
             }
             if targets[Bug::Spider as usize] {
-                self.generate_walk3(id, moves);
+                self.generate_walk3(hex, moves);
             }
         }
         if targets[Bug::Grasshopper as usize] {
-            self.generate_jumps(id, moves);
+            self.generate_jumps(hex, moves);
         }
         if targets[Bug::Beetle as usize] {
-            self.generate_stack_walking(id, moves);
+            self.generate_stack_walking(hex, moves);
         }
         if targets[Bug::Ladybug as usize] {
-            self.generate_ladybug(id, moves);
+            self.generate_ladybug(hex, moves);
         }
 
         // Remove duplicates.
@@ -761,10 +761,10 @@ impl Board {
         }
 
         let mut dedup = false;
-        for &id in self.occupied_ids[self.to_move() as usize].iter() {
-            let node = self.node(id);
+        for &hex in self.occupied_hexes[self.to_move() as usize].iter() {
+            let node = self.node(hex);
             if node.is_stacked() {
-                self.generate_stack_walking(id, moves);
+                self.generate_stack_walking(hex, moves);
                 // Don't let mosquito on stack use pillbug ability.
                 // Although the rules don't seem to specify either way.
                 continue;
@@ -772,29 +772,29 @@ impl Board {
             // Check for throw ability before movability, as pinned pillbugs can still throw.
             let pillbug_powers = node.bug() == Bug::Pillbug
                 || (node.bug() == Bug::Mosquito
-                    && adjacent(id).iter().any(|&adj| {
+                    && adjacent(hex).iter().any(|&adj| {
                         let n = self.node(adj);
                         n.occupied() && n.bug() == Bug::Pillbug
                     }));
             // However pillbugs just thrown cannot throw.
-            if pillbug_powers && stunned != Some(&id) {
-                dedup |= self.generate_throws(&immovable, id, moves);
+            if pillbug_powers && stunned != Some(&hex) {
+                dedup |= self.generate_throws(&immovable, hex, moves);
             }
-            if immovable.get(id) {
+            if immovable.get(hex) {
                 continue;
             }
             match node.bug() {
-                Bug::Queen => self.generate_walk1(id, moves),
-                Bug::Grasshopper => self.generate_jumps(id, moves),
-                Bug::Spider => self.generate_walk3(id, moves),
-                Bug::Ant => self.generate_walk_all(id, moves),
+                Bug::Queen => self.generate_walk1(hex, moves),
+                Bug::Grasshopper => self.generate_jumps(hex, moves),
+                Bug::Spider => self.generate_walk3(hex, moves),
+                Bug::Ant => self.generate_walk_all(hex, moves),
                 Bug::Beetle => {
-                    self.generate_walk1(id, moves);
-                    self.generate_stack_walking(id, moves);
+                    self.generate_walk1(hex, moves);
+                    self.generate_stack_walking(hex, moves);
                 }
-                Bug::Mosquito => self.generate_mosquito(id, moves),
-                Bug::Ladybug => self.generate_ladybug(id, moves),
-                Bug::Pillbug => self.generate_walk1(id, moves),
+                Bug::Mosquito => self.generate_mosquito(hex, moves),
+                Bug::Ladybug => self.generate_ladybug(hex, moves),
+                Bug::Pillbug => self.generate_walk1(hex, moves),
             }
         }
 
@@ -825,10 +825,10 @@ impl minimax::Game for Rules {
                 }
                 if *num_left > 0 {
                     if board.move_num == 0 {
-                        moves.push(Move::Place(START_ID, *bug));
+                        moves.push(Move::Place(START_HEX, *bug));
                     } else {
-                        for &id in adjacent(START_ID).iter() {
-                            moves.push(Move::Place(id, *bug));
+                        for &hex in adjacent(START_HEX).iter() {
+                            moves.push(Move::Place(hex, *bug));
                         }
                     }
                 }
@@ -886,18 +886,18 @@ impl minimax::Game for Rules {
 
 // Coordinates for populating test positions.
 pub(crate) type Loc = (i8, i8);
-pub fn loc_to_id(loc: Loc) -> Id {
+pub fn loc_to_hex(loc: Loc) -> Hex {
     // Centered in the middle of the board.
-    START_ID.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as Id)).wrapping_add(loc.0 as Id)
+    START_HEX.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as Hex)).wrapping_add(loc.0 as Hex)
 }
 
 #[cfg(test)]
-pub(crate) fn id_to_loc(id: Id) -> Loc {
-    let mut x = (id.wrapping_sub(START_ID - ROW_SIZE / 2) / ROW_SIZE) as i8;
+pub(crate) fn hex_to_loc(hex: Hex) -> Loc {
+    let mut x = (hex.wrapping_sub(START_HEX - ROW_SIZE / 2) / ROW_SIZE) as i8;
     if x > 7 {
         x -= ROW_SIZE as i8;
     }
-    let mut y = (id.wrapping_sub(START_ID) % ROW_SIZE) as i8;
+    let mut y = (hex.wrapping_sub(START_HEX) % ROW_SIZE) as i8;
     if y > 7 {
         y -= ROW_SIZE as i8;
     }
@@ -909,36 +909,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_id_loc() {
+    fn test_hex_loc() {
         for x in -6..6 {
             for y in -6..6 {
                 let loc = (x, y);
-                let id = loc_to_id(loc);
-                assert_eq!(loc, id_to_loc(id), "{}", id);
+                let hex = loc_to_hex(loc);
+                assert_eq!(loc, hex_to_loc(hex), "{}", hex);
             }
         }
     }
 
     impl Board {
         fn insert_loc(&mut self, loc: Loc, bug: Bug, color: Color) {
-            self.insert(loc_to_id(loc), bug, 0, color);
+            self.insert(loc_to_hex(loc), bug, 0, color);
         }
 
         fn remove_loc(&mut self, loc: Loc) {
-            self.remove(loc_to_id(loc));
+            self.remove(loc_to_hex(loc));
         }
 
         fn fill_board(&mut self, locs: &[Loc], bug: Bug) {
             for &loc in locs {
-                self.insert(loc_to_id(loc), bug, 0, Color::Black);
+                self.insert(loc_to_hex(loc), bug, 0, Color::Black);
             }
         }
 
         fn assert_placements(&self, moves: &[Move], expected: &[(Loc, Bug)]) {
             let mut actual_pairs = Vec::new();
             for &m in moves.iter() {
-                if let Move::Place(actual_id, actual_bug) = m {
-                    actual_pairs.push((id_to_loc(actual_id), actual_bug));
+                if let Move::Place(actual_hex, actual_bug) = m {
+                    actual_pairs.push((hex_to_loc(actual_hex), actual_bug));
                 }
             }
             actual_pairs.sort();
@@ -952,8 +952,8 @@ mod tests {
             let mut actual_ends = Vec::new();
             for &m in moves.iter() {
                 if let Move::Movement(actual_start, actual_end) = m {
-                    if id_to_loc(actual_start) == start {
-                        actual_ends.push(id_to_loc(actual_end));
+                    if hex_to_loc(actual_start) == start {
+                        actual_ends.push(hex_to_loc(actual_end));
                     }
                 }
             }
@@ -994,9 +994,9 @@ mod tests {
         );
         let cuts = board.find_cut_vertexes();
         let mut cut_locs = vec![];
-        for id in 0..GRID_MASK {
-            if cuts.get(id) {
-                cut_locs.push(id_to_loc(id));
+        for hex in 0..GRID_MASK {
+            if cuts.get(hex) {
+                cut_locs.push(hex_to_loc(hex));
             }
         }
         assert_eq!(&[(-1, 0), (2, 1)], &cut_locs[..]);
@@ -1005,40 +1005,46 @@ mod tests {
     #[test]
     fn test_slidable() {
         let mut board = Board::default();
-        let x = START_ID;
+        let x = START_HEX;
         let mut buf = [0; 6];
         // One neighbor.
         board.insert_loc((0, 0), Bug::Queen, Color::Black);
         board.insert_loc((1, 0), Bug::Queen, Color::Black);
         assert_eq!(
-            vec![loc_to_id((0, -1)), loc_to_id((1, 1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
+            vec![loc_to_hex((0, -1)), loc_to_hex((1, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
         // Two adjacent neighbors.
         board.insert_loc((1, 1), Bug::Queen, Color::Black);
         assert_eq!(
-            vec![loc_to_id((0, -1)), loc_to_id((0, 1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
+            vec![loc_to_hex((0, -1)), loc_to_hex((0, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
         // Four adjacent neighbors.
         board.insert_loc((0, 1), Bug::Queen, Color::Black);
         board.insert_loc((-1, 0), Bug::Queen, Color::Black);
         assert_eq!(
-            vec![loc_to_id((-1, -1)), loc_to_id((0, -1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
+            vec![loc_to_hex((-1, -1)), loc_to_hex((0, -1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
         // Five adjacent neighbors.
         board.insert_loc((-1, -1), Bug::Queen, Color::Black);
-        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>());
+        assert_eq!(
+            Vec::<Hex>::new(),
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
+        );
         // 2 separated groups of neighbors.
         board.remove_loc((0, 1));
-        assert_eq!(Vec::<Id>::new(), board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>());
+        assert_eq!(
+            Vec::<Hex>::new(),
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
+        );
         // 2 opposite single neighbors
         board.remove_loc((1, 1));
         board.remove_loc((-1, -1));
         assert_eq!(
-            vec![loc_to_id((-1, -1)), loc_to_id((0, -1)), loc_to_id((1, 1)), loc_to_id((0, 1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Id>>()
+            vec![loc_to_hex((-1, -1)), loc_to_hex((0, -1)), loc_to_hex((1, 1)), loc_to_hex((0, 1))],
+            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
     }
 
@@ -1051,7 +1057,7 @@ mod tests {
         // ．🦗．．
         board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
         let mut moves = Vec::new();
-        board.generate_jumps(START_ID, &mut moves);
+        board.generate_jumps(START_HEX, &mut moves);
         board.assert_movements(&moves, (0, 0), &[(0, 2), (3, 0)]);
     }
 
@@ -1084,7 +1090,7 @@ mod tests {
         // Can't move left (down) or right (up) because of blocking stacks.
         // Can move onto all 4 blocking stacks.
         let mut moves = Vec::new();
-        board.generate_stack_walking(START_ID, &mut moves);
+        board.generate_stack_walking(START_HEX, &mut moves);
         board.assert_movements(&moves, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
     }
 
@@ -1100,7 +1106,7 @@ mod tests {
             Bug::Spider,
         );
         let mut moves = Vec::new();
-        let start = loc_to_id((-1, -1));
+        let start = loc_to_hex((-1, -1));
         board.generate_walk3(start, &mut moves);
         board.assert_movements(&moves, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
 
@@ -1110,7 +1116,7 @@ mod tests {
         board.remove_loc((-1, -1));
         board.insert_loc((1, 1), Bug::Spider, Color::Black);
         moves.clear();
-        let start = loc_to_id((1, 1));
+        let start = loc_to_hex((1, 1));
         board.generate_walk3(start, &mut moves);
         board.assert_movements(&moves, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
     }
@@ -1124,7 +1130,7 @@ mod tests {
         // ．．．🐜🐜
         board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
         let mut moves = Vec::new();
-        let start = loc_to_id((-1, -1));
+        let start = loc_to_hex((-1, -1));
         board.generate_walk_all(start, &mut moves);
         board.assert_movements(
             &moves,
@@ -1150,7 +1156,7 @@ mod tests {
         let mut board = Board::default();
         board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
         let mut moves = Vec::new();
-        board.generate_mosquito(loc_to_id((0, 0)), &mut moves);
+        board.generate_mosquito(loc_to_hex((0, 0)), &mut moves);
         // Mosquito on mosquito can't move at all.
         board.assert_movements(&moves, (0, 0), &[]);
 
@@ -1192,7 +1198,7 @@ mod tests {
         //．．．🐞🐞．．
         // ．．．🐞．．
         let mut moves = Vec::new();
-        let start = loc_to_id((2, 3));
+        let start = loc_to_hex((2, 3));
         board.generate_ladybug(start, &mut moves);
         board.assert_movements(
             &moves,
@@ -1210,7 +1216,7 @@ mod tests {
         // ．．💊💊．
         let mut moves = Vec::new();
         let immovable = NodeSet::new();
-        let start = loc_to_id((1, 1));
+        let start = loc_to_hex((1, 1));
         board.generate_throws(&immovable, start, &mut moves);
         assert_eq!(4, moves.len());
         board.assert_movements(&moves[..2], (1, 2), &[(1, 0), (2, 1)]);
@@ -1242,11 +1248,11 @@ mod tests {
 
         // Draw by threefold repetition.
         let mut board = Board::default();
-        let x1 = loc_to_id((-1, -1));
-        let x2 = loc_to_id((-1, 0));
-        let y1 = loc_to_id((1, 1));
-        let y2 = loc_to_id((1, 0));
-        super::Move::Place(loc_to_id((0, 0)), Bug::Spider).apply(&mut board);
+        let x1 = loc_to_hex((-1, -1));
+        let x2 = loc_to_hex((-1, 0));
+        let y1 = loc_to_hex((1, 1));
+        let y2 = loc_to_hex((1, 0));
+        super::Move::Place(loc_to_hex((0, 0)), Bug::Spider).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         super::Move::Place(x1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));

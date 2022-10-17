@@ -1,16 +1,16 @@
 extern crate termcolor;
 
 use crate::player::{Player, PlayerConfig};
-use crate::{Board, Bug, Color, Id, Rules, ROW_SIZE, START_ID};
+use crate::{Board, Bug, Color, Hex, Rules, ROW_SIZE, START_HEX};
 use minimax::{Game, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
 use termcolor::WriteColor;
 
 impl Board {
-    // return the Id to the upper left and lower right of all occupied nodes.
+    // return the Hex to the upper left and lower right of all occupied nodes.
     // Given wrapping, the second may be less than the first.
-    fn bounding_box(&self) -> (Id, Id, Id, Id) {
+    fn bounding_box(&self) -> (Hex, Hex, Hex, Hex) {
         let empty_rows = (0..ROW_SIZE)
             .map(|r| ((0..ROW_SIZE).all(|c| !self.occupied(r * ROW_SIZE + c))))
             .collect::<Vec<bool>>();
@@ -18,12 +18,12 @@ impl Board {
             .map(|c| ((0..ROW_SIZE).all(|r| !self.occupied(r * ROW_SIZE + c))))
             .collect::<Vec<bool>>();
         if empty_rows.iter().all(|&r| r) {
-            // Center around start id
+            // Center around start hex
             return (
-                START_ID / ROW_SIZE - 1,
-                START_ID / ROW_SIZE + 1,
-                START_ID % ROW_SIZE - 1,
-                START_ID % ROW_SIZE + 1,
+                START_HEX / ROW_SIZE - 1,
+                START_HEX / ROW_SIZE + 1,
+                START_HEX % ROW_SIZE - 1,
+                START_HEX % ROW_SIZE + 1,
             );
         }
         let mut minr = 0;
@@ -33,22 +33,24 @@ impl Board {
         for i in 0..ROW_SIZE as usize {
             let j = (i + 1) % ROW_SIZE as usize;
             if empty_rows[i] && !empty_rows[j] {
-                minr = i as Id;
+                minr = i as Hex;
             }
             if !empty_rows[i] && empty_rows[j] {
-                maxr = j as Id;
+                maxr = j as Hex;
             }
             if empty_cols[i] && !empty_cols[j] {
-                minc = i as Id;
+                minc = i as Hex;
             }
             if !empty_cols[i] && empty_cols[j] {
-                maxc = j as Id;
+                maxc = j as Hex;
             }
         }
         (minr, maxr, minc, maxc)
     }
 
-    pub fn fancy_fmt(&self, buf: &mut termcolor::Buffer, highlights: &[Id]) -> std::io::Result<()> {
+    pub fn fancy_fmt(
+        &self, buf: &mut termcolor::Buffer, highlights: &[Hex],
+    ) -> std::io::Result<()> {
         let (startr, endr, startc, endc) = self.bounding_box();
         let free_space = "\u{ff0e}".as_bytes();
 
@@ -65,13 +67,13 @@ impl Board {
 
             let mut c = startc;
             while c != (endc + 1) % ROW_SIZE {
-                let id = c + r * ROW_SIZE;
-                if let Some(index) = highlights.iter().position(|&x| x == id) {
+                let hex = c + r * ROW_SIZE;
+                if let Some(index) = highlights.iter().position(|&x| x == hex) {
                     write!(buf, "{: >2}", index)?;
                     c = (c + 1) % ROW_SIZE;
                     continue;
                 }
-                let node = self.node(id);
+                let node = self.node(hex);
                 if node.occupied() {
                     if node.color() == Color::White {
                         // Invert terminal background color for white pieces.
@@ -143,7 +145,7 @@ impl Board {
         self.println_highlights(&[]);
     }
 
-    pub(crate) fn println_highlights(&self, highlights: &[Id]) {
+    pub(crate) fn println_highlights(&self, highlights: &[Hex]) {
         let writer = termcolor::BufferWriter::stdout(termcolor::ColorChoice::Auto);
         let mut buffer = writer.buffer();
         self.fancy_fmt(&mut buffer, highlights).unwrap();
@@ -162,7 +164,7 @@ fn read_line(prompt: &str) -> String {
     }
 }
 
-fn input_id(board: &Board, prompt: &str, options: &[Id]) -> Option<Id> {
+fn input_hex(board: &Board, prompt: &str, options: &[Hex]) -> Option<Hex> {
     board.println_highlights(options);
     let line = read_line(prompt);
     let index = if let Ok(num) = line.parse::<usize>() {
@@ -205,7 +207,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
         println!("No movements available.");
         return None;
     }
-    let start = input_id(board, "Move which bug? ", &starts)?;
+    let start = input_hex(board, "Move which bug? ", &starts)?;
 
     let mut ends = moves
         .iter()
@@ -223,7 +225,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
         .collect::<Vec<_>>();
     ends.sort_unstable();
     ends.dedup();
-    let end = input_id(board, "Move to where? ", &ends)?;
+    let end = input_hex(board, "Move to where? ", &ends)?;
 
     Some(crate::Move::Movement(start, end))
 }
@@ -239,7 +241,7 @@ fn input_placement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> 
         println!("No placements available.");
         return None;
     }
-    let place = input_id(board, "Place new bug where? ", &places)?;
+    let place = input_hex(board, "Place new bug where? ", &places)?;
 
     let bugs = moves
         .iter()

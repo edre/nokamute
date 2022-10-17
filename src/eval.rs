@@ -35,13 +35,13 @@ impl Default for BasicEvaluator {
     }
 }
 
-fn count_liberties(board: &Board, origin: Id, id: Id) -> Evaluation {
-    adjacent(id).into_iter().filter(|&adj| adj == origin || !board.occupied(adj)).count()
+fn count_liberties(board: &Board, origin: Hex, hex: Hex) -> Evaluation {
+    adjacent(hex).into_iter().filter(|&adj| adj == origin || !board.occupied(adj)).count()
         as Evaluation
 }
 
 // We really only care about 0, 1, 2, many
-fn distance(start: Id, end: Id) -> Id {
+fn distance(start: Hex, end: Hex) -> Hex {
     // Computing this directly on the spiral torus was too hard.
     if start == end {
         return 0;
@@ -91,8 +91,8 @@ impl Evaluator for BasicEvaluator {
                 * self.unplayed_bug_factor;
         }
 
-        for &id in board.occupied_ids[0].iter().chain(board.occupied_ids[1].iter()) {
-            let node = board.node(id);
+        for &hex in board.occupied_hexes[0].iter().chain(board.occupied_hexes[1].iter()) {
+            let node = board.node(hex);
             let mut bug_score = value(node.bug());
             let mut pillbug_powers = node.bug() == Bug::Pillbug;
             let mut beetle_powers = node.bug() == Bug::Beetle;
@@ -105,7 +105,7 @@ impl Evaluator for BasicEvaluator {
                     bug_score = value(Bug::Beetle);
                     beetle_powers = true;
                 } else {
-                    for adj in adjacent(id) {
+                    for adj in adjacent(hex) {
                         if board.occupied(adj) {
                             let bug = board.node(adj).bug();
                             if bug != Bug::Queen {
@@ -127,23 +127,23 @@ impl Evaluator for BasicEvaluator {
 
             if crawler {
                 // Treat blocked crawlers as immovable.
-                if board.slidable_adjacent(&mut buf, id, id).next().is_none() {
-                    immovable.set(id);
+                if board.slidable_adjacent(&mut buf, hex, hex).next().is_none() {
+                    immovable.set(hex);
                 }
             }
 
             let friendly_queen = board.queens[node.color() as usize];
 
-            if adjacent(friendly_queen).contains(&id) {
+            if adjacent(friendly_queen).contains(&hex) {
                 // Filling friendly queen's liberty.
-                if immovable.get(id) && !node.is_stacked() {
+                if immovable.get(hex) && !node.is_stacked() {
                     queen_score[node.color() as usize] -= self.queen_factor;
                 } else {
                     // Lower penalty for being able to leave.
                     queen_score[node.color() as usize] -= self.queen_factor / 2;
                 }
                 if pillbug_powers {
-                    let best_escape = adjacent(id)
+                    let best_escape = adjacent(hex)
                         .into_iter()
                         .map(|lib| {
                             if board.occupied(lib) {
@@ -164,7 +164,7 @@ impl Evaluator for BasicEvaluator {
 
             let enemy_queen = board.queens[node.color().other()];
 
-            if adjacent(enemy_queen).contains(&id) {
+            if adjacent(enemy_queen).contains(&hex) {
                 // A little extra boost for filling opponent's queen, as we will never choose to move.
                 queen_score[node.color().other()] -= self.queen_factor * 12 / 10;
                 // If this bug is already filling a queen's liberty, so don't
@@ -172,7 +172,7 @@ impl Evaluator for BasicEvaluator {
                 // than moving around.
                 bug_score = 0;
                 if pillbug_powers {
-                    let best_unescape = adjacent(id)
+                    let best_unescape = adjacent(hex)
                         .into_iter()
                         .map(|lib| {
                             if board.occupied(lib) {
@@ -189,14 +189,14 @@ impl Evaluator for BasicEvaluator {
                 }
             }
 
-            if !node.is_stacked() && immovable.get(id) {
+            if !node.is_stacked() && immovable.get(hex) {
                 // Pinned bugs are worthless.
                 continue;
             }
 
             // Beetles prevent queen shenanigans, give a bonus for a movable beetle near opponent's queen.
             if beetle_powers {
-                let dist = distance(id, board.queens[node.color().other()]);
+                let dist = distance(hex, board.queens[node.color().other()]);
                 if dist < 3 {
                     beetle_attack_score[node.color() as usize] = max(
                         beetle_attack_score[node.color() as usize],
@@ -236,13 +236,13 @@ impl Evaluator for BasicEvaluator {
         let enemy_last_move = board.move_history[board.move_history.len() - 1];
         let my_last_move = board.move_history[board.move_history.len() - 2];
 
-        if let Move::Place(id, _) = my_last_move {
+        if let Move::Place(hex, _) = my_last_move {
             // Drop attack is quiet enough.
-            if !adjacent(board.queens[board.to_move().other()]).contains(&id) {
+            if !adjacent(board.queens[board.to_move().other()]).contains(&hex) {
                 // TODO: just generate from this spot (ignoring throws?).
                 board.generate_movements(moves);
                 moves.retain(
-                    |m| if let Move::Movement(start, _) = *m { start == id } else { false },
+                    |m| if let Move::Movement(start, _) = *m { start == hex } else { false },
                 );
                 // If the piece became pinned or covered, this will return no
                 // moves, which means the search will terminate.
@@ -250,8 +250,8 @@ impl Evaluator for BasicEvaluator {
             }
         }
 
-        if let Move::Place(id, _) = enemy_last_move {
-            if !adjacent(board.queens[board.to_move() as usize]).contains(&id) {
+        if let Move::Place(hex, _) = enemy_last_move {
+            if !adjacent(board.queens[board.to_move() as usize]).contains(&hex) {
                 // We didn't just place, but opponent did. Do some movement to
                 // give them a chance to quiesce.
                 board.generate_movements(moves);
@@ -275,38 +275,38 @@ mod tests {
         //．．🐜🐜🐝．．
         // ．．．🦗🪲
         let mut board = Board::default();
-        crate::Move::Place(loc_to_id((0, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_id((1, 0)), Bug::Spider).apply(&mut board);
-        crate::Move::Place(loc_to_id((-1, 1)), Bug::Ant).apply(&mut board);
-        crate::Move::Place(loc_to_id((0, 1)), Bug::Ant).apply(&mut board);
-        crate::Move::Place(loc_to_id((1, 2)), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place(loc_to_id((1, 1)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_id((2, 2)), Bug::Beetle).apply(&mut board);
+        crate::Move::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_hex((1, 0)), Bug::Spider).apply(&mut board);
+        crate::Move::Place(loc_to_hex((-1, 1)), Bug::Ant).apply(&mut board);
+        crate::Move::Place(loc_to_hex((0, 1)), Bug::Ant).apply(&mut board);
+        crate::Move::Place(loc_to_hex((1, 2)), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place(loc_to_hex((1, 1)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_hex((2, 2)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         for depth in 1..3 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(loc_to_id((-1, 1)), loc_to_id((2, 1)))), m);
+            assert_eq!(Some(crate::Move::Movement(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
 
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(loc_to_id((-1, 1)), loc_to_id((2, 1)))), m);
+            assert_eq!(Some(crate::Move::Movement(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
         }
 
         // Find queen escape.
         //．．🕷🐝🐝．
         // ．．🦗🕷．
         let mut board = Board::default();
-        crate::Move::Place(loc_to_id((0, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_id((1, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_id((1, 1)), Bug::Spider).apply(&mut board);
-        crate::Move::Place(loc_to_id((0, 1)), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place(loc_to_id((-1, 0)), Bug::Beetle).apply(&mut board);
+        crate::Move::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_hex((1, 0)), Bug::Queen).apply(&mut board);
+        crate::Move::Place(loc_to_hex((1, 1)), Bug::Spider).apply(&mut board);
+        crate::Move::Place(loc_to_hex((0, 1)), Bug::Grasshopper).apply(&mut board);
+        crate::Move::Place(loc_to_hex((-1, 0)), Bug::Beetle).apply(&mut board);
         crate::Move::Pass.apply(&mut board);
         for depth in 1..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(loc_to_id((0, 0)), loc_to_id((0, -1)))), m);
+            assert_eq!(Some(crate::Move::Movement(loc_to_hex((0, 0)), loc_to_hex((0, -1)))), m);
         }
     }
 }
