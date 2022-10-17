@@ -70,6 +70,43 @@ pub(crate) fn adjacent(id: Id) -> [Id; 6] {
     ]
 }
 
+#[test]
+fn test_direction() {
+    // Reversibility from any position.
+    for id in 0..=GRID_MASK {
+        assert_eq!(id, Direction::NE.apply(Direction::SW.apply(id)));
+        assert_eq!(id, Direction::E.apply(Direction::W.apply(id)));
+        assert_eq!(id, Direction::SE.apply(Direction::NW.apply(id)));
+    }
+
+    // Exercise the known wrapping properties.
+    // Two axes traverse the entire space before wrapping.
+    let mut id = START_ID;
+    for _ in 1..GRID_SIZE {
+        id = Direction::E.apply(id);
+        assert_ne!(id, START_ID);
+    }
+    id = Direction::E.apply(id);
+    assert_eq!(id, START_ID);
+
+    id = START_ID;
+    for _ in 1..GRID_SIZE {
+        id = Direction::NW.apply(id);
+        assert_ne!(id, START_ID);
+    }
+    id = Direction::NW.apply(id);
+    assert_eq!(id, START_ID);
+
+    // One axis only traverses one row.
+    id = START_ID;
+    for _ in 1..ROW_SIZE {
+        id = Direction::NE.apply(id);
+        assert_ne!(id, START_ID);
+    }
+    id = Direction::NE.apply(id);
+    assert_eq!(id, START_ID);
+}
+
 // Efficient set utility.
 const NODESET_NUM_WORDS: usize = GRID_SIZE / 32;
 const NODESET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
