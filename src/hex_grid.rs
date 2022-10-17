@@ -34,29 +34,15 @@ pub(crate) const GRID_MASK: Id = (GRID_SIZE as Id).wrapping_sub(1);
 // and to make formatting slightly simpler.
 pub(crate) const START_ID: Id = ROW_SIZE / 2 * (ROW_SIZE + 1);
 
-// Not sure how to trick the compiler into letting me dedup these.
-#[cfg(not(feature = "larger-grid"))]
-#[repr(u8)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum Direction {
-    NW = GRID_MASK & (ROW_SIZE + 1).wrapping_neg(),
-    NE = GRID_MASK & ROW_SIZE.wrapping_neg(),
-    W = GRID_MASK & 1u8.wrapping_neg(),
-    E = 1,
-    SW = ROW_SIZE,
-    SE = ROW_SIZE + 1,
-    None = 0,
-}
-#[cfg(feature = "larger-grid")]
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum Direction {
-    NW = GRID_MASK & (ROW_SIZE + 1).wrapping_neg(),
-    NE = GRID_MASK & ROW_SIZE.wrapping_neg(),
-    W = GRID_MASK & 1u16.wrapping_neg(),
+    NW = (GRID_MASK & (ROW_SIZE + 1).wrapping_neg()) as u16,
+    NE = (GRID_MASK & ROW_SIZE.wrapping_neg()) as u16,
+    W = GRID_MASK as u16 & 1u16.wrapping_neg(),
     E = 1,
-    SW = ROW_SIZE,
-    SE = ROW_SIZE + 1,
+    SW = ROW_SIZE as u16,
+    SE = ROW_SIZE as u16 + 1,
     None = 0,
 }
 
