@@ -1,5 +1,4 @@
 extern crate minimax;
-extern crate termcolor;
 
 use crate::bug::Bug;
 use crate::hex_grid::*;
@@ -8,8 +7,6 @@ use std::cmp::{max, min};
 use std::collections::hash_map::DefaultHasher;
 use std::default::Default;
 use std::hash::Hasher;
-use std::io::Write;
-use termcolor::WriteColor;
 
 lazy_static! {
     static ref ZOBRIST_TABLE: Box<[u64; GRID_SIZE * 2]> = {
@@ -338,150 +335,6 @@ impl Board {
 impl Default for Board {
     fn default() -> Self {
         Self::new_expansions()
-    }
-}
-
-impl Board {
-    // return the Id to the upper left and lower right of all occupied nodes.
-    // Given wrapping, the second may be less than the first.
-    fn bounding_box(&self) -> (Id, Id, Id, Id) {
-        let empty_rows = (0..ROW_SIZE)
-            .map(|r| ((0..ROW_SIZE).all(|c| !self.occupied(r * ROW_SIZE + c))))
-            .collect::<Vec<bool>>();
-        let empty_cols = (0..ROW_SIZE)
-            .map(|c| ((0..ROW_SIZE).all(|r| !self.occupied(r * ROW_SIZE + c))))
-            .collect::<Vec<bool>>();
-        if empty_rows.iter().all(|&r| r) {
-            // Center around start id
-            return (
-                START_ID / ROW_SIZE - 1,
-                START_ID / ROW_SIZE + 1,
-                START_ID % ROW_SIZE - 1,
-                START_ID % ROW_SIZE + 1,
-            );
-        }
-        let mut minr = 0;
-        let mut maxr = 0;
-        let mut minc = 0;
-        let mut maxc = 0;
-        for i in 0..ROW_SIZE as usize {
-            let j = (i + 1) % ROW_SIZE as usize;
-            if empty_rows[i] && !empty_rows[j] {
-                minr = i as Id;
-            }
-            if !empty_rows[i] && empty_rows[j] {
-                maxr = j as Id;
-            }
-            if empty_cols[i] && !empty_cols[j] {
-                minc = i as Id;
-            }
-            if !empty_cols[i] && empty_cols[j] {
-                maxc = j as Id;
-            }
-        }
-        (minr, maxr, minc, maxc)
-    }
-
-    pub fn fancy_fmt(&self, buf: &mut termcolor::Buffer, highlights: &[Id]) -> std::io::Result<()> {
-        let (startr, endr, startc, endc) = self.bounding_box();
-        let free_space = "\u{ff0e}".as_bytes();
-
-        let mut r = startr;
-        while r != (endr + 1) % ROW_SIZE {
-            // Print prefix to get staggered hex rows
-            let buflen = endr.wrapping_sub(r) % ROW_SIZE;
-            if buflen % 2 == 1 {
-                buf.write_all(b" ")?;
-            }
-            for _ in 0..buflen / 2 {
-                buf.write_all(free_space)?;
-            }
-
-            let mut c = startc;
-            while c != (endc + 1) % ROW_SIZE {
-                let id = c + r * ROW_SIZE;
-                if let Some(index) = highlights.iter().position(|&x| x == id) {
-                    write!(buf, "{: >2}", index)?;
-                    c = (c + 1) % ROW_SIZE;
-                    continue;
-                }
-                let node = self.node(id);
-                if node.occupied() {
-                    if node.color() == Color::White {
-                        // Invert terminal background color for white pieces.
-                        buf.set_color(
-                            termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
-                        )?;
-                    }
-                    write!(buf, "{}", node.bug().codepoint())?;
-                    if node.color() == Color::White {
-                        // Reset coloring.
-                        buf.reset()?;
-                    }
-                } else {
-                    // Empty cell. Full width period.
-                    buf.write_all(free_space)?;
-                }
-                c = (c + 1) % ROW_SIZE;
-            }
-
-            // Stagger rows the other way to make the space look rectangular.
-            for _ in 0..r.wrapping_sub(startr) % ROW_SIZE / 2 {
-                buf.write_all(free_space)?;
-            }
-
-            // On 2nd and 3rd rows, print remaining bugs from each side
-            if r == (startr + 1) % ROW_SIZE {
-                buf.write_all(b" ")?;
-                self.write_remaining(Color::White, buf)?;
-            } else if r == (startr + 2) % ROW_SIZE {
-                self.write_remaining(Color::Black, buf)?;
-            }
-
-            buf.write_all(b"\n")?;
-            r = (r + 1) % ROW_SIZE;
-        }
-        Ok(())
-    }
-
-    fn write_remaining(&self, color: Color, buf: &mut termcolor::Buffer) -> std::io::Result<()> {
-        for bug in Bug::iter_all() {
-            let count = self.remaining[color as usize][bug as usize];
-            let prefix = if count == 2 {
-                b"2"
-            } else if count == 3 {
-                b"3"
-            } else {
-                b" "
-            };
-            if count > 0 {
-                buf.write_all(prefix)?;
-                if color == Color::White {
-                    // Invert terminal background color for white pieces.
-                    buf.set_color(
-                        termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
-                    )?;
-                }
-                write!(buf, "{}", bug.codepoint())?;
-                if color == Color::White {
-                    // Reset coloring.
-                    buf.reset()?;
-                }
-                buf.write_all(b" ")?;
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn println(&self) {
-        self.println_highlights(&[]);
-    }
-
-    pub(crate) fn println_highlights(&self, highlights: &[Id]) {
-        let writer = termcolor::BufferWriter::stdout(termcolor::ColorChoice::Auto);
-        let mut buffer = writer.buffer();
-        self.fancy_fmt(&mut buffer, highlights).unwrap();
-        writer.print(&buffer).unwrap();
     }
 }
 
