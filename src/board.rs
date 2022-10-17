@@ -121,12 +121,12 @@ pub struct Board {
     pub(crate) queens: [Hex; 2],
     pub(crate) occupied_hexes: [Vec<Hex>; 2],
 
-    pub(crate) move_num: u16,
+    pub(crate) turn_num: u16,
     zobrist_table: &'static [u64; GRID_SIZE * 2],
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
     // Board history.
-    pub(super) move_history: Vec<Move>,
+    pub(super) turn_history: Vec<Turn>,
 
     pub(super) game_type_bits: u8,
 }
@@ -139,7 +139,7 @@ impl minimax::Zobrist for Board {
 
 impl Board {
     pub fn to_move(&self) -> Color {
-        if self.move_num % 2 == 0 {
+        if self.turn_num % 2 == 0 {
             Color::White
         } else {
             Color::Black
@@ -263,15 +263,15 @@ impl Board {
     }
 
     pub(crate) fn get_remaining(&self) -> &[u8; 8] {
-        &self.remaining[self.move_num as usize & 1]
+        &self.remaining[self.turn_num as usize & 1]
     }
 
     pub(crate) fn get_opponent_remaining(&self) -> &[u8; 8] {
-        &self.remaining[!self.move_num as usize & 1]
+        &self.remaining[!self.turn_num as usize & 1]
     }
 
     fn mut_remaining(&mut self) -> &mut [u8; 8] {
-        &mut self.remaining[self.move_num as usize & 1]
+        &mut self.remaining[self.turn_num as usize & 1]
     }
 
     pub(crate) fn get_available_bugs(&self) -> [(Bug, u8); 8] {
@@ -289,7 +289,7 @@ impl Board {
     }
 
     pub(crate) fn queen_required(&self) -> bool {
-        self.move_num > 5 && self.get_remaining()[Bug::Queen as usize] > 0
+        self.turn_num > 5 && self.get_remaining()[Bug::Queen as usize] > 0
     }
 
     pub(crate) fn queens_surrounded(&self) -> [usize; 2] {
@@ -314,11 +314,11 @@ impl Board {
             remaining: [remaining; 2],
             queens: [START_HEX; 2],
             occupied_hexes: [Vec::new(), Vec::new()],
-            move_num: 0,
+            turn_num: 0,
             zobrist_table: ZOBRIST_TABLE.borrow(),
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
-            move_history: Vec::new(),
+            turn_history: Vec::new(),
             game_type_bits,
         }
     }
@@ -339,29 +339,29 @@ impl Default for Board {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum Move {
+pub enum Turn {
     Place(Hex, Bug),
-    Movement(Hex, Hex),
+    Move(Hex, Hex),
     Pass,
 }
 
-impl Default for Move {
-    fn default() -> Move {
-        Move::Pass
+impl Default for Turn {
+    fn default() -> Turn {
+        Turn::Pass
     }
 }
 
-impl minimax::Move for Move {
+impl minimax::Move for Turn {
     type G = Rules;
     fn apply(&self, board: &mut Board) {
         match *self {
-            Move::Place(hex, bug) => {
+            Turn::Place(hex, bug) => {
                 let bug_num =
                     Bug::initial_quantity()[bug as usize] - board.get_remaining()[bug as usize] + 1;
                 board.insert(hex, bug, bug_num, board.to_move());
                 board.mut_remaining()[bug as usize] -= 1;
             }
-            Move::Movement(start, end) => {
+            Turn::Move(start, end) => {
                 let (bug, bug_num, color) = board.remove(start);
                 board.insert(end, bug, bug_num, color);
                 // Encode a marker of last moved location for pillbug throwability.
@@ -369,35 +369,35 @@ impl minimax::Move for Move {
             }
             _ => {}
         };
-        board.move_num += 1;
+        board.turn_num += 1;
         // Encode positions differently based on who is to move.
         board.zobrist_hash ^= 0xa6c11b626b105b7c;
         // Undo last-moved zobrist bits.
-        if let Some(Move::Movement(_, end)) = board.move_history.last() {
+        if let Some(Turn::Move(_, end)) = board.turn_history.last() {
             board.zobrist_hash ^= *end as u64;
         }
         board.zobrist_history.push(board.zobrist_hash);
-        board.move_history.push(*self);
+        board.turn_history.push(*self);
     }
 
     fn undo(&self, board: &mut Board) {
-        board.move_num -= 1;
+        board.turn_num -= 1;
         board.zobrist_history.pop();
-        board.move_history.pop();
-        if let Some(Move::Movement(_, end)) = board.move_history.last() {
+        board.turn_history.pop();
+        if let Some(Turn::Move(_, end)) = board.turn_history.last() {
             board.zobrist_hash ^= *end as u64;
         }
         match *self {
-            Move::Place(hex, bug) => {
+            Turn::Place(hex, bug) => {
                 board.remove(hex);
                 board.mut_remaining()[bug as usize] += 1;
             }
-            Move::Movement(start, end) => {
+            Turn::Move(start, end) => {
                 let (bug, bug_num, color) = board.remove(end);
                 board.insert(start, bug, bug_num, color);
                 board.zobrist_hash ^= end as u64;
             }
-            Move::Pass => {}
+            Turn::Pass => {}
         }
         // Encode positions differently based on who is to move.
         board.zobrist_hash ^= 0xa6c11b626b105b7c;
@@ -409,7 +409,7 @@ impl minimax::Move for Move {
 }
 
 impl Board {
-    fn generate_placements(&self, moves: &mut Vec<Move>) {
+    fn generate_placements(&self, turns: &mut Vec<Turn>) {
         let mut enemy_adjacent = HexSet::new();
         for &enemy in self.occupied_hexes[self.to_move().other()].iter() {
             for adj in adjacent(enemy) {
@@ -432,7 +432,7 @@ impl Board {
                         continue;
                     }
                     if *num_left > 0 {
-                        moves.push(Move::Place(hex, *bug));
+                        turns.push(Turn::Place(hex, *bug));
                     }
                 }
             }
@@ -569,15 +569,15 @@ impl Board {
     }
 
     // From any bug on top of a stack.
-    fn generate_stack_walking(&self, hex: Hex, moves: &mut Vec<Move>) {
+    fn generate_stack_walking(&self, hex: Hex, turns: &mut Vec<Turn>) {
         let mut buf = [0; 6];
         for adj in self.slidable_adjacent_beetle(&mut buf, hex, hex) {
-            moves.push(Move::Movement(hex, adj));
+            turns.push(Turn::Move(hex, adj));
         }
     }
 
     // Jumping over contiguous linear lines of tiles.
-    fn generate_jumps(&self, hex: Hex, moves: &mut Vec<Move>) {
+    fn generate_jumps(&self, hex: Hex, turns: &mut Vec<Turn>) {
         for dir in Direction::all() {
             let mut jump = dir.apply(hex);
             let mut dist = 1;
@@ -591,29 +591,29 @@ impl Board {
                 }
             }
             if dist > 1 {
-                moves.push(Move::Movement(hex, jump));
+                turns.push(Turn::Move(hex, jump));
             }
         }
     }
 
-    fn generate_walk1(&self, hex: Hex, moves: &mut Vec<Move>) {
+    fn generate_walk1(&self, hex: Hex, turns: &mut Vec<Turn>) {
         let mut buf = [0; 6];
         for adj in self.slidable_adjacent(&mut buf, hex, hex) {
-            moves.push(Move::Movement(hex, adj));
+            turns.push(Turn::Move(hex, adj));
         }
     }
 
-    fn generate_walk3(&self, orig: Hex, moves: &mut Vec<Move>) {
+    fn generate_walk3(&self, orig: Hex, turns: &mut Vec<Turn>) {
         fn dfs(
             hex: Hex, orig: Hex, board: &Board, path: &mut Vec<Hex>, visited: &mut HexSet,
-            moves: &mut Vec<Move>,
+            turns: &mut Vec<Turn>,
         ) {
             if path.contains(&hex) {
                 return;
             }
             if path.len() == 3 {
                 if !visited.get(hex) {
-                    moves.push(Move::Movement(orig, hex));
+                    turns.push(Turn::Move(orig, hex));
                     visited.set(hex);
                 }
                 return;
@@ -621,16 +621,16 @@ impl Board {
             path.push(hex);
             let mut buf = [0; 6];
             for adj in board.slidable_adjacent(&mut buf, orig, hex) {
-                dfs(adj, orig, board, path, visited, moves);
+                dfs(adj, orig, board, path, visited, turns);
             }
             path.pop();
         }
         let mut path = Vec::with_capacity(3);
         let mut visited = HexSet::new();
-        dfs(orig, orig, self, &mut path, &mut visited, moves);
+        dfs(orig, orig, self, &mut path, &mut visited, turns);
     }
 
-    fn generate_walk_all(&self, orig: Hex, moves: &mut Vec<Move>) {
+    fn generate_walk_all(&self, orig: Hex, turns: &mut Vec<Turn>) {
         let mut visited = HexSet::new();
         let mut queue = vec![orig];
         let mut buf = [0; 6];
@@ -640,7 +640,7 @@ impl Board {
             }
             visited.set(node);
             if node != orig {
-                moves.push(Move::Movement(orig, node));
+                turns.push(Turn::Move(orig, node));
             }
             for adj in self.slidable_adjacent(&mut buf, orig, node) {
                 queue.push(adj);
@@ -648,7 +648,7 @@ impl Board {
         }
     }
 
-    fn generate_ladybug(&self, hex: Hex, moves: &mut Vec<Move>) {
+    fn generate_ladybug(&self, hex: Hex, turns: &mut Vec<Turn>) {
         let mut buf1 = [0; 6];
         let mut buf2 = [0; 6];
         let mut buf3 = [0; 6];
@@ -662,7 +662,7 @@ impl Board {
                         for s3 in self.slidable_adjacent_beetle(&mut buf3, hex, s2) {
                             if !self.occupied(s3) && !step3.get(s3) {
                                 step3.set(s3);
-                                moves.push(Move::Movement(hex, s3));
+                                turns.push(Turn::Move(hex, s3));
                             }
                         }
                     }
@@ -671,7 +671,7 @@ impl Board {
         }
     }
 
-    fn generate_throws(&self, immovable: &HexSet, hex: Hex, moves: &mut Vec<Move>) -> bool {
+    fn generate_throws(&self, immovable: &HexSet, hex: Hex, turns: &mut Vec<Turn>) -> bool {
         let mut starts = [0; 6];
         let mut num_starts = 0;
         let mut ends = [0; 6];
@@ -695,13 +695,13 @@ impl Board {
         }
         for &start in starts[..num_starts].iter() {
             for &end in ends[..num_ends].iter() {
-                moves.push(Move::Movement(start, end));
+                turns.push(Turn::Move(start, end));
             }
         }
         num_starts > 0 && num_ends > 0
     }
 
-    fn generate_mosquito(&self, hex: Hex, moves: &mut Vec<Move>) {
+    fn generate_mosquito(&self, hex: Hex, turns: &mut Vec<Turn>) {
         let mut targets = [false; 8];
         for adj in adjacent(hex) {
             let node = self.nodes[adj as usize];
@@ -710,37 +710,37 @@ impl Board {
             }
         }
 
-        let mut i = moves.len();
+        let mut i = turns.len();
         if targets[Bug::Ant as usize] {
-            self.generate_walk_all(hex, moves);
+            self.generate_walk_all(hex, turns);
         } else {
             // Avoid adding strictly duplicative moves to the ant.
             if targets[Bug::Queen as usize]
                 || targets[Bug::Beetle as usize]
                 || targets[Bug::Pillbug as usize]
             {
-                self.generate_walk1(hex, moves);
+                self.generate_walk1(hex, turns);
             }
             if targets[Bug::Spider as usize] {
-                self.generate_walk3(hex, moves);
+                self.generate_walk3(hex, turns);
             }
         }
         if targets[Bug::Grasshopper as usize] {
-            self.generate_jumps(hex, moves);
+            self.generate_jumps(hex, turns);
         }
         if targets[Bug::Beetle as usize] {
-            self.generate_stack_walking(hex, moves);
+            self.generate_stack_walking(hex, turns);
         }
         if targets[Bug::Ladybug as usize] {
-            self.generate_ladybug(hex, moves);
+            self.generate_ladybug(hex, turns);
         }
 
         // Remove duplicates.
         let mut dests = HexSet::new();
-        while i < moves.len() {
-            if let Move::Movement(_, dest) = moves[i] {
+        while i < turns.len() {
+            if let Turn::Move(_, dest) = turns[i] {
                 if dests.get(dest) {
-                    moves.swap_remove(i);
+                    turns.swap_remove(i);
                 } else {
                     dests.set(dest);
                     i += 1;
@@ -749,10 +749,10 @@ impl Board {
         }
     }
 
-    pub(crate) fn generate_movements(&self, moves: &mut Vec<Move>) {
+    pub(crate) fn generate_movements(&self, turns: &mut Vec<Turn>) {
         let mut immovable = self.find_cut_vertexes();
-        let stunned = match self.move_history.last() {
-            Some(Move::Movement(_, dest)) => Some(dest),
+        let stunned = match self.turn_history.last() {
+            Some(Turn::Move(_, dest)) => Some(dest),
             _ => None,
         };
         if let Some(moved) = stunned {
@@ -764,7 +764,7 @@ impl Board {
         for &hex in self.occupied_hexes[self.to_move() as usize].iter() {
             let node = self.node(hex);
             if node.is_stacked() {
-                self.generate_stack_walking(hex, moves);
+                self.generate_stack_walking(hex, turns);
                 // Don't let mosquito on stack use pillbug ability.
                 // Although the rules don't seem to specify either way.
                 continue;
@@ -778,32 +778,32 @@ impl Board {
                     }));
             // However pillbugs just thrown cannot throw.
             if pillbug_powers && stunned != Some(&hex) {
-                dedup |= self.generate_throws(&immovable, hex, moves);
+                dedup |= self.generate_throws(&immovable, hex, turns);
             }
             if immovable.get(hex) {
                 continue;
             }
             match node.bug() {
-                Bug::Queen => self.generate_walk1(hex, moves),
-                Bug::Grasshopper => self.generate_jumps(hex, moves),
-                Bug::Spider => self.generate_walk3(hex, moves),
-                Bug::Ant => self.generate_walk_all(hex, moves),
+                Bug::Queen => self.generate_walk1(hex, turns),
+                Bug::Grasshopper => self.generate_jumps(hex, turns),
+                Bug::Spider => self.generate_walk3(hex, turns),
+                Bug::Ant => self.generate_walk_all(hex, turns),
                 Bug::Beetle => {
-                    self.generate_walk1(hex, moves);
-                    self.generate_stack_walking(hex, moves);
+                    self.generate_walk1(hex, turns);
+                    self.generate_stack_walking(hex, turns);
                 }
-                Bug::Mosquito => self.generate_mosquito(hex, moves),
-                Bug::Ladybug => self.generate_ladybug(hex, moves),
-                Bug::Pillbug => self.generate_walk1(hex, moves),
+                Bug::Mosquito => self.generate_mosquito(hex, turns),
+                Bug::Ladybug => self.generate_ladybug(hex, turns),
+                Bug::Pillbug => self.generate_walk1(hex, turns),
             }
         }
 
         if dedup {
-            // Mosquitos and pillbugs can create duplicate moves, so sort and dedup.
+            // Mosquitos and pillbugs can create duplicate turns, so sort and dedup.
             // TODO: Maybe only enable this for perft?
             // Dups get resolved quickly with the transposition table and this dedup is very slow.
-            moves.sort_unstable();
-            moves.dedup();
+            turns.sort_unstable();
+            turns.dedup();
         }
     }
 }
@@ -812,11 +812,11 @@ pub struct Rules;
 
 impl minimax::Game for Rules {
     type S = Board;
-    type M = Move;
+    type M = Turn;
 
-    fn generate_moves(board: &Board, moves: &mut Vec<Move>) {
-        if board.move_num < 2 {
-            // Special case for the first 2 moves:
+    fn generate_moves(board: &Board, turns: &mut Vec<Turn>) {
+        if board.turn_num < 2 {
+            // Special case for the first 2 turns:
             for (bug, num_left) in board.get_available_bugs().iter() {
                 if *bug == Bug::Queen {
                     // To reduce draws, implement tournament rule where
@@ -824,11 +824,11 @@ impl minimax::Game for Rules {
                     continue;
                 }
                 if *num_left > 0 {
-                    if board.move_num == 0 {
-                        moves.push(Move::Place(START_HEX, *bug));
+                    if board.turn_num == 0 {
+                        turns.push(Turn::Place(START_HEX, *bug));
                     } else {
                         for &hex in adjacent(START_HEX).iter() {
-                            moves.push(Move::Place(hex, *bug));
+                            turns.push(Turn::Place(hex, *bug));
                         }
                     }
                 }
@@ -837,15 +837,15 @@ impl minimax::Game for Rules {
             // Once queen has been placed, pieces may move.
             if board.get_remaining()[Bug::Queen as usize] == 0 {
                 // For movable pieces, generate all legal moves.
-                board.generate_movements(moves);
+                board.generate_movements(turns);
             }
 
             // Find placeable positions.
-            board.generate_placements(moves);
+            board.generate_placements(turns);
         }
 
-        if moves.is_empty() {
-            moves.push(Move::Pass);
+        if turns.is_empty() {
+            turns.push(Turn::Pass);
         }
     }
 
@@ -854,9 +854,9 @@ impl minimax::Game for Rules {
         let n = board.zobrist_history.len();
         if n > 10 {
             // Check for position repeat stalemate.
-            // More than 32 moves ago, we're not going to bother looking.
-            // Check every 4 moves as both players need to move and move back to repeat.
-            // Last move is at zobrist_history[n-1], so offset by 1.
+            // More than 32 turns ago, we're not going to bother looking.
+            // Check every 4 turns as both players need to move and move back to repeat.
+            // Last turn is at zobrist_history[n-1], so offset by 1.
             let start = if n < 35 { (n - 1) % 4 } else { n - 33 };
             let recent_past = &board.zobrist_history[start..n];
             let position_repeat_count =
@@ -879,8 +879,8 @@ impl minimax::Game for Rules {
         }
     }
 
-    fn null_move(_: &Board) -> Option<Move> {
-        Some(Move::Pass)
+    fn null_move(_: &Board) -> Option<Turn> {
+        Some(Turn::Pass)
     }
 }
 
@@ -934,10 +934,10 @@ mod tests {
             }
         }
 
-        fn assert_placements(&self, moves: &[Move], expected: &[(Loc, Bug)]) {
+        fn assert_placements(&self, turns: &[Turn], expected: &[(Loc, Bug)]) {
             let mut actual_pairs = Vec::new();
-            for &m in moves.iter() {
-                if let Move::Place(actual_hex, actual_bug) = m {
+            for &m in turns.iter() {
+                if let Turn::Place(actual_hex, actual_bug) = m {
                     actual_pairs.push((hex_to_loc(actual_hex), actual_bug));
                 }
             }
@@ -948,10 +948,10 @@ mod tests {
             assert_eq!(actual_pairs, expected_pairs);
         }
 
-        fn assert_movements(&self, moves: &[Move], start: Loc, ends: &[Loc]) {
+        fn assert_movements(&self, turns: &[Turn], start: Loc, ends: &[Loc]) {
             let mut actual_ends = Vec::new();
-            for &m in moves.iter() {
-                if let Move::Movement(actual_start, actual_end) = m {
+            for &m in turns.iter() {
+                if let Turn::Move(actual_start, actual_end) = m {
                     if hex_to_loc(actual_start) == start {
                         actual_ends.push(hex_to_loc(actual_end));
                     }
@@ -974,10 +974,10 @@ mod tests {
         }
         board.insert_loc((0, 0), Bug::Queen, Color::White);
         board.insert_loc((1, 0), Bug::Queen, Color::Black);
-        let mut moves = Vec::new();
-        board.generate_placements(&mut moves);
+        let mut turns = Vec::new();
+        board.generate_placements(&mut turns);
         board.assert_placements(
-            &moves,
+            &turns,
             &[((-1, -1), Bug::Queen), ((-1, 0), Bug::Queen), ((0, 1), Bug::Queen)],
         );
     }
@@ -1056,9 +1056,9 @@ mod tests {
         //．．．．．．
         // ．🦗．．
         board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
-        let mut moves = Vec::new();
-        board.generate_jumps(START_HEX, &mut moves);
-        board.assert_movements(&moves, (0, 0), &[(0, 2), (3, 0)]);
+        let mut turns = Vec::new();
+        board.generate_jumps(START_HEX, &mut turns);
+        board.assert_movements(&turns, (0, 0), &[(0, 2), (3, 0)]);
     }
 
     #[test]
@@ -1089,9 +1089,9 @@ mod tests {
         //   2   3
         // Can't move left (down) or right (up) because of blocking stacks.
         // Can move onto all 4 blocking stacks.
-        let mut moves = Vec::new();
-        board.generate_stack_walking(START_HEX, &mut moves);
-        board.assert_movements(&moves, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
+        let mut turns = Vec::new();
+        board.generate_stack_walking(START_HEX, &mut turns);
+        board.assert_movements(&turns, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
     }
 
     #[test]
@@ -1105,20 +1105,20 @@ mod tests {
             &[(-1, -1), (0, 0), (2, 0), (0, 1), (3, 1), (1, 2), (2, 2), (3, 2)],
             Bug::Spider,
         );
-        let mut moves = Vec::new();
+        let mut turns = Vec::new();
         let start = loc_to_hex((-1, -1));
-        board.generate_walk3(start, &mut moves);
-        board.assert_movements(&moves, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
+        board.generate_walk3(start, &mut turns);
+        board.assert_movements(&turns, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
 
         // ．．🕷．🕷．．
         //．．🕷🕷．🕷．
         // ．．🕷🕷🕷
         board.remove_loc((-1, -1));
         board.insert_loc((1, 1), Bug::Spider, Color::Black);
-        moves.clear();
+        turns.clear();
         let start = loc_to_hex((1, 1));
-        board.generate_walk3(start, &mut moves);
-        board.assert_movements(&moves, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
+        board.generate_walk3(start, &mut turns);
+        board.assert_movements(&turns, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
     }
 
     #[test]
@@ -1129,11 +1129,11 @@ mod tests {
         //．．．🐜．🐜．
         // ．．．🐜🐜
         board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
-        let mut moves = Vec::new();
+        let mut turns = Vec::new();
         let start = loc_to_hex((-1, -1));
-        board.generate_walk_all(start, &mut moves);
+        board.generate_walk_all(start, &mut turns);
         board.assert_movements(
-            &moves,
+            &turns,
             (-1, -1),
             &[
                 (0, -1),
@@ -1155,22 +1155,22 @@ mod tests {
     fn test_generate_mosquito() {
         let mut board = Board::default();
         board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
-        let mut moves = Vec::new();
-        board.generate_mosquito(loc_to_hex((0, 0)), &mut moves);
+        let mut turns = Vec::new();
+        board.generate_mosquito(loc_to_hex((0, 0)), &mut turns);
         // Mosquito on mosquito can't move at all.
-        board.assert_movements(&moves, (0, 0), &[]);
+        board.assert_movements(&turns, (0, 0), &[]);
 
         //．．🦟🦗．
         // ．🐜🪲．
         board.insert_loc((0, 1), Bug::Ant, Color::Black);
         board.insert_loc((1, 1), Bug::Beetle, Color::Black);
         board.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
-        moves.clear();
+        turns.clear();
         // Dedup happens in generate_movements.
-        board.move_num += 1;
-        board.generate_movements(&mut moves);
+        board.turn_num += 1;
+        board.generate_movements(&mut turns);
         board.assert_movements(
-            &moves,
+            &turns,
             (0, 0),
             &[
                 (-1, 0),
@@ -1197,11 +1197,11 @@ mod tests {
         // ．．🐞．🐞．．
         //．．．🐞🐞．．
         // ．．．🐞．．
-        let mut moves = Vec::new();
+        let mut turns = Vec::new();
         let start = loc_to_hex((2, 3));
-        board.generate_ladybug(start, &mut moves);
+        board.generate_ladybug(start, &mut turns);
         board.assert_movements(
-            &moves,
+            &turns,
             (2, 3),
             &[(-1, 0), (1, 0), (2, 0), (-1, 1), (1, 1), (3, 1), (0, 2), (3, 2), (1, 3), (3, 3)],
         );
@@ -1214,21 +1214,21 @@ mod tests {
         // ．．💊．．．
         //．．💊💊．．
         // ．．💊💊．
-        let mut moves = Vec::new();
+        let mut turns = Vec::new();
         let immovable = HexSet::new();
         let start = loc_to_hex((1, 1));
-        board.generate_throws(&immovable, start, &mut moves);
-        assert_eq!(4, moves.len());
-        board.assert_movements(&moves[..2], (1, 2), &[(1, 0), (2, 1)]);
-        board.assert_movements(&moves[2..], (0, 1), &[(1, 0), (2, 1)]);
+        board.generate_throws(&immovable, start, &mut turns);
+        assert_eq!(4, turns.len());
+        board.assert_movements(&turns[..2], (1, 2), &[(1, 0), (2, 1)]);
+        board.assert_movements(&turns[2..], (0, 1), &[(1, 0), (2, 1)]);
 
         // Create a level-2 gate to prevent one piece from being thrown.
         board.remove_loc((0, 0));
         board.insert_loc((0, 1), Bug::Pillbug, Color::Black);
-        moves.clear();
-        board.generate_throws(&immovable, start, &mut moves);
-        assert_eq!(2, moves.len());
-        board.assert_movements(&moves, (0, 0), &[(1, 0), (2, 1)]);
+        turns.clear();
+        board.generate_throws(&immovable, start, &mut turns);
+        assert_eq!(2, turns.len());
+        board.assert_movements(&turns, (0, 0), &[(1, 0), (2, 1)]);
 
         // Create a level-2 gate to prevent one destination to being thrown to.
         board.insert_loc((1, 0), Bug::Pillbug, Color::Black);
@@ -1236,10 +1236,10 @@ mod tests {
         board.remove_loc((0, 1));
         board.remove_loc((0, 1));
         board.remove_loc((1, 2));
-        moves = Vec::new();
-        board.generate_throws(&immovable, start, &mut moves);
-        assert_eq!(2, moves.len());
-        board.assert_movements(&moves, (0, 0), &[(0, 1), (1, 2)]);
+        turns = Vec::new();
+        board.generate_throws(&immovable, start, &mut turns);
+        assert_eq!(2, turns.len());
+        board.assert_movements(&turns, (0, 0), &[(0, 1), (1, 2)]);
     }
 
     #[test]
@@ -1252,36 +1252,36 @@ mod tests {
         let x2 = loc_to_hex((-1, 0));
         let y1 = loc_to_hex((1, 1));
         let y2 = loc_to_hex((1, 0));
-        super::Move::Place(loc_to_hex((0, 0)), Bug::Spider).apply(&mut board);
+        Turn::Place(loc_to_hex((0, 0)), Bug::Spider).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Place(x1, Bug::Queen).apply(&mut board);
+        Turn::Place(x1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Create the position the first time.
-        super::Move::Place(y1, Bug::Queen).apply(&mut board);
+        Turn::Place(y1, Bug::Queen).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Movement(x1, x2).apply(&mut board);
+        Turn::Move(x1, x2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Movement(y1, y2).apply(&mut board);
+        Turn::Move(y1, y2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Movement(x2, x1).apply(&mut board);
+        Turn::Move(x2, x1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Recreate position for the second time.
-        super::Move::Movement(y2, y1).apply(&mut board);
+        Turn::Move(y2, y1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Movement(x1, x2).apply(&mut board);
+        Turn::Move(x1, x2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Movement(y1, y2).apply(&mut board);
+        Turn::Move(y1, y2).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
-        super::Move::Movement(x2, x1).apply(&mut board);
+        Turn::Move(x2, x1).apply(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Recreate position for the third time.
-        super::Move::Movement(y2, y1).apply(&mut board);
+        Turn::Move(y2, y1).apply(&mut board);
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
         // Undo reverts zobrist and history.
-        super::Move::Movement(y2, y1).undo(&mut board);
+        Turn::Move(y2, y1).undo(&mut board);
         assert_eq!(None, Rules::get_winner(&board));
         // Redo re-reverts draw state.
-        super::Move::Movement(y2, y1).apply(&mut board);
+        Turn::Move(y2, y1).apply(&mut board);
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
     }
 }

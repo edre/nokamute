@@ -1,7 +1,7 @@
 extern crate termcolor;
 
 use crate::player::{Player, PlayerConfig};
-use crate::{Board, Bug, Color, Hex, Rules, ROW_SIZE, START_HEX};
+use crate::{Board, Bug, Color, Hex, Rules, Turn, ROW_SIZE, START_HEX};
 use minimax::{Game, Move, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
@@ -196,10 +196,10 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
     bug
 }
 
-fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
+fn input_movement(board: &Board, moves: &[Turn]) -> Option<Turn> {
     let mut starts = moves
         .iter()
-        .filter_map(|m| if let crate::Move::Movement(start, _) = m { Some(*start) } else { None })
+        .filter_map(|m| if let Turn::Move(start, _) = m { Some(*start) } else { None })
         .collect::<Vec<_>>();
     starts.sort_unstable();
     starts.dedup();
@@ -212,7 +212,7 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
     let mut ends = moves
         .iter()
         .filter_map(|m| {
-            if let crate::Move::Movement(start2, end) = m {
+            if let Turn::Move(start2, end) = m {
                 if start == *start2 {
                     Some(*end)
                 } else {
@@ -227,13 +227,13 @@ fn input_movement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
     ends.dedup();
     let end = input_hex(board, "Move to where? ", &ends)?;
 
-    Some(crate::Move::Movement(start, end))
+    Some(Turn::Move(start, end))
 }
 
-fn input_placement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> {
+fn input_placement(board: &Board, moves: &[Turn]) -> Option<Turn> {
     let mut places = moves
         .iter()
-        .filter_map(|m| if let crate::Move::Place(place, _) = m { Some(*place) } else { None })
+        .filter_map(|m| if let Turn::Place(place, _) = m { Some(*place) } else { None })
         .collect::<Vec<_>>();
     places.sort_unstable();
     places.dedup();
@@ -245,11 +245,11 @@ fn input_placement(board: &Board, moves: &[crate::Move]) -> Option<crate::Move> 
 
     let bugs = moves
         .iter()
-        .filter_map(|m| if let crate::Move::Place(_, bug) = m { Some(*bug) } else { None })
+        .filter_map(|m| if let Turn::Place(_, bug) = m { Some(*bug) } else { None })
         .collect::<Vec<_>>();
     let bug = input_bug(&bugs)?;
 
-    Some(crate::Move::Place(place, bug))
+    Some(Turn::Place(place, bug))
 }
 
 pub(crate) struct CliPlayer {
@@ -271,19 +271,19 @@ impl Player for CliPlayer {
         self.board = Board::from_game_type(game_type).unwrap();
     }
 
-    fn play_move(&mut self, m: crate::Move) {
+    fn play_move(&mut self, m: Turn) {
         m.apply(&mut self.board);
     }
 
-    fn undo_move(&mut self, m: crate::Move) {
+    fn undo_move(&mut self, m: Turn) {
         m.undo(&mut self.board);
     }
 
-    fn generate_move(&mut self) -> crate::Move {
+    fn generate_move(&mut self) -> Turn {
         let mut moves = Vec::new();
         Rules::generate_moves(&self.board, &mut moves);
-        if moves[0] == crate::Move::Pass {
-            return crate::Move::Pass;
+        if moves[0] == Turn::Pass {
+            return Turn::Pass;
         }
         loop {
             let line = read_line("move or place: ");
@@ -303,7 +303,7 @@ impl Player for CliPlayer {
 pub fn terminal_game_interface(config: PlayerConfig) {
     let mut player = config.new_player();
     let mut board = Board::default();
-    let mut history = Vec::<crate::Move>::new();
+    let mut history = Vec::<Turn>::new();
     let mut prev_pv = Vec::new();
     let mut prev_pv_board = Board::default();
     loop {
@@ -319,9 +319,9 @@ pub fn terminal_game_interface(config: PlayerConfig) {
         // Precompute possible moves.
         let mut moves = Vec::new();
         Rules::generate_moves(&board, &mut moves);
-        if moves[0] == crate::Move::Pass {
+        if moves[0] == Turn::Pass {
             // Auto-pass if there are no valid moves.
-            crate::Move::Pass.apply(&mut board);
+            Turn::Pass.apply(&mut board);
             continue;
         }
 

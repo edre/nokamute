@@ -86,7 +86,7 @@ impl<W: Write> UhpServer<W> {
         } else {
             args.parse::<usize>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?
         };
-        if num_undo > board.move_history.len() {
+        if num_undo > board.turn_history.len() {
             return Err(UhpError::TooManyUndos);
         }
         for _ in 0..num_undo {

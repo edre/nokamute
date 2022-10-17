@@ -4,7 +4,7 @@ extern crate minimax;
 use crate::cli::CliPlayer;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use crate::uhp_client::UhpPlayer;
-use crate::{BasicEvaluator, Board, Rules};
+use crate::{BasicEvaluator, Board, Rules, Turn};
 use minimax::*;
 use std::time::Duration;
 
@@ -12,10 +12,10 @@ use std::time::Duration;
 pub(crate) trait Player {
     fn name(&self) -> String;
     fn new_game(&mut self, game_type: &str);
-    fn play_move(&mut self, m: crate::Move);
-    fn undo_move(&mut self, m: crate::Move);
-    fn generate_move(&mut self) -> crate::Move;
-    fn principal_variation(&self) -> Vec<crate::Move> {
+    fn play_move(&mut self, m: Turn);
+    fn undo_move(&mut self, m: Turn);
+    fn generate_move(&mut self) -> Turn;
+    fn principal_variation(&self) -> Vec<Turn> {
         Vec::new()
     }
     fn set_max_depth(&mut self, _depth: u8) {}
@@ -123,19 +123,19 @@ impl Player for NokamutePlayer {
         self.board = Board::from_game_string(game_string).unwrap();
     }
 
-    fn play_move(&mut self, m: crate::Move) {
+    fn play_move(&mut self, m: Turn) {
         m.apply(&mut self.board);
     }
 
-    fn undo_move(&mut self, m: crate::Move) {
+    fn undo_move(&mut self, m: Turn) {
         m.undo(&mut self.board);
     }
 
-    fn generate_move(&mut self) -> crate::Move {
+    fn generate_move(&mut self) -> Turn {
         self.strategy.choose_move(&self.board).unwrap()
     }
 
-    fn principal_variation(&self) -> Vec<crate::Move> {
+    fn principal_variation(&self) -> Vec<Turn> {
         self.strategy.principal_variation()
     }
 

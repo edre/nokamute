@@ -1,5 +1,5 @@
 extern crate minimax;
-use crate::{adjacent, Board, Bug, Color, Direction, Hex, Node, Rules, START_HEX};
+use crate::{adjacent, Board, Bug, Color, Direction, Hex, Node, Rules, Turn, START_HEX};
 use minimax::{Game, Move};
 
 #[derive(Debug)]
@@ -97,28 +97,28 @@ impl Board {
         }
     }
 
-    pub(super) fn to_move_string(&self, m: crate::Move) -> String {
+    pub(super) fn to_move_string(&self, m: crate::Turn) -> String {
         let mut out = String::new();
         match m {
-            crate::Move::Movement(start, _) => {
+            Turn::Move(start, _) => {
                 if !self.occupied(start) {
                     return "??".to_string();
                 }
                 self.tile_name(self.node(start), &mut out);
             }
-            crate::Move::Place(_, bug) => self.new_tile_name(bug, &mut out),
-            crate::Move::Pass => return "pass".to_string(),
+            Turn::Place(_, bug) => self.new_tile_name(bug, &mut out),
+            Turn::Pass => return "pass".to_string(),
         }
 
-        if self.move_num == 0 {
+        if self.turn_num == 0 {
             return out;
         }
         out.push(' ');
 
         match m {
-            crate::Move::Movement(_, end) => self.hex_name(end, &mut out),
-            crate::Move::Place(hex, _) => self.hex_name(hex, &mut out),
-            crate::Move::Pass => unreachable!(),
+            Turn::Move(_, end) => self.hex_name(end, &mut out),
+            Turn::Place(hex, _) => self.hex_name(hex, &mut out),
+            Turn::Pass => unreachable!(),
         }
         out
     }
@@ -129,7 +129,7 @@ impl Board {
         out.push_str(self.game_state_string());
         out.push(';');
         out.push_str(&self.turn_string());
-        if !self.move_history.is_empty() {
+        if !self.turn_history.is_empty() {
             out.push(';');
             out.push_str(&self.game_log());
         }
@@ -157,7 +157,7 @@ impl Board {
     }
 
     pub fn game_state_string(&self) -> &'static str {
-        if self.move_history.is_empty() {
+        if self.turn_history.is_empty() {
             return "NotStarted";
         }
         match Rules::get_winner(self) {
@@ -175,13 +175,13 @@ impl Board {
     }
 
     fn turn_string(&self) -> String {
-        format!("{:?}[{}]", self.to_move(), self.move_history.len() / 2 + 1)
+        format!("{:?}[{}]", self.to_move(), self.turn_history.len() / 2 + 1)
     }
 
     pub fn game_log(&self) -> String {
         let mut board = Board::from_game_type(&self.game_type()).unwrap();
         let mut log = String::new();
-        for &m in &self.move_history {
+        for &m in &self.turn_history {
             log.push_str(&board.to_move_string(m));
             log.push(';');
             m.apply(&mut board);
@@ -256,21 +256,21 @@ impl Board {
 
     // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn from_move_string(&self, move_string: &str) -> Result<crate::Move> {
+    pub(crate) fn from_move_string(&self, move_string: &str) -> Result<Turn> {
         let err = || UhpError::InvalidMove(move_string.to_owned());
         if move_string == "pass" {
-            return Ok(crate::Move::Pass);
+            return Ok(Turn::Pass);
         }
         let tokens = move_string.split(' ').collect::<Vec<_>>();
         let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[0]).ok_or_else(err)?;
         if dir != Direction::None {
             return Err(err());
         }
-        if self.move_history.is_empty() {
+        if self.turn_history.is_empty() {
             if tokens.len() != 1 {
                 return Err(err());
             }
-            return Ok(crate::Move::Place(START_HEX, bug));
+            return Ok(Turn::Place(START_HEX, bug));
         }
         if tokens.len() != 2 {
             return Err(err());
@@ -283,7 +283,7 @@ impl Board {
         };
         if let Some(start) = start {
             if self.occupied(start) {
-                return Ok(crate::Move::Movement(start, end));
+                return Ok(Turn::Move(start, end));
             }
         }
         if color != self.to_move() {
@@ -294,7 +294,7 @@ impl Board {
         if bug_num != expected_bug_num {
             return Err(err());
         }
-        Ok(crate::Move::Place(end, bug))
+        Ok(Turn::Place(end, bug))
     }
 
     pub(crate) fn from_game_string(s: &str) -> Result<Self> {
@@ -317,7 +317,7 @@ impl Board {
         Ok(board)
     }
 
-    pub(crate) fn apply_untrusted(&mut self, m: crate::Move) -> Result<()> {
+    pub(crate) fn apply_untrusted(&mut self, m: Turn) -> Result<()> {
         let mut moves = Vec::new();
         Rules::generate_moves(self, &mut moves);
         if !moves.contains(&m) {
@@ -329,14 +329,14 @@ impl Board {
 
     pub(crate) fn undo_count(&mut self, count: usize) -> Result<()> {
         for _ in 0..count {
-            let m = self.move_history.last().copied().ok_or(UhpError::TooManyUndos)?;
+            let m = self.turn_history.last().copied().ok_or(UhpError::TooManyUndos)?;
             m.undo(self);
         }
         Ok(())
     }
 
-    pub(crate) fn last_move(&self) -> Option<crate::Move> {
-        self.move_history.last().copied()
+    pub(crate) fn last_move(&self) -> Option<Turn> {
+        self.turn_history.last().copied()
     }
 
     pub(crate) fn valid_moves(&self) -> String {

@@ -6,7 +6,7 @@ use minimax::{
     Game, IterativeOptions, IterativeSearch, LazySmp, LazySmpOptions, Move, ParallelYbw, Strategy,
     YbwOptions,
 };
-use nokamute::{loc_to_id, Board, Bug, Rules};
+use nokamute::{loc_to_hex, Board, Bug, Rules, Turn};
 
 fn empty_board_depth(depth: u8) {
     let mut board = Board::default();
@@ -20,25 +20,25 @@ fn empty_board_depth(depth: u8) {
 fn full_board_depth(depth: u8) {
     let mut board = Board::default();
     // From some game I found online, subbed out some expansion pieces.
-    nokamute::Move::Place(loc_to_id((4, 0)), Bug::Queen).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((1, 1)), Bug::Ant).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((5, 0)), Bug::Ant).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((3, 1)), Bug::Ladybug).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((0, 1)), Bug::Ant).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((6, 1)), Bug::Mosquito).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((4, 1)), Bug::Pillbug).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((7, 1)), Bug::Beetle).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((0, 2)), Bug::Spider).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((-1, 2)), Bug::Ant).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((4, 3)), Bug::Spider).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((2, 2)), Bug::Pillbug).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((4, 4)), Bug::Beetle).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((3, 2)), Bug::Queen).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((3, 2)), Bug::Beetle).apply(&mut board);
-    nokamute::Move::Place(loc_to_id((0, 3)), Bug::Spider).apply(&mut board);
-    nokamute::Move::Pass.apply(&mut board);
-    nokamute::Move::Place(loc_to_id((5, 5)), Bug::Ant).apply(&mut board);
-    nokamute::Move::Pass.apply(&mut board);
+    Turn::Place(loc_to_hex((4, 0)), Bug::Queen).apply(&mut board);
+    Turn::Place(loc_to_hex((1, 1)), Bug::Ant).apply(&mut board);
+    Turn::Place(loc_to_hex((5, 0)), Bug::Ant).apply(&mut board);
+    Turn::Place(loc_to_hex((3, 1)), Bug::Ladybug).apply(&mut board);
+    Turn::Place(loc_to_hex((0, 1)), Bug::Ant).apply(&mut board);
+    Turn::Place(loc_to_hex((6, 1)), Bug::Mosquito).apply(&mut board);
+    Turn::Place(loc_to_hex((4, 1)), Bug::Pillbug).apply(&mut board);
+    Turn::Place(loc_to_hex((7, 1)), Bug::Beetle).apply(&mut board);
+    Turn::Place(loc_to_hex((0, 2)), Bug::Spider).apply(&mut board);
+    Turn::Place(loc_to_hex((-1, 2)), Bug::Ant).apply(&mut board);
+    Turn::Place(loc_to_hex((4, 3)), Bug::Spider).apply(&mut board);
+    Turn::Place(loc_to_hex((2, 2)), Bug::Pillbug).apply(&mut board);
+    Turn::Place(loc_to_hex((4, 4)), Bug::Beetle).apply(&mut board);
+    Turn::Place(loc_to_hex((3, 2)), Bug::Queen).apply(&mut board);
+    Turn::Place(loc_to_hex((3, 2)), Bug::Beetle).apply(&mut board);
+    Turn::Place(loc_to_hex((0, 3)), Bug::Spider).apply(&mut board);
+    Turn::Pass.apply(&mut board);
+    Turn::Place(loc_to_hex((5, 5)), Bug::Ant).apply(&mut board);
+    Turn::Pass.apply(&mut board);
     let options = IterativeOptions::new().with_table_byte_size(16000).with_null_window_search(true);
     let mut strategy = IterativeSearch::new(nokamute::BasicEvaluator::default(), options);
     strategy.set_max_depth(depth);

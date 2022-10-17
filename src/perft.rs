@@ -1,5 +1,5 @@
 use crate::uhp_client::UhpClient;
-use crate::{Board, Rules};
+use crate::{Board, Rules, Turn};
 use minimax::{Game, Move, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
@@ -81,9 +81,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     }
 }
 
-fn dump_difference(
-    board: &mut Board, iter: usize, nokamute_moves: &[crate::Move], engine_moves: &[crate::Move],
-) {
+fn dump_difference(board: &mut Board, iter: usize, nokamute_moves: &[Turn], engine_moves: &[Turn]) {
     println!(
         "iteration {} found discrepancy: {} vs {} moves",
         iter,
@@ -111,7 +109,7 @@ fn dump_difference(
     let nokamute_dups = find_dups(nokamute_moves);
     let engine_dups = find_dups(engine_moves);
 
-    let mut print_moves = |title: &str, moves: &[crate::Move]| {
+    let mut print_moves = |title: &str, moves: &[Turn]| {
         if !moves.is_empty() {
             println!("{}:", title);
         }
@@ -128,7 +126,7 @@ fn dump_difference(
     print_moves("engine duplicate moves", &engine_dups);
 }
 
-fn find_dups(moves: &[crate::Move]) -> Vec<crate::Move> {
+fn find_dups(moves: &[Turn]) -> Vec<Turn> {
     let mut dups = Vec::new();
     for &m in moves.iter() {
         if moves.iter().filter(|&&m2| m == m2).count() > 1 && !dups.contains(&m) {

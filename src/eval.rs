@@ -228,29 +228,27 @@ impl Evaluator for BasicEvaluator {
     // usually pins one of your own pieces and doesn't put the new piece where
     // it will be useful. Thus, each player can get a bonus move to move a
     // piece that they have just placed (but not other pieces).
-    fn generate_noisy_moves(&self, board: &Board, moves: &mut Vec<Move>) {
-        if board.move_history.len() < 4 || board.get_remaining()[Bug::Queen as usize] == 0 {
+    fn generate_noisy_moves(&self, board: &Board, moves: &mut Vec<Turn>) {
+        if board.turn_history.len() < 4 || board.get_remaining()[Bug::Queen as usize] == 0 {
             // Wait until movements are at least possible.
             return;
         }
-        let enemy_last_move = board.move_history[board.move_history.len() - 1];
-        let my_last_move = board.move_history[board.move_history.len() - 2];
+        let enemy_last_move = board.turn_history[board.turn_history.len() - 1];
+        let my_last_move = board.turn_history[board.turn_history.len() - 2];
 
-        if let Move::Place(hex, _) = my_last_move {
+        if let Turn::Place(hex, _) = my_last_move {
             // Drop attack is quiet enough.
             if !adjacent(board.queens[board.to_move().other()]).contains(&hex) {
                 // TODO: just generate from this spot (ignoring throws?).
                 board.generate_movements(moves);
-                moves.retain(
-                    |m| if let Move::Movement(start, _) = *m { start == hex } else { false },
-                );
+                moves.retain(|m| if let Turn::Move(start, _) = *m { start == hex } else { false });
                 // If the piece became pinned or covered, this will return no
                 // moves, which means the search will terminate.
                 return;
             }
         }
 
-        if let Move::Place(hex, _) = enemy_last_move {
+        if let Turn::Place(hex, _) = enemy_last_move {
             if !adjacent(board.queens[board.to_move() as usize]).contains(&hex) {
                 // We didn't just place, but opponent did. Do some movement to
                 // give them a chance to quiesce.
@@ -275,38 +273,38 @@ mod tests {
         //．．🐜🐜🐝．．
         // ．．．🦗🪲
         let mut board = Board::default();
-        crate::Move::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_hex((1, 0)), Bug::Spider).apply(&mut board);
-        crate::Move::Place(loc_to_hex((-1, 1)), Bug::Ant).apply(&mut board);
-        crate::Move::Place(loc_to_hex((0, 1)), Bug::Ant).apply(&mut board);
-        crate::Move::Place(loc_to_hex((1, 2)), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place(loc_to_hex((1, 1)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_hex((2, 2)), Bug::Beetle).apply(&mut board);
-        crate::Move::Pass.apply(&mut board);
+        Turn::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
+        Turn::Place(loc_to_hex((1, 0)), Bug::Spider).apply(&mut board);
+        Turn::Place(loc_to_hex((-1, 1)), Bug::Ant).apply(&mut board);
+        Turn::Place(loc_to_hex((0, 1)), Bug::Ant).apply(&mut board);
+        Turn::Place(loc_to_hex((1, 2)), Bug::Grasshopper).apply(&mut board);
+        Turn::Place(loc_to_hex((1, 1)), Bug::Queen).apply(&mut board);
+        Turn::Place(loc_to_hex((2, 2)), Bug::Beetle).apply(&mut board);
+        Turn::Pass.apply(&mut board);
         for depth in 1..3 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
+            assert_eq!(Some(Turn::Move(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
 
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
+            assert_eq!(Some(Turn::Move(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
         }
 
         // Find queen escape.
         //．．🕷🐝🐝．
         // ．．🦗🕷．
         let mut board = Board::default();
-        crate::Move::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_hex((1, 0)), Bug::Queen).apply(&mut board);
-        crate::Move::Place(loc_to_hex((1, 1)), Bug::Spider).apply(&mut board);
-        crate::Move::Place(loc_to_hex((0, 1)), Bug::Grasshopper).apply(&mut board);
-        crate::Move::Place(loc_to_hex((-1, 0)), Bug::Beetle).apply(&mut board);
-        crate::Move::Pass.apply(&mut board);
+        Turn::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
+        Turn::Place(loc_to_hex((1, 0)), Bug::Queen).apply(&mut board);
+        Turn::Place(loc_to_hex((1, 1)), Bug::Spider).apply(&mut board);
+        Turn::Place(loc_to_hex((0, 1)), Bug::Grasshopper).apply(&mut board);
+        Turn::Place(loc_to_hex((-1, 0)), Bug::Beetle).apply(&mut board);
+        Turn::Pass.apply(&mut board);
         for depth in 1..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);
-            assert_eq!(Some(crate::Move::Movement(loc_to_hex((0, 0)), loc_to_hex((0, -1)))), m);
+            assert_eq!(Some(Turn::Move(loc_to_hex((0, 0)), loc_to_hex((0, -1)))), m);
         }
     }
 }

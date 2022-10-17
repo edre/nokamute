@@ -1,8 +1,7 @@
 extern crate minimax;
 
 use crate::notation::{Result, UhpError};
-use crate::player::Player;
-use crate::{Board, Color};
+use crate::{Board, Color, Player, Turn};
 
 use minimax::Winner;
 use std::io::{BufRead, BufReader, Write};
@@ -63,7 +62,7 @@ impl UhpClient {
         Ok(())
     }
 
-    pub(crate) fn apply(&mut self, m: crate::Move) -> Result<Option<Winner>> {
+    pub(crate) fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
         let mut command = "play ".to_owned();
         command.push_str(&self.board.to_move_string(m));
         let out = self.command(&command)?.join("\n");
@@ -98,7 +97,7 @@ impl UhpClient {
     }
 
     // Ask the engine for the next possible moves.
-    pub(crate) fn generate_moves(&mut self) -> Result<Vec<crate::Move>> {
+    pub(crate) fn generate_moves(&mut self) -> Result<Vec<Turn>> {
         let mut moves = Vec::new();
         for move_string in self.raw_generate_moves()?.split(';') {
             moves.push(self.board.from_move_string(move_string)?);
@@ -110,7 +109,7 @@ impl UhpClient {
         self.board.game_log()
     }
 
-    pub(crate) fn best_move(&mut self, timeout: Duration) -> Result<crate::Move> {
+    pub(crate) fn best_move(&mut self, timeout: Duration) -> Result<Turn> {
         let secs = timeout.as_secs();
         let h = secs / 3600;
         let m = secs % 3600 / 60;
@@ -120,7 +119,7 @@ impl UhpClient {
         self.board.from_move_string(&move_string)
     }
 
-    pub(crate) fn best_move_depth(&mut self, depth: u8) -> Result<crate::Move> {
+    pub(crate) fn best_move_depth(&mut self, depth: u8) -> Result<Turn> {
         let move_string = self.command(&format!("bestmove depth {}", depth))?.pop().unwrap();
         self.board.from_move_string(&move_string)
     }
@@ -161,15 +160,15 @@ impl Player for UhpPlayer {
         self.client.new_game(game_type).unwrap();
     }
 
-    fn play_move(&mut self, m: crate::Move) {
+    fn play_move(&mut self, m: Turn) {
         self.client.apply(m).unwrap();
     }
 
-    fn undo_move(&mut self, _: crate::Move) {
+    fn undo_move(&mut self, _: Turn) {
         self.client.undo(1).unwrap();
     }
 
-    fn generate_move(&mut self) -> crate::Move {
+    fn generate_move(&mut self) -> Turn {
         if let Some(depth) = self.depth {
             self.client.best_move_depth(depth).unwrap()
         } else {
