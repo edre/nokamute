@@ -833,13 +833,16 @@ impl minimax::Game for Rules {
                     }
                 }
             }
-        } else {
-            // Once queen has been placed, pieces may move.
-            if board.get_remaining()[Bug::Queen as usize] == 0 {
-                // For movable pieces, generate all legal moves.
-                board.generate_movements(turns);
-            }
+            return;
+        }
 
+        // Once queen has been placed, pieces may move.
+        if board.get_remaining()[Bug::Queen as usize] == 0 {
+            // For movable pieces, generate all legal moves.
+            board.generate_movements(turns);
+        }
+
+        if board.get_remaining().iter().any(|&num| num > 0) {
             // Find placeable positions.
             board.generate_placements(turns);
         }
