@@ -1,7 +1,5 @@
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use crate::uhp_client::UhpClient;
 use crate::{Board, Rules};
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use minimax::{Game, Move, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
@@ -21,7 +19,6 @@ pub fn perft_single_thread(game_string: &str) {
     minimax::perft::<Rules>(&mut b, 20, false);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub fn perft_multi_thread(game_string: &str) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
@@ -32,7 +29,6 @@ pub fn perft_multi_thread(game_string: &str) {
     minimax::perft::<Rules>(&mut b, 20, true);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();
@@ -85,7 +81,6 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn dump_difference(
     board: &mut Board, iter: usize, nokamute_moves: &[crate::Move], engine_moves: &[crate::Move],
 ) {
@@ -133,7 +128,6 @@ fn dump_difference(
     print_moves("engine duplicate moves", &engine_dups);
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn find_dups(moves: &[crate::Move]) -> Vec<crate::Move> {
     let mut dups = Vec::new();
     for &m in moves.iter() {

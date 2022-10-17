@@ -14,7 +14,9 @@ pub use eval::*;
 mod hex_grid;
 pub use hex_grid::*;
 mod notation;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod perft;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use perft::*;
 mod player;
 pub use player::*;
