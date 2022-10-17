@@ -3,6 +3,8 @@ extern crate lazy_static;
 
 mod board;
 pub use board::*;
+mod bug;
+pub use bug::*;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod cli;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

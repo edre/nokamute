@@ -1,4 +1,5 @@
 use crate::board::*;
+use crate::bug::Bug;
 use crate::hex_grid::*;
 
 use minimax::{Evaluation, Evaluator};
