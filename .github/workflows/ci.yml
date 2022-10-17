@@ -26,7 +26,7 @@ jobs:
       run: wasm-pack test --firefox --headless
 
     - name: Build Release
-      run: sh ./release.sh
+      run: sh ./.github/release.sh
 
     - name: Upload Linux Build Artifacts
       uses: actions/upload-artifact@v2
@@ -39,9 +39,6 @@ jobs:
       with:
         name: nokamute_win64.zip
         path: nokamute_win64.zip
-
-    - name: Build Wasm Release
-      run: wasm-pack build --target web && zip nokamute_wasm32.zip pkg/*
 
     - name: Upload Wasm Build Artifacts
       uses: actions/upload-artifact@v2

@@ -12,3 +12,6 @@ tar czf nokamute_linux_amd64.tar.gz --owner=0 --group=0 nokamute
 cargo build --release --target x86_64-pc-windows-gnu
 mv target/x86_64-pc-windows-gnu/release/nokamute.exe .
 zip nokamute_win64.zip nokamute.exe
+
+wasm-pack build --target web
+zip nokamute_wasm32.zip pkg/*

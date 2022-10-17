@@ -34,8 +34,12 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
 
+    - uses: jetli/wasm-pack-action@v0.3.0
+    - uses: jetli/wasm-bindgen-action@v0.1.0
+    - run: rustup target add wasm32-unknown-unknown
+
     - name: Build Release
-      run: sh ./release.sh
+      run: sh ./.github/release.sh
     
     - name: Upload Linux Release Asset
       uses: actions/upload-release-asset@v1
@@ -55,4 +59,14 @@ jobs:
         upload_url: ${{ needs.pub_create_github_release.outputs.upload_url }}
         asset_path: nokamute_win64.zip
         asset_name: nokamute_win64.zip
+        asset_content_type: application/zip
+
+    - name: Upload Wasm Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.pub_create_github_release.outputs.upload_url }}
+        asset_path: nokamute_wasm32.zip
+        asset_name: nokamute_wasm32.zip
         asset_content_type: application/zip
