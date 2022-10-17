@@ -193,27 +193,29 @@ impl Board {
     }
 
     // From e.g. "wB2-", returns color, bug, num, dir (White, Beetle, 2, NW)
-    fn parse_piece_name(&self, mut piece_string: &str) -> Option<(Color, Bug, u8, Direction)> {
+    fn parse_piece_name(
+        &self, mut piece_string: &str,
+    ) -> Option<(Color, Bug, u8, Option<Direction>)> {
         let first = piece_string.chars().next()?;
         let last = piece_string.chars().rev().next()?;
         let dir = if "\\-/".contains(first) {
             piece_string = &piece_string[1..];
-            match first {
+            Some(match first {
                 '\\' => Direction::NW,
                 '-' => Direction::W,
                 '/' => Direction::SW,
                 _ => return None,
-            }
+            })
         } else if "\\-/".contains(last) {
             piece_string = &piece_string[..piece_string.len() - 1];
-            match last {
+            Some(match last {
                 '/' => Direction::NE,
                 '-' => Direction::E,
                 '\\' => Direction::SE,
                 _ => return None,
-            }
+            })
         } else {
-            Direction::None
+            None
         };
 
         let mut chars = piece_string.chars();
@@ -263,7 +265,7 @@ impl Board {
         }
         let tokens = move_string.split(' ').collect::<Vec<_>>();
         let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[0]).ok_or_else(err)?;
-        if dir != Direction::None {
+        if dir.is_some() {
             return Err(err());
         }
         if self.turn_history.is_empty() {
@@ -279,7 +281,11 @@ impl Board {
         let end: Hex = {
             let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[1]).ok_or_else(err)?;
             let hex = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
-            dir.apply(hex)
+            if let Some(dir) = dir {
+                dir.apply(hex)
+            } else {
+                hex
+            }
         };
         if let Some(start) = start {
             if self.occupied(start) {

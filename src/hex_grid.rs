@@ -43,7 +43,6 @@ pub enum Direction {
     E = 1,
     SW = ROW_SIZE as u16,
     SE = ROW_SIZE as u16 + 1,
-    None = 0,
 }
 
 // In clockwise order
