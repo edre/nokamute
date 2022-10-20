@@ -605,29 +605,28 @@ impl Board {
 
     fn generate_walk3(&self, orig: Hex, turns: &mut Vec<Turn>) {
         fn dfs(
-            hex: Hex, orig: Hex, board: &Board, path: &mut Vec<Hex>, visited: &mut HexSet,
-            turns: &mut Vec<Turn>,
+            hex: Hex, orig: Hex, board: &Board, path: &mut [Hex; 3], depth: usize,
+            visited: &mut HexSet, turns: &mut Vec<Turn>,
         ) {
-            if path.contains(&hex) {
+            if path[..depth].contains(&hex) {
                 return;
             }
-            if path.len() == 3 {
+            if depth == 3 {
                 if !visited.get(hex) {
                     turns.push(Turn::Move(orig, hex));
                     visited.set(hex);
                 }
                 return;
             }
-            path.push(hex);
+            path[depth] = hex;
             let mut buf = [0; 6];
             for adj in board.slidable_adjacent(&mut buf, orig, hex) {
-                dfs(adj, orig, board, path, visited, turns);
+                dfs(adj, orig, board, path, depth + 1, visited, turns);
             }
-            path.pop();
         }
-        let mut path = Vec::with_capacity(3);
+        let mut path = [0; 3];
         let mut visited = HexSet::new();
-        dfs(orig, orig, self, &mut path, &mut visited, turns);
+        dfs(orig, orig, self, &mut path, 0, &mut visited, turns);
     }
 
     fn generate_walk_all(&self, orig: Hex, turns: &mut Vec<Turn>) {
