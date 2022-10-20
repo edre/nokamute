@@ -632,9 +632,13 @@ impl Board {
 
     fn generate_walk_all(&self, orig: Hex, turns: &mut Vec<Turn>) {
         let mut visited = HexSet::new();
-        let mut queue = vec![orig];
+        let mut queue = [0; 16];
+        queue[0] = orig;
+        let mut qsize = 1;
         let mut buf = [0; 6];
-        while let Some(node) = queue.pop() {
+        while qsize > 0 {
+            qsize -= 1;
+            let node = queue[qsize];
             if visited.get(node) {
                 continue;
             }
@@ -643,7 +647,10 @@ impl Board {
                 turns.push(Turn::Move(orig, node));
             }
             for adj in self.slidable_adjacent(&mut buf, orig, node) {
-                queue.push(adj);
+                if !visited.get(adj) {
+                    queue[qsize] = adj;
+                    qsize += 1;
+                }
             }
         }
     }
