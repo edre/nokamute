@@ -406,6 +406,21 @@ impl minimax::Move for Turn {
     fn notation(&self, board: &Board) -> Option<String> {
         Some(board.to_move_string(*self))
     }
+
+    fn table_index(&self) -> u16 {
+        // Arbitarily squeezed smaller by shaving off
+        // the highest bit from each hex.
+        const MASK: u16 = 0x7f;
+        match *self {
+            Turn::Place(hex, bug) => (bug as u16) << 7 | hex as u16 & MASK,
+            Turn::Move(start, end) => (start as u16 & MASK) << 7 | end as u16 & MASK,
+            Turn::Pass => 0,
+        }
+    }
+    /// Maximum table size.
+    fn max_table_index() -> u16 {
+        u16::MAX >> 2
+    }
 }
 
 impl Board {

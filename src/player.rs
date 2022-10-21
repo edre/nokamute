@@ -249,7 +249,7 @@ impl PlayerConfig {
         Self {
             #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
             num_threads: None,
-            opts: IterativeOptions::new(),
+            opts: IterativeOptions::new().with_countermoves(),
             #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
             strategy: PlayerStrategy::Iterative(YbwOptions::new()),
             eval: BasicEvaluator::default(),
