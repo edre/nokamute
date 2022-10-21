@@ -10,16 +10,18 @@ license = "MIT"
 [dependencies]
 lazy_static = "^1.4.0"
 minimax = { git = "https://github.com/edre/minimax-rs", rev = "52b3210343addebd7a360b798cd7b6cfd155c167" }
+
+[target.'cfg(not(target_arch="wasm32"))'.dependencies]
 pico-args = "0.4"
 termcolor = "^1.1"
 
-[target.'cfg(all(target_arch="wasm32", target_os="unknown"))'.dependencies]
+[target.'cfg(target_arch="wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 
 [dev-dependencies]
 easybench = "1.1.0"
 
-[target.'cfg(all(target_arch="wasm32", target_os="unknown"))'.dev-dependencies]
+[target.'cfg(target_arch="wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
 [features]
@@ -32,4 +34,4 @@ harness = false
 
 # For wasm32 library builds.
 [lib]
-crate-type=["cdylib","rlib"]
+crate-type=["cdylib", "rlib"]
