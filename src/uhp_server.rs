@@ -3,6 +3,7 @@ extern crate minimax;
 use crate::notation::{Result, UhpError};
 use crate::{Board, Player, PlayerConfig, Rules};
 
+use minimax::Move;
 use std::io::Write;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::io::{stdin, stdout};
@@ -79,6 +80,19 @@ impl<W: Write> UhpServer<W> {
         Ok(())
     }
 
+    fn pv(&mut self) -> Result<()> {
+        let pv = self.engine.as_ref().ok_or(UhpError::GameNotStarted)?.principal_variation();
+        let board = self.board.as_mut().unwrap();
+        for &m in &pv {
+            writeln!(self.output, "{}", board.to_move_string(m))?;
+            m.apply(board);
+        }
+        for m in pv.iter().rev() {
+            m.undo(board);
+        }
+        Ok(())
+    }
+
     fn undo(&mut self, args: &str) -> Result<()> {
         let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
         let num_undo = if args.is_empty() {
@@ -122,6 +136,7 @@ impl<W: Write> UhpServer<W> {
             "play" => self.play(args),
             "pass" => self.play("pass"),
             "bestmove" => self.best_move(args),
+            "pv" => self.pv(),
             "undo" => self.undo(args),
             "options" => self.options(args),
             "perft" => self.perft(args),
