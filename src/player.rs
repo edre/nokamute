@@ -4,7 +4,7 @@ extern crate minimax;
 use crate::cli::CliPlayer;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
-use crate::{BasicEvaluator, Board, Rules, Turn};
+use crate::{BasicEvaluator, Board, Bug, Rules, Turn};
 use minimax::*;
 use std::time::Duration;
 
@@ -132,7 +132,19 @@ impl Player for NokamutePlayer {
     }
 
     fn generate_move(&mut self) -> Turn {
-        self.strategy.choose_move(&self.board).unwrap()
+        if self.board.turn_num < 2 {
+            // Ignore minimax and just throw out a random jumpy bug for the first move.
+            loop {
+                let turn = minimax::Random::<Rules>::default().choose_move(&self.board).unwrap();
+                if let Turn::Place(_, bug) = turn {
+                    if matches!(bug, Bug::Beetle | Bug::Grasshopper | Bug::Ladybug | Bug::Pillbug) {
+                        return turn;
+                    }
+                }
+            }
+        } else {
+            self.strategy.choose_move(&self.board).unwrap()
+        }
     }
 
     fn principal_variation(&self) -> Vec<Turn> {
