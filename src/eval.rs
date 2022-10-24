@@ -18,20 +18,54 @@ impl Evaluator for DumbEvaluator {
 // An evaluator that counts movable pieces and how close to death the queen is.
 #[derive(Copy, Clone)]
 pub struct BasicEvaluator {
-    queen_factor: Evaluation,
+    aggression: Evaluation,
+    queen_liberty_factor: Evaluation,
+    movable_queen_value: Evaluation,
     movable_bug_factor: Evaluation,
     unplayed_bug_factor: Evaluation,
     beetle_attack_factor: Evaluation,
 }
 
-impl Default for BasicEvaluator {
-    fn default() -> Self {
+// Ideas:
+//  - Value mobility higher
+//  - Opponent's mobility is more negative than you're mobility is positive.
+//  - Don't value queen factor highly until a large mobility advantage is established.
+//  - Quadratic score for filling queen liberties (counting virtual pillbug liberties)
+//  - Conservative option: ignore queen and try to shut out opponent first.
+//      Need to count placeable positions
+
+impl BasicEvaluator {
+    fn new(aggression: u8) -> Self {
+        // Ensure aggression is a dial between 1 and 5.
+        let aggression = aggression.clamp(1, 5) as Evaluation;
         Self {
-            queen_factor: 40,
+            aggression,
+            queen_liberty_factor: aggression * 10,
+            movable_queen_value: aggression * 4,
             movable_bug_factor: 2,
             unplayed_bug_factor: 1,
-            beetle_attack_factor: 15,
+            beetle_attack_factor: aggression * 3,
         }
+    }
+
+    fn value(&self, bug: Bug) -> Evaluation {
+        // Mostly made up. All I know is that ants are good.
+        match bug {
+            Bug::Queen => self.movable_queen_value,
+            Bug::Ant => 7,
+            Bug::Beetle => 6,
+            Bug::Grasshopper => 4,
+            Bug::Spider => 3,
+            Bug::Mosquito => 8, // See below.
+            Bug::Ladybug => 5,
+            Bug::Pillbug => 4,
+        }
+    }
+}
+
+impl Default for BasicEvaluator {
+    fn default() -> Self {
+        Self::new(5)
     }
 }
 
@@ -64,21 +98,8 @@ impl Evaluator for BasicEvaluator {
         let mut buf = [0; 6];
         let mut immovable = board.find_cut_vertexes();
 
-        fn value(bug: Bug) -> Evaluation {
-            // Mostly made up. All I know is that ants are good.
-            match bug {
-                Bug::Queen => 10,
-                Bug::Ant => 7,
-                Bug::Beetle => 6,
-                Bug::Grasshopper => 4,
-                Bug::Spider => 3,
-                Bug::Mosquito => 8, // See below.
-                Bug::Ladybug => 5,
-                Bug::Pillbug => 4,
-            }
-        }
-
         let mut score = 0;
+        //let mut mobility_score = [0; 2];
         let mut beetle_attack_score = [0; 2];
         let mut pillbug_defense_score = [0; 2];
         let mut queen_score = [0; 2];
@@ -88,12 +109,13 @@ impl Evaluator for BasicEvaluator {
         for bug in Bug::iter_all() {
             score += (remaining[bug as usize] as Evaluation
                 - opp_remaining[bug as usize] as Evaluation)
-                * self.unplayed_bug_factor;
+                * self.unplayed_bug_factor
+                * self.value(bug);
         }
 
         for &hex in board.occupied_hexes[0].iter().chain(board.occupied_hexes[1].iter()) {
             let node = board.node(hex);
-            let mut bug_score = value(node.bug());
+            let mut bug_score = self.value(node.bug());
             let mut pillbug_powers = node.bug() == Bug::Pillbug;
             let mut beetle_powers = node.bug() == Bug::Beetle;
             let mut crawler = node.bug().crawler();
@@ -102,14 +124,14 @@ impl Evaluator for BasicEvaluator {
                 bug_score = 0;
                 crawler = true;
                 if node.is_stacked() {
-                    bug_score = value(Bug::Beetle);
+                    bug_score = self.value(Bug::Beetle);
                     beetle_powers = true;
                 } else {
                     for adj in adjacent(hex) {
                         if board.occupied(adj) {
                             let bug = board.node(adj).bug();
                             if bug != Bug::Queen {
-                                bug_score = value(bug);
+                                bug_score = self.value(bug);
                             }
                             if bug == Bug::Beetle {
                                 beetle_powers = true;
@@ -137,10 +159,10 @@ impl Evaluator for BasicEvaluator {
             if adjacent(friendly_queen).contains(&hex) {
                 // Filling friendly queen's liberty.
                 if immovable.get(hex) && !node.is_stacked() {
-                    queen_score[node.color() as usize] -= self.queen_factor;
+                    queen_score[node.color() as usize] -= self.queen_liberty_factor;
                 } else {
                     // Lower penalty for being able to leave.
-                    queen_score[node.color() as usize] -= self.queen_factor / 2;
+                    queen_score[node.color() as usize] -= self.queen_liberty_factor / 2;
                 }
                 if pillbug_powers {
                     let best_escape = adjacent(hex)
@@ -157,7 +179,8 @@ impl Evaluator for BasicEvaluator {
                     if best_escape > 2 && pillbug_defense_score[node.color() as usize] >= 0 {
                         // Don't double count bonus points from pillbug and mosquito. Only one of them can do an escape.
                         // Enemy pillbug trumps friendly pillbug. Move to safety early.
-                        pillbug_defense_score[node.color() as usize] = self.queen_factor * 2;
+                        pillbug_defense_score[node.color() as usize] =
+                            self.queen_liberty_factor * 2;
                     }
                 }
             }
@@ -166,11 +189,7 @@ impl Evaluator for BasicEvaluator {
 
             if adjacent(enemy_queen).contains(&hex) {
                 // A little extra boost for filling opponent's queen, as we will never choose to move.
-                queen_score[node.color().other()] -= self.queen_factor * 12 / 10;
-                // If this bug is already filling a queen's liberty, so don't
-                // also give it its movability bonus. It's more valuable here
-                // than moving around.
-                bug_score = 0;
+                queen_score[node.color().other()] -= self.queen_liberty_factor * 12 / 10;
                 if pillbug_powers {
                     let best_unescape = adjacent(hex)
                         .into_iter()
@@ -184,7 +203,7 @@ impl Evaluator for BasicEvaluator {
                         .min()
                         .unwrap_or(6);
                     if best_unescape < 3 {
-                        pillbug_defense_score[node.color().other()] = -self.queen_factor;
+                        pillbug_defense_score[node.color().other()] = -self.queen_liberty_factor;
                     }
                 }
             }
@@ -208,6 +227,12 @@ impl Evaluator for BasicEvaluator {
             bug_score *= self.movable_bug_factor;
             if node.color() != board.to_move() {
                 bug_score = -bug_score;
+                // Make low-aggression mode value opponent movability higher than ours.
+                if self.aggression == 1 {
+                    bug_score *= 2
+                } else if self.aggression == 2 {
+                    bug_score = bug_score * 3 / 2;
+                }
             }
             score += bug_score;
         }
