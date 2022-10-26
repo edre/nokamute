@@ -191,15 +191,15 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
     let line = read_line("Which bug? ");
     let bug = Bug::from_char(line.chars().next().unwrap_or('?'));
     if let Some(bug) = bug {
-	if !options.contains(&bug) {
-	    println!("Bug not available.");
-	    None
-	} else {
-	    Some(bug)
-	}
+        if !options.contains(&bug) {
+            println!("Bug not available.");
+            None
+        } else {
+            Some(bug)
+        }
     } else {
         println!("Unrecognized bug.");
-	None
+        None
     }
 }
 
@@ -380,9 +380,9 @@ pub fn terminal_game_interface(config: PlayerConfig) {
                 player.play_move(m);
             }
         } else if line.starts_with("pass") {
-	    history.push(Turn::Pass);
-	    Turn::Pass.apply(&mut board);
-	    player.play_move(Turn::Pass);
+            history.push(Turn::Pass);
+            Turn::Pass.apply(&mut board);
+            player.play_move(Turn::Pass);
         } else if line.starts_with("undo") {
             if let Some(m) = history.pop() {
                 m.undo(&mut board);

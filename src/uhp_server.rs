@@ -11,6 +11,7 @@ use std::time::Duration;
 
 pub struct UhpServer<W: Write> {
     board: Option<Board>,
+    pv_dirty: bool,
     config: PlayerConfig,
     engine: Option<Box<dyn Player>>,
     output: W,
@@ -18,7 +19,7 @@ pub struct UhpServer<W: Write> {
 
 impl<W: Write> UhpServer<W> {
     pub fn new(config: PlayerConfig, output: W) -> Self {
-        UhpServer { board: None, config, engine: None, output }
+        UhpServer { board: None, pv_dirty: true, config, engine: None, output }
     }
 
     pub fn swap_output(&mut self, mut output: W) -> W {
@@ -35,6 +36,7 @@ impl<W: Write> UhpServer<W> {
     }
 
     fn new_game(&mut self, args: &str) -> Result<()> {
+        self.pv_dirty = true;
         let args = if args.is_empty() { "Base" } else { args };
         self.board = Some(Board::from_game_string(args)?);
         let mut engine = self.config.new_player();
@@ -54,6 +56,7 @@ impl<W: Write> UhpServer<W> {
     }
 
     fn play(&mut self, args: &str) -> Result<()> {
+        self.pv_dirty = true;
         let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
         let m = board.from_move_string(args)?;
         board.apply_untrusted(m)?;
@@ -63,6 +66,7 @@ impl<W: Write> UhpServer<W> {
     }
 
     fn best_move(&mut self, args: &str) -> Result<()> {
+        self.pv_dirty = false;
         let board = self.board.as_ref().ok_or(UhpError::GameNotStarted)?;
         if let Some(arg) = args.strip_prefix("depth ") {
             let depth =
@@ -83,6 +87,9 @@ impl<W: Write> UhpServer<W> {
     fn pv(&mut self) -> Result<()> {
         let pv = self.engine.as_ref().ok_or(UhpError::GameNotStarted)?.principal_variation();
         let board = self.board.as_mut().unwrap();
+        if self.pv_dirty {
+            return Err(UhpError::EngineError("Board changed since last engine move".into()));
+        }
         for &m in &pv {
             writeln!(self.output, "{}", board.to_move_string(m))?;
             m.apply(board);
@@ -94,6 +101,7 @@ impl<W: Write> UhpServer<W> {
     }
 
     fn undo(&mut self, args: &str) -> Result<()> {
+        self.pv_dirty = true;
         let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
         let num_undo = if args.is_empty() {
             1
