@@ -379,6 +379,10 @@ pub fn terminal_game_interface(config: PlayerConfig) {
                 m.apply(&mut board);
                 player.play_move(m);
             }
+        } else if line.starts_with("pass") {
+	    history.push(Turn::Pass);
+	    Turn::Pass.apply(&mut board);
+	    player.play_move(Turn::Pass);
         } else if line.starts_with("undo") {
             if let Some(m) = history.pop() {
                 m.undo(&mut board);
@@ -408,7 +412,7 @@ pub fn terminal_game_interface(config: PlayerConfig) {
         } else if line.starts_with('q') || line.starts_with("exit") {
             break;
         } else {
-            println!("commands: ai, pv, move, place, undo, quit");
+            println!("commands: ai, pv, move, place, pass, undo, quit");
         }
     }
 }
