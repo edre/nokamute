@@ -190,10 +190,17 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
 
     let line = read_line("Which bug? ");
     let bug = Bug::from_char(line.chars().next().unwrap_or('?'));
-    if bug.is_none() {
+    if let Some(bug) = bug {
+	if !options.contains(&bug) {
+	    println!("Bug not available.");
+	    None
+	} else {
+	    Some(bug)
+	}
+    } else {
         println!("Unrecognized bug.");
+	None
     }
-    bug
 }
 
 fn input_movement(board: &Board, moves: &[Turn]) -> Option<Turn> {
