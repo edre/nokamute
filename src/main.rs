@@ -1,9 +1,9 @@
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 use nokamute::*;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 use std::ffi::OsString;
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn help() {
     println!(
         r#"nokamute hive engine {}
@@ -35,7 +35,7 @@ engine flags:
     );
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let (config, args) = configure_player().unwrap();
     match args.get(0).unwrap_or(&"uhp".to_owned()).as_ref() {

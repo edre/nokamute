@@ -5,7 +5,7 @@ use crate::{Board, Player, PlayerConfig, PlayerStrategy, Rules};
 
 use minimax::{Move, YbwOptions};
 use std::io::Write;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{stdin, stdout};
 use std::time::Duration;
 
@@ -213,7 +213,7 @@ impl<W: Write> UhpServer<W> {
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn uhp_serve(config: PlayerConfig) {
     let mut server = UhpServer::new(config, stdout());
     server.info().unwrap();

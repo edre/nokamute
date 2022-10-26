@@ -1,8 +1,8 @@
 extern crate minimax;
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 use crate::cli::CliPlayer;
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
 use crate::{BasicEvaluator, Board, Rules, Turn};
 use minimax::*;
@@ -22,7 +22,7 @@ pub(crate) trait Player {
     fn set_timeout(&mut self, _time: Duration) {}
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn face_off(
     game_type: &str, mut player1: Box<dyn Player>, mut player2: Box<dyn Player>,
 ) -> Option<String> {
@@ -58,7 +58,7 @@ fn face_off(
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn get_player(name: &str, config: &PlayerConfig) -> Box<dyn Player> {
     match name {
         "nokamute" => config.new_player(),
@@ -69,7 +69,7 @@ fn get_player(name: &str, config: &PlayerConfig) -> Box<dyn Player> {
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn play_game(
     config: PlayerConfig, game_type: &str, name1: &str, name2: &str, depth: Option<u8>,
     timeout: Option<String>,
@@ -148,13 +148,13 @@ impl Player for NokamutePlayer {
     }
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 fn exit(msg: String) -> ! {
     eprintln!("{}", msg);
     std::process::exit(1)
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum PlayerStrategy {
     Iterative(YbwOptions),
     LazySmp(LazySmpOptions),
@@ -163,15 +163,15 @@ pub(crate) enum PlayerStrategy {
 }
 
 pub struct PlayerConfig {
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) num_threads: Option<usize>,
     pub(crate) opts: IterativeOptions,
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) strategy: PlayerStrategy,
     pub(crate) eval: BasicEvaluator,
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Error> {
     let mut args = pico_args::Arguments::from_env();
 
@@ -248,21 +248,21 @@ impl Default for PlayerConfig {
 impl PlayerConfig {
     pub fn new() -> Self {
         Self {
-            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            #[cfg(not(target_arch = "wasm32"))]
             num_threads: None,
             opts: IterativeOptions::new().with_countermoves().with_table_byte_size(100 << 20),
-            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            #[cfg(not(target_arch = "wasm32"))]
             strategy: PlayerStrategy::Iterative(YbwOptions::new()),
             eval: BasicEvaluator::default(),
         }
     }
 
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn new_player(&self) -> Box<dyn Player> {
         Box::new(NokamutePlayer::new(Box::new(IterativeSearch::new(self.eval, self.opts))))
     }
 
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn new_player(&self) -> Box<dyn Player> {
         Box::new(match &self.strategy {
             PlayerStrategy::Random => {
