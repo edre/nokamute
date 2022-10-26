@@ -1,9 +1,9 @@
 extern crate minimax;
 
 use crate::notation::{Result, UhpError};
-use crate::{Board, Player, PlayerConfig, Rules};
+use crate::{Board, Player, PlayerConfig, PlayerStrategy, Rules};
 
-use minimax::Move;
+use minimax::{Move, YbwOptions};
 use std::io::Write;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::io::{stdin, stdout};
@@ -119,8 +119,59 @@ impl<W: Write> UhpServer<W> {
         Ok(())
     }
 
-    fn options(&mut self, _args: &str) -> Result<()> {
-        // unimplemented, but the idea is to mutate PlayerConfig
+    fn get_option_int<Option: UhpOptionInt>(&mut self) -> Result<()> {
+        writeln!(
+            self.output,
+            "{}:int:{}:{}:{}:{}",
+            Option::name(),
+            Option::current(&self.config)?,
+            Option::default(),
+            Option::min(),
+            Option::max()
+        )?;
+        Ok(())
+    }
+
+    fn get_option_bool<Option: UhpOptionBool>(&mut self) -> Result<()> {
+        fn fmt_bool(b: bool) -> &'static str {
+            if b {
+                "True"
+            } else {
+                "False"
+            }
+        }
+        writeln!(
+            self.output,
+            "{}:bool:{},{}",
+            Option::name(),
+            fmt_bool(Option::current(&self.config)?),
+            fmt_bool(Option::default())
+        )?;
+        Ok(())
+    }
+
+    fn get_option(&mut self, option: &str) -> Result<()> {
+        match option {
+            "BackgroundPondering" => self.get_option_bool::<BackgroundPonderingOption>(),
+            "NumThreads" => self.get_option_int::<NumThreadsOption>(),
+            "TableSizeMiB" => self.get_option_int::<TableSizeOption>(),
+            "Verbose" => self.get_option_bool::<VerboseOption>(),
+            _ => Err(UhpError::InvalidOption(option.into())),
+        }
+    }
+
+    fn options(&mut self, args: &str) -> Result<()> {
+        let tokens = args.split(' ').collect::<Vec<_>>();
+        if args.is_empty() {
+            self.get_option_bool::<BackgroundPonderingOption>()?;
+            self.get_option_int::<NumThreadsOption>()?;
+            self.get_option_int::<TableSizeOption>()?;
+            self.get_option_bool::<VerboseOption>()?;
+        } else if tokens.len() >= 2 && tokens[0] == "get" {
+            self.get_option(tokens[1])?;
+        } else {
+            return Err(UhpError::UnrecognizedCommand(args.into()));
+        }
         Ok(())
     }
 
@@ -184,6 +235,89 @@ pub fn uhp_serve(config: PlayerConfig) {
             return;
         }
         println!("ok");
+    }
+}
+
+trait UhpOptionInt {
+    fn name() -> &'static str;
+    fn current(config: &PlayerConfig) -> Result<usize>;
+    fn default() -> usize;
+    fn min() -> usize;
+    fn max() -> usize;
+}
+
+struct NumThreadsOption {}
+impl UhpOptionInt for NumThreadsOption {
+    fn name() -> &'static str {
+        "NumThreads"
+    }
+    fn current(config: &PlayerConfig) -> Result<usize> {
+        Ok(if let Some(num_threads) = config.num_threads { num_threads } else { Self::default() })
+    }
+    fn default() -> usize {
+        YbwOptions::default().num_threads()
+    }
+    fn min() -> usize {
+        1
+    }
+    fn max() -> usize {
+        Self::default()
+    }
+}
+
+struct TableSizeOption {}
+impl UhpOptionInt for TableSizeOption {
+    fn name() -> &'static str {
+        "TableSizeMiB"
+    }
+    fn current(config: &PlayerConfig) -> Result<usize> {
+        Ok(config.opts.table_byte_size >> 20)
+    }
+    fn default() -> usize {
+        PlayerConfig::default().opts.table_byte_size >> 20
+    }
+    fn min() -> usize {
+        1
+    }
+    fn max() -> usize {
+        256
+    }
+}
+
+trait UhpOptionBool {
+    fn name() -> &'static str;
+    fn current(config: &PlayerConfig) -> Result<bool>;
+    fn default() -> bool;
+}
+
+struct VerboseOption {}
+impl UhpOptionBool for VerboseOption {
+    fn name() -> &'static str {
+        "Verbose"
+    }
+    fn current(config: &PlayerConfig) -> Result<bool> {
+        Ok(config.opts.verbose)
+    }
+    fn default() -> bool {
+        false
+    }
+}
+
+struct BackgroundPonderingOption {}
+impl UhpOptionBool for BackgroundPonderingOption {
+    fn name() -> &'static str {
+        "BackgroundPondering"
+    }
+    fn current(config: &PlayerConfig) -> Result<bool> {
+        let ybw_opts = if let PlayerStrategy::Iterative(ybw_opts) = config.strategy {
+            ybw_opts
+        } else {
+            return Err(UhpError::EngineError("Unexpected config".into()));
+        };
+        Ok(ybw_opts.background_pondering)
+    }
+    fn default() -> bool {
+        false
     }
 }
 

@@ -9,6 +9,7 @@ pub enum UhpError {
     InvalidGameString(String),
     InvalidGameType(String),
     InvalidMove(String),
+    InvalidOption(String),
     GameNotStarted,
     UnrecognizedCommand(String),
     EngineError(String),

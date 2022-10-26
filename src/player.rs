@@ -182,8 +182,9 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
         config.opts = config.opts.verbose();
     }
     let table_size: Option<usize> = args.opt_value_from_str("--table_mb")?;
-    config.opts =
-        config.opts.with_table_byte_size(table_size.unwrap_or(100).checked_shl(20).unwrap());
+    if let Some(table_size) = table_size {
+        config.opts.table_byte_size = table_size.checked_shl(20).unwrap();
+    }
     let window_arg: Option<u32> = args.opt_value_from_str("--aspiration-window")?;
     if let Some(window) = window_arg {
         config.opts = config.opts.with_aspiration_window(window as minimax::Evaluation);
@@ -249,7 +250,7 @@ impl PlayerConfig {
         Self {
             #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
             num_threads: None,
-            opts: IterativeOptions::new().with_countermoves(),
+            opts: IterativeOptions::new().with_countermoves().with_table_byte_size(100 << 20),
             #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
             strategy: PlayerStrategy::Iterative(YbwOptions::new()),
             eval: BasicEvaluator::default(),
