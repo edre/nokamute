@@ -67,4 +67,18 @@ pub mod test {
         let best = uhp("bestmove time 00:00:01");
         assert!(["wA1", "wB1", "wG1", "wS1"].contains(&best.as_str()));
     }
+
+    #[wasm_bindgen_test]
+    fn options_test() {
+        assert!(uhp("options").contains("TableSizeMiB"));
+        assert_eq!(uhp("options get TableSizeMiB"), "TableSizeMiB;int;8;100;1;256");
+        assert!(uhp("options fdjskl").contains("err"));
+        assert!(uhp("options get fakeoption").contains("err"));
+        assert!(uhp("options set fakeoption").contains("err"));
+        assert!(uhp("options set TableSizeMiB True").contains("err"));
+        assert!(uhp("options set TableSizeMiB 0").contains("err"));
+        assert!(uhp("options set TableSizeMiB 500").contains("err"));
+        assert_eq!(uhp("options set TableSizeMiB 2"), "TableSizeMiB;int;2;100;1;256");
+        assert_eq!(uhp("options get TableSizeMiB"), "TableSizeMiB;int;2;100;1;256");
+    }
 }

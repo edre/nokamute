@@ -35,13 +35,22 @@ impl<W: Write> UhpServer<W> {
         Ok(())
     }
 
+    fn reset_engine(&mut self) {
+        if let Some(board) = &self.board {
+            let mut engine = self.config.new_player();
+            engine.new_game(&board.game_type());
+            for &turn in &board.turn_history {
+                engine.play_move(turn);
+            }
+            self.engine = Some(engine);
+        }
+    }
+
     fn new_game(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = true;
         let args = if args.is_empty() { "Base" } else { args };
         self.board = Some(Board::from_game_string(args)?);
-        let mut engine = self.config.new_player();
-        engine.new_game(args);
-        self.engine = Some(engine);
+        self.reset_engine();
         writeln!(self.output, "{}", self.board.as_mut().unwrap().game_string())?;
         Ok(())
     }
@@ -122,7 +131,7 @@ impl<W: Write> UhpServer<W> {
     fn get_option_int<Option: UhpOptionInt>(&mut self) -> Result<()> {
         writeln!(
             self.output,
-            "{}:int:{}:{}:{}:{}",
+            "{};int;{};{};{};{}",
             Option::name(),
             Option::current(&self.config)?,
             Option::default(),
@@ -142,12 +151,31 @@ impl<W: Write> UhpServer<W> {
         }
         writeln!(
             self.output,
-            "{}:bool:{},{}",
+            "{};bool;{};{}",
             Option::name(),
             fmt_bool(Option::current(&self.config)?),
             fmt_bool(Option::default())
         )?;
         Ok(())
+    }
+
+    fn set_option_int<Option: UhpOptionInt>(&mut self, arg: &str) -> Result<()> {
+        let value = arg.parse::<usize>().map_err(|_| UhpError::InvalidOption(arg.into()))?;
+        if value < Option::min() || value > Option::max() {
+            return Err(UhpError::InvalidOption(arg.into()));
+        }
+        Option::set(value, &mut self.config);
+        self.get_option_int::<Option>()
+    }
+
+    fn set_option_bool<Option: UhpOptionBool>(&mut self, arg: &str) -> Result<()> {
+        let value = match arg {
+            "True" => true,
+            "False" => false,
+            _ => return Err(UhpError::InvalidOption(arg.into())),
+        };
+        Option::set(value, &mut self.config);
+        self.get_option_bool::<Option>()
     }
 
     fn get_option(&mut self, option: &str) -> Result<()> {
@@ -171,8 +199,21 @@ impl<W: Write> UhpServer<W> {
             self.get_option_int::<NumThreadsOption>()?;
             self.get_option_int::<TableSizeOption>()?;
             self.get_option_bool::<VerboseOption>()?;
-        } else if tokens.len() >= 2 && tokens[0] == "get" {
+        } else if tokens.len() == 2 && tokens[0] == "get" {
             self.get_option(tokens[1])?;
+        } else if tokens.len() == 3 && tokens[0] == "set" {
+            match tokens[1] {
+                #[cfg(not(target_arch = "wasm32"))]
+                "BackgroundPondering" => {
+                    self.set_option_bool::<BackgroundPonderingOption>(tokens[2])?
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                "NumThreads" => self.set_option_int::<NumThreadsOption>(tokens[2])?,
+                "TableSizeMiB" => self.set_option_int::<TableSizeOption>(tokens[2])?,
+                "Verbose" => self.set_option_bool::<VerboseOption>(tokens[2])?,
+                _ => return Err(UhpError::InvalidOption(args.into())),
+            }
+            self.reset_engine();
         } else {
             return Err(UhpError::UnrecognizedCommand(args.into()));
         }
@@ -248,6 +289,8 @@ trait UhpOptionInt {
     fn default() -> usize;
     fn min() -> usize;
     fn max() -> usize;
+    // Caller does bounds checking.
+    fn set(value: usize, config: &mut PlayerConfig);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -269,6 +312,9 @@ impl UhpOptionInt for NumThreadsOption {
     fn max() -> usize {
         Self::default()
     }
+    fn set(value: usize, config: &mut PlayerConfig) {
+        config.num_threads = Some(value)
+    }
 }
 
 struct TableSizeOption {}
@@ -288,12 +334,16 @@ impl UhpOptionInt for TableSizeOption {
     fn max() -> usize {
         256
     }
+    fn set(value: usize, config: &mut PlayerConfig) {
+        config.opts.table_byte_size = value << 20
+    }
 }
 
 trait UhpOptionBool {
     fn name() -> &'static str;
     fn current(config: &PlayerConfig) -> Result<bool>;
     fn default() -> bool;
+    fn set(value: bool, config: &mut PlayerConfig);
 }
 
 struct VerboseOption {}
@@ -306,6 +356,9 @@ impl UhpOptionBool for VerboseOption {
     }
     fn default() -> bool {
         false
+    }
+    fn set(value: bool, config: &mut PlayerConfig) {
+        config.opts.verbose = value;
     }
 }
 
@@ -326,6 +379,11 @@ impl UhpOptionBool for BackgroundPonderingOption {
     }
     fn default() -> bool {
         false
+    }
+    fn set(value: bool, config: &mut PlayerConfig) {
+        if let PlayerStrategy::Iterative(mut ybw_opts) = config.strategy {
+            ybw_opts.background_pondering = value;
+        }
     }
 }
 
