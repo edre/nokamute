@@ -381,7 +381,7 @@ impl UhpOptionBool for BackgroundPonderingOption {
         false
     }
     fn set(value: bool, config: &mut PlayerConfig) {
-        if let PlayerStrategy::Iterative(mut ybw_opts) = config.strategy {
+        if let PlayerStrategy::Iterative(ref mut ybw_opts) = config.strategy {
             ybw_opts.background_pondering = value;
         }
     }
