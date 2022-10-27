@@ -1,9 +1,9 @@
 extern crate minimax;
 
 use crate::notation::{Result, UhpError};
-use crate::{Board, Player, PlayerConfig, PlayerStrategy, Rules};
+use crate::*;
 
-use minimax::{Move, YbwOptions};
+use minimax::*;
 use std::io::Write;
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::{stdin, stdout};
@@ -152,7 +152,9 @@ impl<W: Write> UhpServer<W> {
 
     fn get_option(&mut self, option: &str) -> Result<()> {
         match option {
+            #[cfg(not(target_arch = "wasm32"))]
             "BackgroundPondering" => self.get_option_bool::<BackgroundPonderingOption>(),
+            #[cfg(not(target_arch = "wasm32"))]
             "NumThreads" => self.get_option_int::<NumThreadsOption>(),
             "TableSizeMiB" => self.get_option_int::<TableSizeOption>(),
             "Verbose" => self.get_option_bool::<VerboseOption>(),
@@ -163,7 +165,9 @@ impl<W: Write> UhpServer<W> {
     fn options(&mut self, args: &str) -> Result<()> {
         let tokens = args.split(' ').collect::<Vec<_>>();
         if args.is_empty() {
+            #[cfg(not(target_arch = "wasm32"))]
             self.get_option_bool::<BackgroundPonderingOption>()?;
+            #[cfg(not(target_arch = "wasm32"))]
             self.get_option_int::<NumThreadsOption>()?;
             self.get_option_int::<TableSizeOption>()?;
             self.get_option_bool::<VerboseOption>()?;
@@ -246,7 +250,9 @@ trait UhpOptionInt {
     fn max() -> usize;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct NumThreadsOption {}
+#[cfg(not(target_arch = "wasm32"))]
 impl UhpOptionInt for NumThreadsOption {
     fn name() -> &'static str {
         "NumThreads"
@@ -303,7 +309,9 @@ impl UhpOptionBool for VerboseOption {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct BackgroundPonderingOption {}
+#[cfg(not(target_arch = "wasm32"))]
 impl UhpOptionBool for BackgroundPonderingOption {
     fn name() -> &'static str {
         "BackgroundPondering"

@@ -24,5 +24,5 @@ pub use player::*;
 mod uhp_client;
 mod uhp_server;
 pub use uhp_server::*;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_arch = "wasm32")]
 mod wasm;

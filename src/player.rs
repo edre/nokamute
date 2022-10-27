@@ -257,7 +257,7 @@ impl PlayerConfig {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_arch = "wasm32")]
     pub(crate) fn new_player(&self) -> Box<dyn Player> {
         Box::new(NokamutePlayer::new(Box::new(IterativeSearch::new(self.eval, self.opts))))
     }
