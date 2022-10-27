@@ -8,6 +8,7 @@ readme = "README.md"
 license = "MIT"
 
 [dependencies]
+git-version = "0.3"
 lazy_static = "^1.4.0"
 minimax = { git = "https://github.com/edre/minimax-rs", rev = "af39d4186f3e8ec39ad0dbc6b3a0cfa79f3ecc80" }
 

@@ -1,3 +1,4 @@
+extern crate git_version;
 extern crate minimax;
 
 use crate::notation::{Result, UhpError};
@@ -29,7 +30,13 @@ impl<W: Write> UhpServer<W> {
 
     fn info(&mut self) -> Result<()> {
         // Version string
-        writeln!(self.output, "id {} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))?;
+        // TODO: At some point to remove the hard git dependency update to fix
+        // https://github.com/fusion-engineering/rust-git-version/issues/16
+        let mut version = git_version::git_describe!("--tags", "--dirty=+");
+        if let Some(stripped) = version.strip_prefix('v') {
+            version = stripped;
+        }
+        writeln!(self.output, "id {} {}", env!("CARGO_PKG_NAME"), version)?;
         // Capabilities
         writeln!(self.output, "Mosquito;Ladybug;Pillbug")?;
         Ok(())
