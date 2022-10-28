@@ -9,6 +9,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
+    - name: Get git tags
+      run: git fetch --tags --unshallow
 
     - name: Run Tests
       run: cargo test && cargo test --features=larger-grid
