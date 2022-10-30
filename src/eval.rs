@@ -41,7 +41,7 @@ pub struct BasicEvaluator {
 //    - Is there a placeable position next to queen with a pillbug available?
 
 impl BasicEvaluator {
-    fn new(aggression: u8) -> Self {
+    pub(crate) fn new(aggression: u8) -> Self {
         // Ensure aggression is a dial between 1 and 5.
         let aggression = aggression.clamp(1, 5) as Evaluation;
         Self {
@@ -53,6 +53,10 @@ impl BasicEvaluator {
             beetle_attack_factor: aggression * 3,
             pillbug_defense_bonus: aggression * 40,
         }
+    }
+
+    pub(crate) fn aggression(&self) -> u8 {
+        self.aggression as u8
     }
 
     fn value(&self, bug: Bug) -> Evaluation {
