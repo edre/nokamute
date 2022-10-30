@@ -61,11 +61,11 @@ impl BasicEvaluator {
             Bug::Queen => self.movable_queen_value,
             Bug::Ant => 7,
             Bug::Beetle => 6,
-            Bug::Grasshopper => 4,
-            Bug::Spider => 3,
+            Bug::Grasshopper => 2,
+            Bug::Spider => 2,
             Bug::Mosquito => 8, // See below.
-            Bug::Ladybug => 5,
-            Bug::Pillbug => 4,
+            Bug::Ladybug => 6,
+            Bug::Pillbug => 5,
         }
     }
 }
