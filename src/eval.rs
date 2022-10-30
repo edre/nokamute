@@ -23,16 +23,22 @@ pub struct BasicEvaluator {
     movable_queen_value: Evaluation,
     movable_bug_factor: Evaluation,
     unplayed_bug_factor: Evaluation,
+    // Bonus for defensive pillbug or placeability thereof.
+    pillbug_defense_bonus: Evaluation,
     beetle_attack_factor: Evaluation,
 }
 
 // Ideas:
-//  - Value mobility higher
-//  - Opponent's mobility is more negative than you're mobility is positive.
-//  - Don't value queen factor highly until a large mobility advantage is established.
-//  - Quadratic score for filling queen liberties (counting virtual pillbug liberties)
-//  - Conservative option: ignore queen and try to shut out opponent first.
-//      Need to count placeable positions
+//  - High level aggression setting
+//    - Value mobility higher
+//    - Opponent's mobility is more negative than you're mobility is positive.
+//    - Don't value queen factor highly until a large mobility advantage is established.
+//    - Quadratic score for filling queen liberties (counting virtual pillbug liberties)
+//    - Conservative option: ignore queen and try to shut out opponent first.
+//        Need to count placeable positions
+//  - Directly encode "qualify for win" separate from queen liberties.
+//    - Is the queen next to pillbug powers with an escape route?
+//    - Is there a placeable position next to queen with a pillbug available?
 
 impl BasicEvaluator {
     fn new(aggression: u8) -> Self {
@@ -45,6 +51,7 @@ impl BasicEvaluator {
             movable_bug_factor: 2,
             unplayed_bug_factor: 1,
             beetle_attack_factor: aggression * 3,
+            pillbug_defense_bonus: aggression * 40,
         }
     }
 
@@ -65,13 +72,28 @@ impl BasicEvaluator {
 
 impl Default for BasicEvaluator {
     fn default() -> Self {
-        Self::new(5)
+        Self::new(3)
     }
 }
 
 fn count_liberties(board: &Board, origin: Hex, hex: Hex) -> Evaluation {
     adjacent(hex).into_iter().filter(|&adj| adj == origin || !board.occupied(adj)).count()
         as Evaluation
+}
+
+fn placeable(board: &Board, hex: Hex, color: Color) -> bool {
+    !adjacent(hex).iter().any(|&adj| board.occupied(adj) && board.node(adj).color() != color)
+}
+
+#[test]
+fn test_placeable() {
+    let b = Board::from_game_string("Base;;;wA1;bA1 wA1-;wA2 /wA1").unwrap();
+    assert!(!placeable(&b, Direction::SE.apply(START_HEX), Color::White));
+    assert!(!placeable(&b, Direction::NE.apply(START_HEX), Color::White));
+    assert!(placeable(&b, Direction::NW.apply(START_HEX), Color::White));
+    assert!(!placeable(&b, Direction::SE.apply(START_HEX), Color::Black));
+    assert!(!placeable(&b, Direction::NE.apply(START_HEX), Color::Black));
+    assert!(!placeable(&b, Direction::NW.apply(START_HEX), Color::Black));
 }
 
 // We really only care about 0, 1, 2, many
@@ -101,7 +123,7 @@ impl Evaluator for BasicEvaluator {
         let mut score = 0;
         //let mut mobility_score = [0; 2];
         let mut beetle_attack_score = [0; 2];
-        let mut pillbug_defense_score = [0; 2];
+        let mut pillbug_defense = [false; 2];
         let mut queen_score = [0; 2];
 
         let remaining = board.get_remaining();
@@ -156,6 +178,8 @@ impl Evaluator for BasicEvaluator {
 
             let friendly_queen = board.queens[node.color() as usize];
 
+            // TODO: transpose this loop, i.e. categorize queen liberties after the bug loop.
+            // Count libs for more if they are not crawlable (e.g. behind a gate)
             if adjacent(friendly_queen).contains(&hex) {
                 // Filling friendly queen's liberty.
                 if immovable.get(hex) && !node.is_stacked() {
@@ -164,7 +188,7 @@ impl Evaluator for BasicEvaluator {
                     // Lower penalty for being able to leave.
                     queen_score[node.color() as usize] -= self.queen_liberty_factor / 2;
                 }
-                if pillbug_powers {
+                if pillbug_powers && board.node(friendly_queen).clipped_height() == 1 {
                     let best_escape = adjacent(hex)
                         .into_iter()
                         .map(|lib| {
@@ -176,11 +200,8 @@ impl Evaluator for BasicEvaluator {
                         })
                         .max()
                         .unwrap_or(0);
-                    if best_escape > 2 && pillbug_defense_score[node.color() as usize] >= 0 {
-                        // Don't double count bonus points from pillbug and mosquito. Only one of them can do an escape.
-                        // Enemy pillbug trumps friendly pillbug. Move to safety early.
-                        pillbug_defense_score[node.color() as usize] =
-                            self.queen_liberty_factor * 2;
+                    if best_escape > 2 {
+                        pillbug_defense[node.color() as usize] = true;
                     }
                 }
             }
@@ -188,6 +209,8 @@ impl Evaluator for BasicEvaluator {
             let enemy_queen = board.queens[node.color().other()];
 
             if adjacent(enemy_queen).contains(&hex) {
+                // Discourage liberty filling by valuable bugs, by setting their score to zero when filling a liberty.
+                bug_score = 0;
                 // A little extra boost for filling opponent's queen, as we will never choose to move.
                 queen_score[node.color().other()] -= self.queen_liberty_factor * 12 / 10;
                 if pillbug_powers {
@@ -203,7 +226,7 @@ impl Evaluator for BasicEvaluator {
                         .min()
                         .unwrap_or(6);
                     if best_unescape < 3 {
-                        pillbug_defense_score[node.color().other()] = -self.queen_liberty_factor;
+                        queen_score[node.color().other()] = -self.queen_liberty_factor;
                     }
                 }
             }
@@ -237,12 +260,30 @@ impl Evaluator for BasicEvaluator {
             score += bug_score;
         }
 
+        let mut pillbug_defense_score = self.pillbug_defense_bonus
+            * (pillbug_defense[board.to_move() as usize] as Evaluation
+                - pillbug_defense[board.to_move().other()] as Evaluation);
+
+        // Check for backup defensive pillbug placeability option, discounted value
+        pillbug_defense = [false; 2];
+        for &color in &[Color::Black, Color::White] {
+            if board.node(board.queens[color as usize]).clipped_height() == 1
+                && board.remaining[color as usize][Bug::Pillbug as usize] > 0
+                && adjacent(board.queens[color as usize])
+                    .iter()
+                    .any(|&lib| placeable(board, lib, color))
+            {
+                pillbug_defense[color as usize] = true;
+            }
+        }
+        pillbug_defense_score += self.pillbug_defense_bonus / 2
+            * (pillbug_defense[board.to_move() as usize] as Evaluation
+                - pillbug_defense[board.to_move().other()] as Evaluation);
+
         let queen_score =
             queen_score[board.to_move() as usize] - queen_score[board.to_move().other()];
         let beetle_attack_score = beetle_attack_score[board.to_move() as usize]
             - beetle_attack_score[board.to_move().other()];
-        let pillbug_defense_score = pillbug_defense_score[board.to_move() as usize]
-            - pillbug_defense_score[board.to_move().other()];
         queen_score + beetle_attack_score + pillbug_defense_score + score
     }
 

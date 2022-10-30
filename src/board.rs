@@ -77,7 +77,7 @@ impl Node {
         self.clipped_height() > 1
     }
 
-    fn clipped_height(self) -> u8 {
+    pub(crate) fn clipped_height(self) -> u8 {
         self.0 & 0x3
     }
 }
