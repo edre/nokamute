@@ -80,7 +80,7 @@ pub fn play_game(
         player1.set_max_depth(depth);
         player2.set_max_depth(depth);
     } else if let Some(input) = timeout {
-        let timeout = if input.ends_with('m') {
+        let timeout = if input.ends_with('s') {
             input[..input.len() - 1].parse::<u64>().map(Duration::from_secs)
         } else if input.ends_with('m') {
             input[..input.len() - 1].parse::<u64>().map(|m| Duration::from_secs(m * 60))
