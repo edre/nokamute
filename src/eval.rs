@@ -3,7 +3,6 @@ use crate::bug::Bug;
 use crate::hex_grid::*;
 
 use minimax::{Evaluation, Evaluator};
-use std::cmp::max;
 
 // An evaluator that knows nothing but the rules, and maximally explores the tree.
 pub struct DumbEvaluator;
@@ -25,7 +24,6 @@ pub struct BasicEvaluator {
     unplayed_bug_factor: Evaluation,
     // Bonus for defensive pillbug or placeability thereof.
     pillbug_defense_bonus: Evaluation,
-    beetle_attack_factor: Evaluation,
 }
 
 // Ideas:
@@ -50,7 +48,6 @@ impl BasicEvaluator {
             movable_queen_value: aggression * 4,
             movable_bug_factor: 2,
             unplayed_bug_factor: 1,
-            beetle_attack_factor: aggression * 3,
             pillbug_defense_bonus: aggression * 40,
         }
     }
@@ -100,23 +97,6 @@ fn test_placeable() {
     assert!(!placeable(&b, Direction::NW.apply(START_HEX), Color::Black));
 }
 
-// We really only care about 0, 1, 2, many
-fn distance(start: Hex, end: Hex) -> Hex {
-    // Computing this directly on the spiral torus was too hard.
-    if start == end {
-        return 0;
-    }
-    if adjacent(start).contains(&end) {
-        return 1;
-    }
-    for d1 in adjacent(start) {
-        if adjacent(d1).contains(&end) {
-            return 2;
-        }
-    }
-    3
-}
-
 impl Evaluator for BasicEvaluator {
     type G = Rules;
 
@@ -125,8 +105,6 @@ impl Evaluator for BasicEvaluator {
         let mut immovable = board.find_cut_vertexes();
 
         let mut score = 0;
-        //let mut mobility_score = [0; 2];
-        let mut beetle_attack_score = [0; 2];
         let mut pillbug_defense = [false; 2];
         let mut queen_score = [0; 2];
 
@@ -143,7 +121,6 @@ impl Evaluator for BasicEvaluator {
             let node = board.node(hex);
             let mut bug_score = self.value(node.bug());
             let mut pillbug_powers = node.bug() == Bug::Pillbug;
-            let mut beetle_powers = node.bug() == Bug::Beetle;
             let mut crawler = node.bug().crawler();
             if node.bug() == Bug::Mosquito {
                 // Mosquitos are valued as they can currently move.
@@ -151,16 +128,12 @@ impl Evaluator for BasicEvaluator {
                 crawler = true;
                 if node.is_stacked() {
                     bug_score = self.value(Bug::Beetle);
-                    beetle_powers = true;
                 } else {
                     for adj in adjacent(hex) {
                         if board.occupied(adj) {
                             let bug = board.node(adj).bug();
                             if bug != Bug::Queen {
                                 bug_score = self.value(bug);
-                            }
-                            if bug == Bug::Beetle {
-                                beetle_powers = true;
                             }
                             if bug == Bug::Pillbug {
                                 pillbug_powers = true;
@@ -178,6 +151,10 @@ impl Evaluator for BasicEvaluator {
                 if board.slidable_adjacent(&mut buf, hex, hex).next().is_none() {
                     immovable.set(hex);
                 }
+            }
+
+            if node.is_stacked() {
+                bug_score *= 2;
             }
 
             let friendly_queen = board.queens[node.color() as usize];
@@ -240,17 +217,6 @@ impl Evaluator for BasicEvaluator {
                 continue;
             }
 
-            // Beetles prevent queen shenanigans, give a bonus for a movable beetle near opponent's queen.
-            if beetle_powers {
-                let dist = distance(hex, board.queens[node.color().other()]);
-                if dist < 3 {
-                    beetle_attack_score[node.color() as usize] = max(
-                        beetle_attack_score[node.color() as usize],
-                        (3 - dist as Evaluation) * self.beetle_attack_factor,
-                    );
-                }
-            }
-
             bug_score *= self.movable_bug_factor;
             if node.color() != board.to_move() {
                 bug_score = -bug_score;
@@ -286,9 +252,7 @@ impl Evaluator for BasicEvaluator {
 
         let queen_score =
             queen_score[board.to_move() as usize] - queen_score[board.to_move().other()];
-        let beetle_attack_score = beetle_attack_score[board.to_move() as usize]
-            - beetle_attack_score[board.to_move().other()];
-        queen_score + beetle_attack_score + pillbug_defense_score + score
+        queen_score + pillbug_defense_score + score
     }
 
     // The idea here is to use quiescence search to avoid ending on a
