@@ -141,7 +141,7 @@ impl<W: Write> UhpServer<W> {
             "{};int;{};{};{};{}",
             Option::name(),
             Option::current(&self.config)?,
-            Option::default(),
+            Option::current(&PlayerConfig::default())?,
             Option::min(),
             Option::max()
         )?;
@@ -161,7 +161,7 @@ impl<W: Write> UhpServer<W> {
             "{};bool;{};{}",
             Option::name(),
             fmt_bool(Option::current(&self.config)?),
-            fmt_bool(Option::default())
+            fmt_bool(Option::current(&PlayerConfig::default())?)
         )?;
         Ok(())
     }
@@ -299,7 +299,6 @@ pub fn uhp_serve(config: PlayerConfig) {
 trait UhpOptionInt {
     fn name() -> &'static str;
     fn current(config: &PlayerConfig) -> Result<usize>;
-    fn default() -> usize;
     fn min() -> usize;
     fn max() -> usize;
     // Caller does bounds checking.
@@ -314,16 +313,13 @@ impl UhpOptionInt for NumThreadsOption {
         "NumThreads"
     }
     fn current(config: &PlayerConfig) -> Result<usize> {
-        Ok(if let Some(num_threads) = config.num_threads { num_threads } else { Self::default() })
-    }
-    fn default() -> usize {
-        YbwOptions::default().num_threads()
+        Ok(if let Some(num_threads) = config.num_threads { num_threads } else { Self::max() })
     }
     fn min() -> usize {
         1
     }
     fn max() -> usize {
-        Self::default()
+        YbwOptions::default().num_threads()
     }
     fn set(value: usize, config: &mut PlayerConfig) {
         config.num_threads = Some(value)
@@ -337,9 +333,6 @@ impl UhpOptionInt for AggressionOption {
     }
     fn current(config: &PlayerConfig) -> Result<usize> {
         Ok(config.eval.aggression().into())
-    }
-    fn default() -> usize {
-        3
     }
     fn min() -> usize {
         1
@@ -360,9 +353,6 @@ impl UhpOptionInt for TableSizeOption {
     fn current(config: &PlayerConfig) -> Result<usize> {
         Ok(config.opts.table_byte_size >> 20)
     }
-    fn default() -> usize {
-        PlayerConfig::default().opts.table_byte_size >> 20
-    }
     fn min() -> usize {
         1
     }
@@ -377,7 +367,6 @@ impl UhpOptionInt for TableSizeOption {
 trait UhpOptionBool {
     fn name() -> &'static str;
     fn current(config: &PlayerConfig) -> Result<bool>;
-    fn default() -> bool;
     fn set(value: bool, config: &mut PlayerConfig);
 }
 
@@ -388,9 +377,6 @@ impl UhpOptionBool for VerboseOption {
     }
     fn current(config: &PlayerConfig) -> Result<bool> {
         Ok(config.opts.verbose)
-    }
-    fn default() -> bool {
-        false
     }
     fn set(value: bool, config: &mut PlayerConfig) {
         config.opts.verbose = value;
@@ -404,9 +390,6 @@ impl UhpOptionBool for RandomOpeningOption {
     }
     fn current(config: &PlayerConfig) -> Result<bool> {
         Ok(config.random_opening)
-    }
-    fn default() -> bool {
-        false
     }
     fn set(value: bool, config: &mut PlayerConfig) {
         config.random_opening = value;
@@ -427,9 +410,6 @@ impl UhpOptionBool for BackgroundPonderingOption {
             return Err(UhpError::EngineError("Unexpected config".into()));
         };
         Ok(ybw_opts.background_pondering)
-    }
-    fn default() -> bool {
-        false
     }
     fn set(value: bool, config: &mut PlayerConfig) {
         if let PlayerStrategy::Iterative(ref mut ybw_opts) = config.strategy {
