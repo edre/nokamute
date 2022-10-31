@@ -34,7 +34,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Get git tags
-      run: git fetch --tags --unshallow
+      run: git fetch --tags --unshallow -f
 
     - uses: jetli/wasm-pack-action@v0.3.0
     - uses: jetli/wasm-bindgen-action@v0.1.0

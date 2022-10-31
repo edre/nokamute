@@ -10,7 +10,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v2
     - name: Get git tags
-      run: git fetch --tags --unshallow
+      run: git fetch --tags --unshallow -f
 
     - name: Run Tests
       run: cargo test && cargo test --features=larger-grid
