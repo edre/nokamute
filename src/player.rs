@@ -100,17 +100,20 @@ pub fn play_game(
 struct NokamutePlayer {
     board: Board,
     strategy: Box<dyn Strategy<Rules>>,
+    random_opening: bool,
     name: String,
 }
 
 impl NokamutePlayer {
-    fn new(strategy: Box<dyn Strategy<Rules>>) -> Self {
-        Self::new_with_name("nokamute", strategy)
+    fn new(strategy: Box<dyn Strategy<Rules>>, random_opening: bool) -> Self {
+        Self::new_with_name("nokamute", strategy, random_opening)
     }
 
-    fn new_with_name(name: &str, mut strategy: Box<dyn Strategy<Rules>>) -> Self {
+    fn new_with_name(
+        name: &str, mut strategy: Box<dyn Strategy<Rules>>, random_opening: bool,
+    ) -> Self {
         strategy.set_timeout(Duration::from_secs(5));
-        NokamutePlayer { board: Board::default(), strategy, name: name.to_owned() }
+        NokamutePlayer { board: Board::default(), strategy, random_opening, name: name.to_owned() }
     }
 }
 
@@ -132,19 +135,34 @@ impl Player for NokamutePlayer {
     }
 
     fn generate_move(&mut self) -> Turn {
-        if self.board.turn_num < 2 {
+        if self.random_opening {
             // Ignore minimax and just throw out a random jumpy bug for the first move.
-            loop {
-                let turn = minimax::Random::<Rules>::default().choose_move(&self.board).unwrap();
-                if let Turn::Place(_, bug) = turn {
-                    if matches!(bug, Bug::Beetle | Bug::Grasshopper | Bug::Ladybug | Bug::Pillbug) {
-                        return turn;
+            if self.board.turn_num < 2 {
+                loop {
+                    let turn =
+                        minimax::Random::<Rules>::default().choose_move(&self.board).unwrap();
+                    if let Turn::Place(_, bug) = turn {
+                        if matches!(
+                            bug,
+                            Bug::Beetle | Bug::Grasshopper | Bug::Ladybug | Bug::Pillbug
+                        ) {
+                            return turn;
+                        }
+                    }
+                }
+            } else if self.board.turn_num < 4 {
+                loop {
+                    let turn =
+                        minimax::Random::<Rules>::default().choose_move(&self.board).unwrap();
+                    if let Turn::Place(_, bug) = turn {
+                        if bug == Bug::Queen {
+                            return turn;
+                        }
                     }
                 }
             }
-        } else {
-            self.strategy.choose_move(&self.board).unwrap()
         }
+        self.strategy.choose_move(&self.board).unwrap()
     }
 
     fn principal_variation(&self) -> Vec<Turn> {
@@ -181,6 +199,7 @@ pub struct PlayerConfig {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) strategy: PlayerStrategy,
     pub(crate) eval: BasicEvaluator,
+    pub(crate) random_opening: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -266,27 +285,33 @@ impl PlayerConfig {
             #[cfg(not(target_arch = "wasm32"))]
             strategy: PlayerStrategy::Iterative(YbwOptions::new()),
             eval: BasicEvaluator::default(),
+            random_opening: false,
         }
     }
 
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn new_player(&self) -> Box<dyn Player> {
-        Box::new(NokamutePlayer::new(Box::new(IterativeSearch::new(self.eval, self.opts))))
+        Box::new(NokamutePlayer::new(
+            Box::new(IterativeSearch::new(self.eval, self.opts)),
+            self.random_opening,
+        ))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn new_player(&self) -> Box<dyn Player> {
         Box::new(match &self.strategy {
-            PlayerStrategy::Random => {
-                NokamutePlayer::new_with_name("random", Box::new(minimax::Random::default()))
-            }
+            PlayerStrategy::Random => NokamutePlayer::new_with_name(
+                "random",
+                Box::new(minimax::Random::default()),
+                self.random_opening,
+            ),
             PlayerStrategy::Mcts(opts) => {
                 let mut opts = opts.clone();
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
                     opts = opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(Box::new(MonteCarloTreeSearch::new(opts)))
+                NokamutePlayer::new(Box::new(MonteCarloTreeSearch::new(opts)), self.random_opening)
             }
             PlayerStrategy::Iterative(ybw_opts) => {
                 let mut ybw_opts = *ybw_opts;
@@ -294,11 +319,14 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     ybw_opts = ybw_opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(if num_threads == 1 {
-                    Box::new(IterativeSearch::new(self.eval, self.opts))
-                } else {
-                    Box::new(ParallelYbw::new(self.eval, self.opts, ybw_opts))
-                })
+                NokamutePlayer::new(
+                    if num_threads == 1 {
+                        Box::new(IterativeSearch::new(self.eval, self.opts))
+                    } else {
+                        Box::new(ParallelYbw::new(self.eval, self.opts, ybw_opts))
+                    },
+                    self.random_opening,
+                )
             }
             PlayerStrategy::LazySmp(smp_opts) => {
                 let mut smp_opts = *smp_opts;
@@ -306,7 +334,10 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     smp_opts = smp_opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(Box::new(LazySmp::new(self.eval, self.opts, smp_opts)))
+                NokamutePlayer::new(
+                    Box::new(LazySmp::new(self.eval, self.opts, smp_opts)),
+                    self.random_opening,
+                )
             }
         })
     }

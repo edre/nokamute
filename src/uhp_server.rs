@@ -192,6 +192,7 @@ impl<W: Write> UhpServer<W> {
             "BackgroundPondering" => self.get_option_bool::<BackgroundPonderingOption>(),
             #[cfg(not(target_arch = "wasm32"))]
             "NumThreads" => self.get_option_int::<NumThreadsOption>(),
+            "RandomOpening" => self.get_option_bool::<RandomOpeningOption>(),
             "TableSizeMiB" => self.get_option_int::<TableSizeOption>(),
             "Verbose" => self.get_option_bool::<VerboseOption>(),
             _ => Err(UhpError::InvalidOption(option.into())),
@@ -206,6 +207,7 @@ impl<W: Write> UhpServer<W> {
             self.get_option_bool::<BackgroundPonderingOption>()?;
             #[cfg(not(target_arch = "wasm32"))]
             self.get_option_int::<NumThreadsOption>()?;
+            self.get_option_bool::<RandomOpeningOption>()?;
             self.get_option_int::<TableSizeOption>()?;
             self.get_option_bool::<VerboseOption>()?;
         } else if tokens.len() == 2 && tokens[0] == "get" {
@@ -219,6 +221,7 @@ impl<W: Write> UhpServer<W> {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 "NumThreads" => self.set_option_int::<NumThreadsOption>(tokens[2])?,
+                "RandomOpening" => self.set_option_bool::<RandomOpeningOption>(tokens[2])?,
                 "TableSizeMiB" => self.set_option_int::<TableSizeOption>(tokens[2])?,
                 "Verbose" => self.set_option_bool::<VerboseOption>(tokens[2])?,
                 _ => return Err(UhpError::InvalidOption(args.into())),
@@ -391,6 +394,22 @@ impl UhpOptionBool for VerboseOption {
     }
     fn set(value: bool, config: &mut PlayerConfig) {
         config.opts.verbose = value;
+    }
+}
+
+struct RandomOpeningOption {}
+impl UhpOptionBool for RandomOpeningOption {
+    fn name() -> &'static str {
+        "RandomOpening"
+    }
+    fn current(config: &PlayerConfig) -> Result<bool> {
+        Ok(config.random_opening)
+    }
+    fn default() -> bool {
+        false
+    }
+    fn set(value: bool, config: &mut PlayerConfig) {
+        config.random_opening = value;
     }
 }
 
