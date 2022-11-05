@@ -24,7 +24,7 @@ commands:
 
 engine flags:
  --verbose
- --strategy=iterative|ybw|mcts|mtdf|random
+ --strategy=iterative|mcts|mtdf|random
  --table-mb=[int]
  --num-threads=[int]|all
  --aspiration-window=[int]

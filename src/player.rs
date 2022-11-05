@@ -186,8 +186,7 @@ fn exit(msg: String) -> ! {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum PlayerStrategy {
-    Iterative(YbwOptions),
-    LazySmp(LazySmpOptions),
+    Iterative(ParallelOptions),
     Random,
     Mcts(MCTSOptions),
 }
@@ -249,21 +248,14 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
         "mtdf" => {
             config.opts = config.opts.with_mtdf();
             config.num_threads = Some(1);
-            PlayerStrategy::Iterative(YbwOptions::new())
+            PlayerStrategy::Iterative(ParallelOptions::new())
         }
-        "iterative" | "ybw" => {
-            let mut ybw_opts = YbwOptions::new();
+        "iterative" => {
+            let mut parallel_opts = ParallelOptions::new();
             if args.contains("--background-ponder") {
-                ybw_opts = ybw_opts.with_background_pondering();
+                parallel_opts = parallel_opts.with_background_pondering();
             }
-            PlayerStrategy::Iterative(ybw_opts)
-        }
-        "lazysmp" => {
-            let mut smp_opts = LazySmpOptions::new();
-            if args.contains("--differing-depths") {
-                smp_opts = smp_opts.with_differing_depths();
-            }
-            PlayerStrategy::LazySmp(smp_opts)
+            PlayerStrategy::Iterative(parallel_opts)
         }
         _ => exit(format!("Unrecognized strategy: {}", strategy.unwrap_or_default())),
     };
@@ -283,7 +275,7 @@ impl PlayerConfig {
             num_threads: None,
             opts: IterativeOptions::new().with_countermoves().with_table_byte_size(100 << 20),
             #[cfg(not(target_arch = "wasm32"))]
-            strategy: PlayerStrategy::Iterative(YbwOptions::new()),
+            strategy: PlayerStrategy::Iterative(ParallelOptions::new()),
             eval: BasicEvaluator::default(),
             random_opening: false,
         }
@@ -313,29 +305,18 @@ impl PlayerConfig {
                 }
                 NokamutePlayer::new(Box::new(MonteCarloTreeSearch::new(opts)), self.random_opening)
             }
-            PlayerStrategy::Iterative(ybw_opts) => {
-                let mut ybw_opts = *ybw_opts;
+            PlayerStrategy::Iterative(parallel_opts) => {
+                let mut parallel_opts = *parallel_opts;
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
-                    ybw_opts = ybw_opts.with_num_threads(num_threads);
+                    parallel_opts = parallel_opts.with_num_threads(num_threads);
                 }
                 NokamutePlayer::new(
                     if num_threads == 1 {
                         Box::new(IterativeSearch::new(self.eval, self.opts))
                     } else {
-                        Box::new(ParallelYbw::new(self.eval, self.opts, ybw_opts))
+                        Box::new(ParallelSearch::new(self.eval, self.opts, parallel_opts))
                     },
-                    self.random_opening,
-                )
-            }
-            PlayerStrategy::LazySmp(smp_opts) => {
-                let mut smp_opts = *smp_opts;
-                let num_threads = self.num_threads.unwrap_or(1);
-                if num_threads > 0 {
-                    smp_opts = smp_opts.with_num_threads(num_threads);
-                }
-                NokamutePlayer::new(
-                    Box::new(LazySmp::new(self.eval, self.opts, smp_opts)),
                     self.random_opening,
                 )
             }

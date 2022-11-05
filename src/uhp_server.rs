@@ -319,7 +319,7 @@ impl UhpOptionInt for NumThreadsOption {
         1
     }
     fn max() -> usize {
-        YbwOptions::default().num_threads()
+        ParallelOptions::default().num_threads()
     }
     fn set(value: usize, config: &mut PlayerConfig) {
         config.num_threads = Some(value)
@@ -404,16 +404,16 @@ impl UhpOptionBool for BackgroundPonderingOption {
         "BackgroundPondering"
     }
     fn current(config: &PlayerConfig) -> Result<bool> {
-        let ybw_opts = if let PlayerStrategy::Iterative(ybw_opts) = config.strategy {
-            ybw_opts
+        let parallel_opts = if let PlayerStrategy::Iterative(parallel_opts) = config.strategy {
+            parallel_opts
         } else {
             return Err(UhpError::EngineError("Unexpected config".into()));
         };
-        Ok(ybw_opts.background_pondering)
+        Ok(parallel_opts.background_pondering)
     }
     fn set(value: bool, config: &mut PlayerConfig) {
-        if let PlayerStrategy::Iterative(ref mut ybw_opts) = config.strategy {
-            ybw_opts.background_pondering = value;
+        if let PlayerStrategy::Iterative(ref mut parallel_opts) = config.strategy {
+            parallel_opts.background_pondering = value;
         }
     }
 }

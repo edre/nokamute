@@ -3,8 +3,7 @@ extern crate minimax;
 extern crate nokamute;
 
 use minimax::{
-    Game, IterativeOptions, IterativeSearch, LazySmp, LazySmpOptions, Move, ParallelYbw, Strategy,
-    YbwOptions,
+    Game, IterativeOptions, IterativeSearch, Move, ParallelOptions, ParallelSearch, Strategy,
 };
 use nokamute::{loc_to_hex, Board, Bug, Rules, Turn};
 
@@ -62,10 +61,9 @@ fn deep_iterations() {
     let board = playout(20);
     let opts = IterativeOptions::new().verbose().with_table_byte_size(32 << 20);
     let eval = nokamute::BasicEvaluator::default();
-    let strategies: [Box<dyn minimax::Strategy<nokamute::Rules>>; 3] = [
+    let strategies: [Box<dyn minimax::Strategy<nokamute::Rules>>; 2] = [
         Box::new(IterativeSearch::new(eval.clone(), opts)),
-        Box::new(LazySmp::new(eval.clone(), opts, LazySmpOptions::new())),
-        Box::new(ParallelYbw::new(eval.clone(), opts, YbwOptions::new())),
+        Box::new(ParallelSearch::new(eval.clone(), opts, ParallelOptions::new())),
     ];
     for mut strategy in strategies {
         strategy.choose_move(&board);
