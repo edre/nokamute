@@ -30,9 +30,8 @@ impl<W: Write> UhpServer<W> {
 
     fn info(&mut self) -> Result<()> {
         // Version string
-        // TODO: At some point to remove the hard git dependency update to fix
-        // https://github.com/fusion-engineering/rust-git-version/issues/16
-        let mut version = git_version::git_describe!("--tags", "--dirty=+");
+        let mut version =
+            git_version::git_version!(args = ["--tags", "--dirty=+"], cargo_prefix = "cargo-");
         if let Some(stripped) = version.strip_prefix('v') {
             version = stripped;
         }
