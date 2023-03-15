@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Get git tags
       run: git fetch --tags --unshallow -f
 
@@ -24,8 +24,8 @@ jobs:
     - name: Run linter
       run: cargo clippy --version && cargo clippy --no-deps -- -D warnings
 
-    - uses: jetli/wasm-pack-action@v0.3.0
-    - uses: jetli/wasm-bindgen-action@v0.1.0
+    - uses: jetli/wasm-pack-action@v0.4.0
+    - uses: jetli/wasm-bindgen-action@v0.2.0
     - run: rustup target add wasm32-unknown-unknown
     - name: Wasm Tests
       run: wasm-pack test --firefox --headless
@@ -34,19 +34,19 @@ jobs:
       run: sh ./.github/release.sh
 
     - name: Upload Linux Build Artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: nokamute_linux_amd64.tar.gz
         path: nokamute_linux_amd64.tar.gz
     
     - name: Upload Windows Build Artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: nokamute_win64.zip
         path: nokamute_win64.zip
 
     - name: Upload Wasm Build Artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: nokamute_wasm32.zip
         path: nokamute_wasm32.zip
