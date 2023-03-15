@@ -57,7 +57,7 @@ impl Node {
 
     pub(crate) fn color(self) -> Color {
         // Color enum is densely packed in 1 bit.
-        unsafe { std::mem::transmute::<u8, Color>(self.0 as u8 >> 7) }
+        unsafe { std::mem::transmute::<u8, Color>(self.0 >> 7) }
     }
 
     pub(crate) fn bug(self) -> Bug {
@@ -338,17 +338,12 @@ impl Default for Board {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Turn {
     Place(Hex, Bug),
     Move(Hex, Hex),
+    #[default]
     Pass,
-}
-
-impl Default for Turn {
-    fn default() -> Turn {
-        Turn::Pass
-    }
 }
 
 impl minimax::Move for Turn {
