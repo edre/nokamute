@@ -4,7 +4,6 @@ extern crate minimax;
 use crate::notation::{Result, UhpError};
 use crate::*;
 
-use minimax::*;
 use std::io::Write;
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::{stdin, stdout};
@@ -318,7 +317,7 @@ impl UhpOptionInt for NumThreadsOption {
         1
     }
     fn max() -> usize {
-        ParallelOptions::default().num_threads()
+        minimax::ParallelOptions::default().num_threads()
     }
     fn set(value: usize, config: &mut PlayerConfig) {
         config.num_threads = Some(value)
