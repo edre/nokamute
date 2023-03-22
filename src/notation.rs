@@ -1,6 +1,6 @@
 extern crate minimax;
 use crate::{adjacent, Board, Bug, Color, Direction, Hex, Node, Rules, Turn, START_HEX};
-use minimax::{Game, Move};
+use minimax::Game;
 
 #[derive(Debug)]
 pub enum UhpError {
@@ -185,7 +185,7 @@ impl Board {
         for &m in &self.turn_history {
             log.push_str(&board.to_move_string(m));
             log.push(';');
-            m.apply(&mut board);
+            board.apply(m);
         }
         if log.ends_with(';') {
             log.pop();
@@ -330,14 +330,14 @@ impl Board {
         if !moves.contains(&m) {
             return Err(UhpError::InvalidMove("That is not a valid move".to_string()));
         }
-        m.apply(self);
+        self.apply(m);
         Ok(())
     }
 
     pub(crate) fn undo_count(&mut self, count: usize) -> Result<()> {
         for _ in 0..count {
             let m = self.turn_history.last().copied().ok_or(UhpError::TooManyUndos)?;
-            m.undo(self);
+            self.undo(m);
         }
         Ok(())
     }

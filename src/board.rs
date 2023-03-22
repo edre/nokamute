@@ -131,12 +131,6 @@ pub struct Board {
     pub(super) game_type_bits: u8,
 }
 
-impl minimax::Zobrist for Board {
-    fn zobrist_hash(&self) -> u64 {
-        self.zobrist_hash
-    }
-}
-
 impl Board {
     pub fn to_move(&self) -> Color {
         if self.turn_num % 2 == 0 {
@@ -346,75 +340,55 @@ pub enum Turn {
     Pass,
 }
 
-impl minimax::Move for Turn {
-    type G = Rules;
-    fn apply(&self, board: &mut Board) {
-        match *self {
+impl Board {
+    pub fn apply(&mut self, turn: Turn) {
+        match turn {
             Turn::Place(hex, bug) => {
                 let bug_num =
-                    Bug::initial_quantity()[bug as usize] - board.get_remaining()[bug as usize] + 1;
-                board.insert(hex, bug, bug_num, board.to_move());
-                board.mut_remaining()[bug as usize] -= 1;
+                    Bug::initial_quantity()[bug as usize] - self.get_remaining()[bug as usize] + 1;
+                self.insert(hex, bug, bug_num, self.to_move());
+                self.mut_remaining()[bug as usize] -= 1;
             }
             Turn::Move(start, end) => {
-                let (bug, bug_num, color) = board.remove(start);
-                board.insert(end, bug, bug_num, color);
+                let (bug, bug_num, color) = self.remove(start);
+                self.insert(end, bug, bug_num, color);
                 // Encode a marker of last moved location for pillbug throwability.
-                board.zobrist_hash ^= end as u64;
+                self.zobrist_hash ^= end as u64;
             }
             _ => {}
         };
-        board.turn_num += 1;
+        self.turn_num += 1;
         // Encode positions differently based on who is to move.
-        board.zobrist_hash ^= 0xa6c11b626b105b7c;
+        self.zobrist_hash ^= 0xa6c11b626b105b7c;
         // Undo last-moved zobrist bits.
-        if let Some(Turn::Move(_, end)) = board.turn_history.last() {
-            board.zobrist_hash ^= *end as u64;
+        if let Some(Turn::Move(_, end)) = self.turn_history.last() {
+            self.zobrist_hash ^= *end as u64;
         }
-        board.zobrist_history.push(board.zobrist_hash);
-        board.turn_history.push(*self);
+        self.zobrist_history.push(self.zobrist_hash);
+        self.turn_history.push(turn);
     }
 
-    fn undo(&self, board: &mut Board) {
-        board.turn_num -= 1;
-        board.zobrist_history.pop();
-        board.turn_history.pop();
-        if let Some(Turn::Move(_, end)) = board.turn_history.last() {
-            board.zobrist_hash ^= *end as u64;
+    pub fn undo(&mut self, turn: Turn) {
+        self.turn_num -= 1;
+        self.zobrist_history.pop();
+        self.turn_history.pop();
+        if let Some(Turn::Move(_, end)) = self.turn_history.last() {
+            self.zobrist_hash ^= *end as u64;
         }
-        match *self {
+        match turn {
             Turn::Place(hex, bug) => {
-                board.remove(hex);
-                board.mut_remaining()[bug as usize] += 1;
+                self.remove(hex);
+                self.mut_remaining()[bug as usize] += 1;
             }
             Turn::Move(start, end) => {
-                let (bug, bug_num, color) = board.remove(end);
-                board.insert(start, bug, bug_num, color);
-                board.zobrist_hash ^= end as u64;
+                let (bug, bug_num, color) = self.remove(end);
+                self.insert(start, bug, bug_num, color);
+                self.zobrist_hash ^= end as u64;
             }
             Turn::Pass => {}
         }
         // Encode positions differently based on who is to move.
-        board.zobrist_hash ^= 0xa6c11b626b105b7c;
-    }
-
-    fn notation(&self, board: &Board) -> Option<String> {
-        Some(board.to_move_string(*self))
-    }
-
-    fn table_index(&self) -> u16 {
-        // Arbitarily squeezed smaller by shaving off
-        // the highest bit from each hex.
-        const MASK: u16 = 0x7f;
-        match *self {
-            Turn::Place(hex, bug) => (bug as u16) << 7 | hex as u16 & MASK,
-            Turn::Move(start, end) => (start as u16 & MASK) << 7 | end as u16 & MASK,
-            Turn::Pass => 0,
-        }
-    }
-    /// Maximum table size.
-    fn max_table_index() -> u16 {
-        u16::MAX >> 2
+        self.zobrist_hash ^= 0xa6c11b626b105b7c;
     }
 }
 
@@ -898,8 +872,40 @@ impl minimax::Game for Rules {
         }
     }
 
+    fn apply(board: &mut Board, turn: Turn) -> Option<Board> {
+        board.apply(turn);
+        None
+    }
+
+    fn undo(board: &mut Board, turn: Turn) {
+        board.undo(turn);
+    }
+
+    fn zobrist_hash(board: &Board) -> u64 {
+        board.zobrist_hash
+    }
+
     fn null_move(_: &Board) -> Option<Turn> {
         Some(Turn::Pass)
+    }
+
+    fn notation(board: &Board, turn: Turn) -> Option<String> {
+        Some(board.to_move_string(turn))
+    }
+
+    fn table_index(turn: Turn) -> u16 {
+        // Arbitarily squeezed smaller by shaving off
+        // the highest bit from each hex.
+        const MASK: u16 = 0x7f;
+        match turn {
+            Turn::Place(hex, bug) => (bug as u16) << 7 | hex as u16 & MASK,
+            Turn::Move(start, end) => (start as u16 & MASK) << 7 | end as u16 & MASK,
+            Turn::Pass => 0,
+        }
+    }
+    /// Maximum table size.
+    fn max_table_index() -> u16 {
+        u16::MAX >> 2
     }
 }
 
@@ -1263,7 +1269,7 @@ mod tests {
 
     #[test]
     fn test_winner() {
-        use minimax::{Game, Move};
+        use minimax::Game;
 
         // Draw by threefold repetition.
         let mut board = Board::default();
@@ -1271,36 +1277,36 @@ mod tests {
         let x2 = loc_to_hex((-1, 0));
         let y1 = loc_to_hex((1, 1));
         let y2 = loc_to_hex((1, 0));
-        Turn::Place(loc_to_hex((0, 0)), Bug::Spider).apply(&mut board);
+        board.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Spider));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Place(x1, Bug::Queen).apply(&mut board);
+        board.apply(Turn::Place(x1, Bug::Queen));
         assert_eq!(None, Rules::get_winner(&board));
         // Create the position the first time.
-        Turn::Place(y1, Bug::Queen).apply(&mut board);
+        board.apply(Turn::Place(y1, Bug::Queen));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Move(x1, x2).apply(&mut board);
+        board.apply(Turn::Move(x1, x2));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Move(y1, y2).apply(&mut board);
+        board.apply(Turn::Move(y1, y2));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Move(x2, x1).apply(&mut board);
+        board.apply(Turn::Move(x2, x1));
         assert_eq!(None, Rules::get_winner(&board));
         // Recreate position for the second time.
-        Turn::Move(y2, y1).apply(&mut board);
+        board.apply(Turn::Move(y2, y1));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Move(x1, x2).apply(&mut board);
+        board.apply(Turn::Move(x1, x2));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Move(y1, y2).apply(&mut board);
+        board.apply(Turn::Move(y1, y2));
         assert_eq!(None, Rules::get_winner(&board));
-        Turn::Move(x2, x1).apply(&mut board);
+        board.apply(Turn::Move(x2, x1));
         assert_eq!(None, Rules::get_winner(&board));
         // Recreate position for the third time.
-        Turn::Move(y2, y1).apply(&mut board);
+        board.apply(Turn::Move(y2, y1));
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
         // Undo reverts zobrist and history.
-        Turn::Move(y2, y1).undo(&mut board);
+        board.undo(Turn::Move(y2, y1));
         assert_eq!(None, Rules::get_winner(&board));
         // Redo re-reverts draw state.
-        Turn::Move(y2, y1).apply(&mut board);
+        board.apply(Turn::Move(y2, y1));
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
     }
 }

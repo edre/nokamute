@@ -1,6 +1,6 @@
 use crate::uhp_client::UhpClient;
 use crate::{Board, Rules, Turn};
-use minimax::{Game, Move, Strategy};
+use minimax::{Game, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
     match game_string {
@@ -56,7 +56,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
 
             let m = rand.choose_move(&board).unwrap();
             stack.push(m);
-            m.apply(&mut board);
+            board.apply(m);
             let board_winner = Rules::get_winner(&board);
             let engine_winner = engine.apply(m).unwrap();
             if board_winner != engine_winner {
@@ -76,7 +76,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
         // Unwrap
         engine.undo(stack.len()).unwrap();
         while let Some(m) = stack.pop() {
-            m.undo(&mut board);
+            board.undo(m);
         }
     }
 }
@@ -113,10 +113,10 @@ fn dump_difference(board: &mut Board, iter: usize, nokamute_moves: &[Turn], engi
         if !moves.is_empty() {
             println!("{}:", title);
         }
-        for m in moves.iter() {
-            m.apply(board);
+        for &m in moves.iter() {
+            board.apply(m);
             board.println();
-            m.undo(board);
+            board.undo(m);
         }
     };
 

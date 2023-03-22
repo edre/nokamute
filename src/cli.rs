@@ -2,7 +2,7 @@ extern crate termcolor;
 
 use crate::player::{Player, PlayerConfig};
 use crate::{Board, Bug, Color, Hex, Rules, Turn, ROW_SIZE, START_HEX};
-use minimax::{Game, Move, Strategy};
+use minimax::{Game, Strategy};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
 use termcolor::WriteColor;
@@ -278,12 +278,12 @@ impl Player for CliPlayer {
         self.board = Board::from_game_type(game_type).unwrap();
     }
 
-    fn play_move(&mut self, m: Turn) {
-        m.apply(&mut self.board);
+    fn play_move(&mut self, turn: Turn) {
+        self.board.apply(turn)
     }
 
-    fn undo_move(&mut self, m: Turn) {
-        m.undo(&mut self.board);
+    fn undo_move(&mut self, turn: Turn) {
+        self.board.undo(turn);
     }
 
     fn generate_move(&mut self) -> Turn {
@@ -328,7 +328,7 @@ pub fn terminal_game_interface(config: PlayerConfig) {
         Rules::generate_moves(&board, &mut moves);
         if moves[0] == Turn::Pass {
             // Auto-pass if there are no valid moves.
-            Turn::Pass.apply(&mut board);
+            board.apply(Turn::Pass);
             continue;
         }
 
@@ -353,7 +353,7 @@ pub fn terminal_game_interface(config: PlayerConfig) {
             prev_pv_board = board.clone();
             prev_pv = player.principal_variation();
             history.push(m);
-            m.apply(&mut board);
+            board.apply(m);
         } else if line.starts_with("mcts") {
             let opts = minimax::MCTSOptions::default().with_max_rollout_depth(200);
             let mut mcts = minimax::MonteCarloTreeSearch::<Rules>::new(opts);
@@ -364,40 +364,40 @@ pub fn terminal_game_interface(config: PlayerConfig) {
             }
             if let Some(m) = mcts.choose_move(&board) {
                 history.push(m);
-                m.apply(&mut board);
+                board.apply(m);
                 player.play_move(m);
             }
         } else if line.starts_with("move") {
             if let Some(m) = input_movement(&board, &moves) {
                 history.push(m);
-                m.apply(&mut board);
+                board.apply(m);
                 player.play_move(m);
             }
         } else if line.starts_with("place") {
             if let Some(m) = input_placement(&board, &moves) {
                 history.push(m);
-                m.apply(&mut board);
+                board.apply(m);
                 player.play_move(m);
             }
         } else if line.starts_with("pass") {
             history.push(Turn::Pass);
-            Turn::Pass.apply(&mut board);
+            board.apply(Turn::Pass);
             player.play_move(Turn::Pass);
         } else if line.starts_with("undo") {
             if let Some(m) = history.pop() {
-                m.undo(&mut board);
+                board.undo(m);
                 player.undo_move(m);
             }
         } else if line.starts_with("pv") {
-            for (i, m) in prev_pv.iter().enumerate() {
-                m.apply(&mut prev_pv_board);
+            for (i, &m) in prev_pv.iter().enumerate() {
+                prev_pv_board.apply(m);
                 if i > 0 {
                     println!("Principal variation depth {}", i);
                     prev_pv_board.println();
                 }
             }
-            for m in prev_pv.iter().rev() {
-                m.undo(&mut prev_pv_board);
+            for &m in prev_pv.iter().rev() {
+                prev_pv_board.undo(m);
             }
             println!("Current board:");
         } else if line.starts_with("newgame") {

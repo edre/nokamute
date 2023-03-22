@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 git-version = "0.3"
 lazy_static = "^1.4.0"
-minimax = { git = "https://github.com/edre/minimax-rs", rev = "b01282073a8119efe4761aa88cf1c0aab18302af" }
+minimax = "0.5.0"
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 pico-args = "0.4"

@@ -300,21 +300,21 @@ mod tests {
 
     #[test]
     fn test_minimax() {
-        use minimax::{Move, Negamax, Strategy};
+        use minimax::{Negamax, Strategy};
 
         // Find the winning move.
         // ．．．🐝🕷．．
         //．．🐜🐜🐝．．
         // ．．．🦗🪲
         let mut board = Board::default();
-        Turn::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
-        Turn::Place(loc_to_hex((1, 0)), Bug::Spider).apply(&mut board);
-        Turn::Place(loc_to_hex((-1, 1)), Bug::Ant).apply(&mut board);
-        Turn::Place(loc_to_hex((0, 1)), Bug::Ant).apply(&mut board);
-        Turn::Place(loc_to_hex((1, 2)), Bug::Grasshopper).apply(&mut board);
-        Turn::Place(loc_to_hex((1, 1)), Bug::Queen).apply(&mut board);
-        Turn::Place(loc_to_hex((2, 2)), Bug::Beetle).apply(&mut board);
-        Turn::Pass.apply(&mut board);
+        board.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Queen));
+        board.apply(Turn::Place(loc_to_hex((1, 0)), Bug::Spider));
+        board.apply(Turn::Place(loc_to_hex((-1, 1)), Bug::Ant));
+        board.apply(Turn::Place(loc_to_hex((0, 1)), Bug::Ant));
+        board.apply(Turn::Place(loc_to_hex((1, 2)), Bug::Grasshopper));
+        board.apply(Turn::Place(loc_to_hex((1, 1)), Bug::Queen));
+        board.apply(Turn::Place(loc_to_hex((2, 2)), Bug::Beetle));
+        board.apply(Turn::Pass);
         for depth in 1..3 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
             let m = strategy.choose_move(&mut board);
@@ -329,12 +329,12 @@ mod tests {
         //．．🕷🐝🐝．
         // ．．🦗🕷．
         let mut board = Board::default();
-        Turn::Place(loc_to_hex((0, 0)), Bug::Queen).apply(&mut board);
-        Turn::Place(loc_to_hex((1, 0)), Bug::Queen).apply(&mut board);
-        Turn::Place(loc_to_hex((1, 1)), Bug::Spider).apply(&mut board);
-        Turn::Place(loc_to_hex((0, 1)), Bug::Grasshopper).apply(&mut board);
-        Turn::Place(loc_to_hex((-1, 0)), Bug::Beetle).apply(&mut board);
-        Turn::Pass.apply(&mut board);
+        board.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Queen));
+        board.apply(Turn::Place(loc_to_hex((1, 0)), Bug::Queen));
+        board.apply(Turn::Place(loc_to_hex((1, 1)), Bug::Spider));
+        board.apply(Turn::Place(loc_to_hex((0, 1)), Bug::Grasshopper));
+        board.apply(Turn::Place(loc_to_hex((-1, 0)), Bug::Beetle));
+        board.apply(Turn::Pass);
         for depth in 1..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
             let m = strategy.choose_move(&mut board);

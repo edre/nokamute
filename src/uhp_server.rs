@@ -107,10 +107,10 @@ impl<W: Write> UhpServer<W> {
         }
         for &m in &pv {
             writeln!(self.output, "{}", board.to_move_string(m))?;
-            m.apply(board);
+            board.apply(m);
         }
-        for m in pv.iter().rev() {
-            m.undo(board);
+        for &m in pv.iter().rev() {
+            board.undo(m);
         }
         Ok(())
     }

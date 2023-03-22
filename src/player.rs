@@ -42,7 +42,7 @@ fn face_off(
             println!("Game log: {}", b.game_log());
             return Some(players[1 - p].name());
         }
-        m.apply(&mut b);
+        b.apply(m);
         if let Some(winner) = Rules::get_winner(&b) {
             b.println();
             println!("Game log: {}", b.game_log());
@@ -127,11 +127,11 @@ impl Player for NokamutePlayer {
     }
 
     fn play_move(&mut self, m: Turn) {
-        m.apply(&mut self.board);
+        self.board.apply(m);
     }
 
     fn undo_move(&mut self, m: Turn) {
-        m.undo(&mut self.board);
+        self.board.undo(m);
     }
 
     fn generate_move(&mut self) -> Turn {
