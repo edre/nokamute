@@ -6,7 +6,6 @@ use crate::{Board, Color, Player, Turn};
 use minimax::Winner;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Drop;
-use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Duration;
 
@@ -164,25 +163,19 @@ impl Drop for UhpClient {
 
 pub(crate) struct UhpPlayer {
     client: UhpClient,
-    cmd: String,
     timeout: Option<Duration>,
     depth: Option<u8>,
 }
 
 impl UhpPlayer {
     pub(crate) fn new(cmd: &str) -> Result<Self> {
-        Ok(UhpPlayer {
-            client: UhpClient::new(&[cmd.to_owned()])?,
-            cmd: Path::new(cmd).file_name().unwrap().to_str().unwrap().to_string(),
-            timeout: None,
-            depth: None,
-        })
+        Ok(UhpPlayer { client: UhpClient::new(&[cmd.to_owned()])?, timeout: None, depth: None })
     }
 }
 
 impl Player for UhpPlayer {
     fn name(&self) -> String {
-        self.cmd.clone()
+        self.client.name.clone()
     }
 
     fn new_game(&mut self, game_type: &str) {

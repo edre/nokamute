@@ -4,7 +4,7 @@ extern crate minimax;
 use crate::cli::CliPlayer;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
-use crate::{BasicEvaluator, Board, Bug, Rules, Turn};
+use crate::{nokamute_version, BasicEvaluator, Board, Bug, Rules, Turn};
 use minimax::*;
 use std::time::Duration;
 
@@ -106,7 +106,7 @@ struct NokamutePlayer {
 
 impl NokamutePlayer {
     fn new(strategy: Box<dyn Strategy<Rules>>, random_opening: bool) -> Self {
-        Self::new_with_name("nokamute", strategy, random_opening)
+        Self::new_with_name(&format!("nokamute {}", nokamute_version()), strategy, random_opening)
     }
 
     fn new_with_name(
