@@ -53,9 +53,23 @@ pub fn uhp_tests(engine_cmd: &[String]) {
         let expected_moves_string = lines[i + 1];
         i += 2;
 
-        if let Err(error) = engine.new_game(game_state_string) {
-            println!("{} newgame: {:?}", FAILED, error);
-            continue;
+        match engine.new_game(game_state_string) {
+            Ok(new_string) => {
+                let expected_state = game_state_string.split(';').nth(1).unwrap_or("not found");
+                let state = new_string.split(';').nth(1).unwrap_or("not found");
+                if expected_state != state {
+                    println!("{} newgame expected {} found {}", FAILED, expected_state, state);
+                    continue;
+                }
+                if expected_state != "InProgress" {
+                    println!("{}", PASSED);
+                    continue;
+                }
+            }
+            Err(error) => {
+                println!("{} newgame: {:?}", FAILED, error);
+                continue;
+            }
         }
         let movestrings = match engine.raw_generate_moves() {
             Ok(s) => s,

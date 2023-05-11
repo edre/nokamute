@@ -61,12 +61,12 @@ impl UhpClient {
         self.consume_output()
     }
 
-    pub(crate) fn new_game(&mut self, game_type: &str) -> Result<()> {
+    pub(crate) fn new_game(&mut self, game_type: &str) -> Result<String> {
         let mut command = "newgame ".to_owned();
         command.push_str(game_type);
-        self.command(&command)?;
+        let output = self.command(&command)?.join("\n");
         self.board = Board::from_game_string(game_type)?;
-        Ok(())
+        Ok(output)
     }
 
     pub(crate) fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
