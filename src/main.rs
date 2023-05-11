@@ -18,7 +18,7 @@ commands:
         Count the number of board states at each depth
  perft-cheating [game_state]:
         Perft, but with multiple threads to get the answer sooner
- uhp-debug engine_command
+ uhp-debug [--search=game_state] engine_command
         Run external UHP engine through correctness testsuite,
         then randomly search for discrepancies with nokamute's move generator.
 
@@ -73,12 +73,23 @@ fn main() {
             perft_multi_thread(game_type);
         }
         "uhp-debug" => {
+            let mut parsed_args = pico_args::Arguments::from_vec(
+                args.iter().map(|s| s.into()).collect::<Vec<OsString>>(),
+            );
+            let search_string: Option<String> = parsed_args.opt_value_from_str("--search").unwrap();
+            let args = parsed_args
+                .finish()
+                .into_iter()
+                .map(|s| s.into_string().unwrap())
+                .collect::<Vec<_>>();
             if args.len() < 2 {
                 println!("uhp-debug requires engine command");
                 return;
             }
             uhp_tests(&args[1..]);
-            perft_debug(&args[1..], "Base", 20);
+            if let Some(string) = search_string {
+                perft_debug(&args[1..], &string, 20);
+            }
         }
         _ => {
             help();
