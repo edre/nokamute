@@ -15,6 +15,8 @@ pub(crate) struct UhpClient {
     input: ChildStdin,
     output: BufReader<ChildStdout>,
     board: Board,
+    pub name: String,
+    pub capabilities: String,
 }
 
 impl UhpClient {
@@ -26,10 +28,32 @@ impl UhpClient {
             .spawn()?;
         let input = proc.stdin.take().unwrap();
         let output = BufReader::new(proc.stdout.take().unwrap());
-        let mut client = UhpClient { proc, input, output, board: Board::new_core_set() };
-        // Eat the first output
-        client.consume_output()?;
+        let mut client = UhpClient {
+            proc,
+            input,
+            output,
+            board: Board::new_core_set(),
+            name: String::new(),
+            capabilities: String::new(),
+        };
+        let id = client.consume_output()?;
+        client.name = id
+            .get(0)
+            .cloned()
+            .unwrap_or_default()
+            .strip_prefix("id ")
+            .unwrap_or("somebot")
+            .to_string();
+        client.capabilities = id.get(1).cloned().unwrap_or_default();
         Ok(client)
+    }
+
+    pub fn capable_of_game_string(&self, game_string: &str) -> bool {
+        let game_type = game_string.split(';').next().unwrap();
+        if !game_type.starts_with("Base+") {
+            return true;
+        }
+        game_type[5..].chars().all(|expansion| self.capabilities.contains(expansion))
     }
 
     fn consume_output(&mut self) -> Result<Vec<String>> {

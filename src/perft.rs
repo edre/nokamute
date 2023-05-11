@@ -33,7 +33,6 @@ pub fn uhp_tests(engine_cmd: &[String]) {
     const FAILED: &str = "\x1b[31mFAILED\x1b[m";
     const PASSED: &str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
-    // TODO: respect capabilities
     let lines = std::include_str!("../data/uhp_tests.txt").split('\n').collect::<Vec<_>>();
     let mut i = 0;
     let mut name = "";
@@ -52,6 +51,11 @@ pub fn uhp_tests(engine_cmd: &[String]) {
         let game_state_string = lines[i];
         let expected_moves_string = lines[i + 1];
         i += 2;
+
+        if !engine.capable_of_game_string(game_state_string) {
+            println!("skipped");
+            continue;
+        }
 
         match engine.new_game(game_state_string) {
             Ok(new_string) => {
