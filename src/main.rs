@@ -86,10 +86,12 @@ fn main() {
                 println!("uhp-debug requires engine command");
                 return;
             }
-            uhp_tests(&args[1..]);
+            let success = uhp_tests(&args[1..]);
             if let Some(string) = search_string {
                 perft_debug(&args[1..], &string, 20);
             }
+            // Exit with test suite status code.
+            std::process::exit(if success { 0 } else { 1 });
         }
         _ => {
             help();

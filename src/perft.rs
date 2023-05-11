@@ -29,13 +29,14 @@ pub fn perft_multi_thread(game_string: &str) {
     minimax::perft::<Rules>(&mut b, 20, true);
 }
 
-pub fn uhp_tests(engine_cmd: &[String]) {
+pub fn uhp_tests(engine_cmd: &[String]) -> bool {
     const FAILED: &str = "\x1b[31mFAILED\x1b[m";
     const PASSED: &str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     let lines = std::include_str!("../data/uhp_tests.txt").split('\n').collect::<Vec<_>>();
     let mut i = 0;
     let mut name = "";
+    let mut success = true;
     while i < lines.len() {
         if lines[i].is_empty() {
             i += 1;
@@ -63,6 +64,7 @@ pub fn uhp_tests(engine_cmd: &[String]) {
                 let state = new_string.split(';').nth(1).unwrap_or("not found");
                 if expected_state != state {
                     println!("{} newgame expected {} found {}", FAILED, expected_state, state);
+                    success = false;
                     continue;
                 }
                 if expected_state != "InProgress" {
@@ -72,6 +74,7 @@ pub fn uhp_tests(engine_cmd: &[String]) {
             }
             Err(UhpError::EngineError(error)) => {
                 println!("{} newgame: {:?}", FAILED, error);
+                success = false;
                 continue;
             }
             // Skip other errors from nokamute not parsing the move.
@@ -81,6 +84,7 @@ pub fn uhp_tests(engine_cmd: &[String]) {
             Ok(s) => s,
             Err(error) => {
                 println!("{} validmoves: {:?}", FAILED, error);
+                success = false;
                 continue;
             }
         };
@@ -88,11 +92,13 @@ pub fn uhp_tests(engine_cmd: &[String]) {
         if expected_moves_string.split(';').count() != movestrings.split(';').count() {
             // TODO: verbose mode: dump difference
             println!("{}", FAILED);
+            success = false;
             continue;
         }
 
         println!("{}", PASSED);
     }
+    success
 }
 
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
