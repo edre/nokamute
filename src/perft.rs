@@ -30,8 +30,8 @@ pub fn perft_multi_thread(game_string: &str) {
 }
 
 pub fn uhp_tests(engine_cmd: &[String]) {
-    const FAILED: &'static str = "\x1b[31mFAILED\x1b[m";
-    const PASSED: &'static str = "\x1b[32mpassed\x1b[m";
+    const FAILED: &str = "\x1b[31mFAILED\x1b[m";
+    const PASSED: &str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     // TODO: respect capabilities
     let lines = std::include_str!("../data/uhp_tests.txt").split('\n').collect::<Vec<_>>();
