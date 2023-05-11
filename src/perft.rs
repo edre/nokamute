@@ -30,6 +30,8 @@ pub fn perft_multi_thread(game_string: &str) {
 }
 
 pub fn uhp_tests(engine_cmd: &[String]) {
+    const FAILED: &'static str = "\x1b[31mFAILED\x1b[m";
+    const PASSED: &'static str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     // TODO: respect capabilities
     let lines = std::include_str!("../data/uhp_tests.txt").split('\n').collect::<Vec<_>>();
@@ -50,38 +52,31 @@ pub fn uhp_tests(engine_cmd: &[String]) {
         let game_state_string = lines[i];
         let expected_moves_string = lines[i + 1];
         i += 2;
-        let state = match Board::from_game_string(game_state_string) {
-            Ok(state) => state,
-            Err(_) => {
-                println!("skipped");
-                continue;
-            }
-        };
-        let expected_moves =
-            expected_moves_string.split(';').map(|m| state.from_move_string(m)).collect::<Vec<_>>();
-        if engine.new_game(game_state_string).is_err() {
-            println!("newgame FAILED");
+
+        if let Err(error) = engine.new_game(game_state_string) {
+            println!("{} newgame: {:?}", FAILED, error);
             continue;
         }
-
-        let moves = match engine.generate_moves() {
-            Ok(moves) => moves,
-            Err(_) => {
-                println!("FAILED validmoves");
+        let movestrings = match engine.raw_generate_moves() {
+            Ok(s) => s,
+            Err(error) => {
+                println!("{} validmoves: {:?}", FAILED, error);
                 continue;
             }
         };
         // TODO: actually compare moves
-        if moves.len() != expected_moves.len() {
+        if expected_moves_string.split(';').count() != movestrings.split(';').count() {
             // TODO: verbose mode: dump difference
-            println!("FAILED");
+            println!("{}", FAILED);
             continue;
         }
-        println!("passed");
+
+        println!("{}", PASSED);
     }
 }
 
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
+    println!("\nExploring random games to compare with nokamute's move generator...");
     let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     engine.new_game(game_string).unwrap();
