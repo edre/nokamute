@@ -89,9 +89,11 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
             }
         };
         // TODO: actually compare moves
-        if expected_moves_string.split(';').count() != movestrings.split(';').count() {
+        let expected_count = expected_moves_string.split(';').count();
+        let count = movestrings.split(';').count();
+        if expected_count != count {
             // TODO: verbose mode: dump difference
-            println!("{}", FAILED);
+            println!("{} expected {} moves, found {}", FAILED, expected_count, count);
             success = false;
             continue;
         }
