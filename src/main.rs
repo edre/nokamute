@@ -31,7 +31,7 @@ engine flags:
  --double-step
  --quiet-search
  --null-move-pruning"#,
-        env!("CARGO_PKG_VERSION")
+        nokamute_version()
     );
 }
 

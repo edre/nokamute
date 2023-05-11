@@ -1,3 +1,4 @@
+extern crate git_version;
 extern crate minimax;
 use crate::{adjacent, Board, Bug, Color, Direction, Hex, Node, Rules, Turn, START_HEX};
 use minimax::Game;
@@ -23,6 +24,12 @@ impl From<std::io::Error> for UhpError {
 }
 
 pub type Result<T> = std::result::Result<T, UhpError>;
+
+pub fn nokamute_version() -> &'static str {
+    let version =
+        git_version::git_version!(args = ["--tags", "--dirty=+"], cargo_prefix = "cargo-");
+    version.strip_prefix('v').unwrap_or(version)
+}
 
 impl Board {
     // New board from UHP GameTypeString, e.g. "Base+MLP"

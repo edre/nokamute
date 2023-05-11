@@ -14,6 +14,7 @@ pub use eval::*;
 mod hex_grid;
 pub use hex_grid::*;
 mod notation;
+pub use notation::*;
 #[cfg(not(target_arch = "wasm32"))]
 mod perft;
 #[cfg(not(target_arch = "wasm32"))]

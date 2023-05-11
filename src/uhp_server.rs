@@ -1,4 +1,3 @@
-extern crate git_version;
 extern crate minimax;
 
 use crate::notation::{Result, UhpError};
@@ -28,13 +27,7 @@ impl<W: Write> UhpServer<W> {
     }
 
     fn info(&mut self) -> Result<()> {
-        // Version string
-        let mut version =
-            git_version::git_version!(args = ["--tags", "--dirty=+"], cargo_prefix = "cargo-");
-        if let Some(stripped) = version.strip_prefix('v') {
-            version = stripped;
-        }
-        writeln!(self.output, "id {} {}", env!("CARGO_PKG_NAME"), version)?;
+        writeln!(self.output, "id {} {}", env!("CARGO_PKG_NAME"), nokamute_version())?;
         // Capabilities
         writeln!(self.output, "Mosquito;Ladybug;Pillbug")?;
         Ok(())
