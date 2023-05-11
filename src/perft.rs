@@ -1,5 +1,5 @@
 use crate::uhp_client::UhpClient;
-use crate::{Board, Rules, Turn};
+use crate::{Board, Rules, Turn, UhpError};
 use minimax::{Game, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
@@ -66,10 +66,12 @@ pub fn uhp_tests(engine_cmd: &[String]) {
                     continue;
                 }
             }
-            Err(error) => {
+            Err(UhpError::EngineError(error)) => {
                 println!("{} newgame: {:?}", FAILED, error);
                 continue;
             }
+            // Skip other errors from nokamute not parsing the move.
+            _ => {}
         }
         let movestrings = match engine.raw_generate_moves() {
             Ok(s) => s,

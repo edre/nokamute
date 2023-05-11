@@ -42,10 +42,8 @@ impl UhpClient {
                 break;
             }
             out.push(line.trim().to_string());
-            if line.starts_with("err") {
+            if line.starts_with("err") || line.starts_with("invalidmove") {
                 err = Some(UhpError::EngineError(out.join("\n")));
-            } else if line.starts_with("invalidmove") {
-                err = Some(UhpError::InvalidMove(out.join("\n")));
             }
         }
         match err {
