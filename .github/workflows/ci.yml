@@ -16,7 +16,7 @@ jobs:
       run: cargo test && cargo test --features=larger-grid
 
     - name: Run UHP testsuite
-      run: cargo run --features=larger-grid -- uhp-debug target/debug/nokamute
+      run: cargo run --features=larger-grid -- --strategy=random uhp-debug target/debug/nokamute --strategy=random
 
     - name: Check that benchmarks build
       run: cargo build --benches
