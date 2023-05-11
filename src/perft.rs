@@ -33,11 +33,13 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
     const FAILED: &str = "\x1b[31mFAILED\x1b[m";
     const PASSED: &str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
+    println!("UHP testsuite for {}", engine.name);
+
     let lines = std::include_str!("../data/uhp_tests.txt").split('\n').collect::<Vec<_>>();
     let mut i = 0;
     let mut name = "";
     let mut success = true;
-    while i < lines.len() {
+    'testcases: while i < lines.len() {
         if lines[i].is_empty() {
             i += 1;
             continue;
@@ -58,28 +60,43 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
             continue;
         }
 
-        match engine.new_game(game_state_string) {
-            Ok(new_string) => {
-                let expected_state = game_state_string.split(';').nth(1).unwrap_or("not found");
-                let state = new_string.split(';').nth(1).unwrap_or("not found");
-                if expected_state != state {
-                    println!("{} newgame expected {} found {}", FAILED, expected_state, state);
-                    success = false;
-                    continue;
-                }
-                if expected_state != "InProgress" {
-                    println!("{}", PASSED);
-                    continue;
-                }
-            }
-            Err(UhpError::EngineError(error)) => {
-                println!("{} newgame: {:?}", FAILED, error);
-                success = false;
-                continue;
-            }
-            // Skip other errors from nokamute not parsing the move.
-            _ => {}
+        let mut groups = game_state_string.split(';');
+        let game_type = groups.next().unwrap();
+        if let Err(error) = engine.new_game(game_type) {
+            println!("{} newgame: {:?}", FAILED, error);
+            success = false;
+            continue;
         }
+        // Skip to moves.
+        groups.next();
+        groups.next();
+
+        let mut new_state = "Base;NotStarted".to_string();
+        for move_string in groups {
+            match engine.raw_play(move_string) {
+                Ok(string) => new_state = string,
+                Err(UhpError::EngineError(error)) => {
+                    println!("{} play {} failed: {}", FAILED, move_string, error);
+                    success = false;
+                    continue 'testcases;
+                }
+                // Skip other errors from nokamute not parsing the move.
+                _ => {}
+            }
+        }
+
+        let expected_state = game_state_string.split(';').nth(1).unwrap_or("not found");
+        let state = new_state.split(';').nth(1).unwrap_or("not found");
+        if expected_state != state {
+            println!("{} end state expected {} found {}", FAILED, expected_state, state);
+            success = false;
+            continue;
+        }
+        if expected_state != "InProgress" {
+            println!("{}", PASSED);
+            continue;
+        }
+
         let movestrings = match engine.raw_generate_moves() {
             Ok(s) => s,
             Err(error) => {

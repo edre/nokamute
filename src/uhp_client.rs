@@ -90,13 +90,16 @@ impl UhpClient {
         Ok(output)
     }
 
-    pub(crate) fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
-        let mut command = "play ".to_owned();
-        command.push_str(&self.board.to_move_string(m));
+    pub(crate) fn raw_play(&mut self, move_string: &str) -> Result<String> {
+        let command = format!("play {}", move_string);
         let out = self.command(&command)?.join("\n");
-        if out.starts_with("invalid") {
-            return Err(UhpError::InvalidMove(command + ": " + &out));
-        }
+        self.board.apply_untrusted(self.board.from_move_string(move_string)?)?;
+        Ok(out)
+    }
+
+    pub(crate) fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
+        let command = format!("play {}", self.board.to_move_string(m));
+        let out = self.command(&command)?.join("\n");
         self.board.apply_untrusted(m)?;
         Ok(match out.split(';').nth(1).unwrap_or_default() {
             "Draw" => Some(Winner::Draw),
