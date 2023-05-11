@@ -34,16 +34,23 @@ impl UhpClient {
 
     fn consume_output(&mut self) -> Result<Vec<String>> {
         let mut out = Vec::new();
+        let mut err = None;
         loop {
             let mut line = String::new();
             self.output.read_line(&mut line)?;
             if line.trim() == "ok" {
-                return Ok(out);
+                break;
             }
             out.push(line.trim().to_string());
             if line.starts_with("err") {
-                return Err(UhpError::EngineError(out.join("\n")));
+                err = Some(UhpError::EngineError(out.join("\n")));
+            } else if line.starts_with("invalidmove") {
+                err = Some(UhpError::InvalidMove(out.join("\n")));
             }
+        }
+        match err {
+            Some(error) => Err(error),
+            None => Ok(out),
         }
     }
 
