@@ -29,6 +29,58 @@ pub fn perft_multi_thread(game_string: &str) {
     minimax::perft::<Rules>(&mut b, 20, true);
 }
 
+pub fn uhp_tests(engine_cmd: &[String]) {
+    let mut engine = UhpClient::new(engine_cmd).unwrap();
+    // TODO: respect capabilities
+    let lines = std::include_str!("../data/uhp_tests.txt").split('\n').collect::<Vec<_>>();
+    let mut i = 0;
+    let mut name = "";
+    while i < lines.len() {
+        if lines[i].is_empty() {
+            i += 1;
+            continue;
+        }
+        if lines[i].starts_with("# ") {
+            name = &lines[i][2..];
+            i += 1;
+            continue;
+        }
+
+        print!("Test {}... ", name);
+        let game_state_string = lines[i];
+        let expected_moves_string = lines[i + 1];
+        i += 2;
+        let state = match Board::from_game_string(game_state_string) {
+            Ok(state) => state,
+            Err(_) => {
+                println!("skipped");
+                continue;
+            }
+        };
+        let expected_moves =
+            expected_moves_string.split(';').map(|m| state.from_move_string(m)).collect::<Vec<_>>();
+        if engine.new_game(game_state_string).is_err() {
+            println!("newgame FAILED");
+            continue;
+        }
+
+        let moves = match engine.generate_moves() {
+            Ok(moves) => moves,
+            Err(_) => {
+                println!("FAILED validmoves");
+                continue;
+            }
+        };
+        // TODO: actually compare moves
+        if moves.len() != expected_moves.len() {
+            // TODO: verbose mode: dump difference
+            println!("FAILED");
+            continue;
+        }
+        println!("passed");
+    }
+}
+
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();

@@ -18,9 +18,9 @@ commands:
         Count the number of board states at each depth
  perft-cheating [game_state]:
         Perft, but with multiple threads to get the answer sooner
- perft-debug game_state depth engine_command
-        Find discrepancies between nokamute and another UHP engine
-        from the specified starting position at the specified depth
+ uhp-debug engine_command
+        Run external UHP engine through correctness testsuite,
+        then randomly search for discrepancies with nokamute's move generator.
 
 engine flags:
  --verbose
@@ -72,19 +72,13 @@ fn main() {
             let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base");
             perft_multi_thread(game_type);
         }
-        "perft-debug" => {
-            if args.len() < 4 {
-                println!("perft-debug requires game_type, depth, and engine command");
+        "uhp-debug" => {
+            if args.len() < 2 {
+                println!("uhp-debug requires engine command");
                 return;
             }
-            let depth = if let Ok(i) = args[2].parse::<usize>() {
-                i
-            } else {
-                println!("perft-debug depth must be an integer");
-                return;
-            };
-            let game_type = &args[1];
-            perft_debug(&args[3..], game_type, depth);
+            uhp_tests(&args[1..]);
+            perft_debug(&args[1..], "Base", 20);
         }
         _ => {
             help();

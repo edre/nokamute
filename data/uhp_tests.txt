@@ -1,0 +1,77 @@
+# Queen moves
+Base;InProgress;White[12];wG1;bG1 wG1-;wQ \wG1;bQ bG1-;wG2 /wG1;bA1 bQ/;wG3 /wG2;bA1 bQ-;wB1 -wG3;bA1 bQ/;wB2 \wB1;bA1 bQ-;wS1 \wB2;bA1 bQ/;wS2 wS1/;bA1 bQ-;wA1 \wS2;bA1 bQ/;wA2 wA1/;bA1 bQ-;wA3 wA2/;bA1 wA3-
+wQ \bG1;wQ -wG1
+
+# Grasshopper moves
+Base;InProgress;White[11];wG1;bG1 wG1-;wQ /wG1;bQ bG1-;wS1 wQ\;bA1 bQ-;wB1 /wS1;bA1 -wQ;wB1 wS1\;bA2 bQ-;wB1 /wS1;bA2 wG1\;wB1 wS1\;bA3 bQ-;wB1 /wS1;bS1 bQ\;wB1 wS1;bS1 wB1\;wB1 /wB1;bA3 -wB1
+wG1 bQ-;wG1 bA2\;wG1 bA1\;wG2 \wG1;wS2 \wG1;wA1 \wG1;wB2 \wG1
+
+# Ant moves
+Base;InProgress;White[13];wS1;bB1 wS1-;wQ -wS1;bQ bB1-;wB1 \wQ;bG1 bQ/;wB2 \wB1;bG2 bG1/;wS2 \wB2;bS1 bG2/;wA1 \wS1;bB2 bS1/;wA2 \wS2;bG3 \bB2;wA1 -bG1;bA1 \bG3;wG1 wA2/;bS2 -bA1;wG2 wG1/;bA2 -bS2;wA3 wG2-;bA3 bS2\;wG3 wA3\;bA3 wG3\
+wA1 -bG2;wA1 -bS1;wA1 /bG3;wA1 bS2\;wA1 bA2\;wA1 /bA2;wA1 bA3-;wA1 bA3\;wA1 /bA3;wA1 /wG3;wA1 wG2\;wA1 wG1\;wA1 wB2/;wA1 wB1/;wA1 \wS1;wA1 \bB1
+
+# Spider moves
+Base;InProgress;White[12];wG1;bA1 wG1-;wS1 \wG1;bQ bA1-;wQ /wG1;bG1 bQ\;wG2 wQ\;bB1 /bG1;wB1 /wG2;bG2 bG1\;wG3 /wB1;bG2 -bB1;wB2 wG3\;bA1 bG1\;wA1 wB2-;bA1 bB1\;wA2 wA1/;bA1 bG1-;wS2 wA2-;bA1 bG1\;wA3 wS2\;bA1 wA3-
+wS1 \bQ;wS1 /bQ;wS1 wG1\;wS1 /wQ
+
+# Spider moves 2
+Base;InProgress;White[12];wG1;bA1 wG1/;wB1 /wG1;bA2 bA1-;wQ wB1\;bQ bA2\;wB2 /wQ;bG1 bQ\;wS1 wG1\;bB1 /bG1;wG2 /wB2;bG2 bG1\;wG3 wG2\;bG2 wS1\;wA1 wG3-;bA1 -wB1;wS2 wA1/;bA3 bG1\;wA2 wS2-;bA2 \wG1;wA3 wA2\;bA3 wA3-
+wS1 bA2/;wS1 bQ/;wS1 wG1/;wS1 \bQ
+
+# Beetle moves
+Base;InProgress;White[12];wB1;bB1 wB1-;wQ \wB1;bQ bB1/;wG1 /wB1;bB2 bB1\;wA1 /wG1;bA1 bQ\;wG2 -wA1;bQ \bB1;wB2 /wG2;bA2 \bA1;wG3 wB2\;bA2 \wQ;wA2 wG3-;bB2 wB1\;wS1 wA2\;bA1 bB1\;wS2 wS1-;bA1 bB1-;wA3 wS2/;bA1 \wA3
+wB1 wQ;wB1 bQ;wB1 bB1;wB1 bB2;wB1 wG1
+
+# Mosquito moves
+Base+M;InProgress;White[13];wM;bG1 wM-;wS1 /wM;bQ bG1-;wQ /wS1;bB1 bG1\;wB1 /wQ;bB1 wM\;wS2 /wB1;bA1 bQ-;wB2 wS2\;bA1 bQ\;wG1 wB2-;bA1 bQ-;wG2 wG1/;bA1 bQ\;wG3 wG2/;bA1 bQ-;wA1 wG3-;bA1 bQ/;wA2 wA1-;bA1 bQ-;wA3 wA2\;bA1 /wA3
+wM bQ-;wM bB1\;wM /wS2;wM \bG1;wM bG1;wM bB1;wM wS1;wM \wS1;wM bQ/;wM -wQ
+
+# Ladybug moves
+Base+L;InProgress;White[14];wL;bL wL/;wQ -wL;bQ bL/;wQ -bL;bA1 bQ/;wB1 \wQ;bA1 bQ-;wS1 \wB1;bA1 bQ/;wB2 \wS1;bA1 bQ-;wS2 wB2/;bA1 bQ/;wA1 wS2-;bA1 bQ-;wG1 wA1/;bA1 bQ/;wG2 wG1-;bA1 bQ-;wA2 wG2\;bA1 bQ/;wA3 wA2-;bA1 bQ-;wG3 wA3/;bA1 \wG3
+wL wB1/;wL -bQ;wL /wB1;wL /wS1;wL bQ\;wL bL\;wL \bQ;wL bQ/;wL bQ-;wL /wQ
+
+# Pillbug can't throw last move.
+Base+P;InProgress;White[15];wP;bS1 wP-;wQ /wP;bQ bS1-;wB1 -wQ;bB1 bS1\;wG1 wB1\;bB1 wP\;wS1 wG1\;bQ bS1/;wB1 -wP;bB1 wQ;wG2 wS1\;bB1 wB1;wG3 wG2\;bA1 bQ\;wS2 wG3-;bA1 bS1\;wA1 wS2/;bA1 bQ\;wA2 wA1/;bA1 bS1\;wA3 wA2/;bA1 bQ\;wB2 wA3/;bA1 wB2/;pass;bQ \bS1
+bS1 -bQ;bS1 wP\
+
+# Tournament rules
+Base;NotStarted;White[1]
+wG1;wS1;wA1;wB1
+
+# White wins
+Base;WhiteWins;Black[8];wS1;bS1 wS1-;wQ -wS1;bQ bS1/;wG1 -wQ;bG1 \bQ;wG1 bQ\;bG2 bQ/;wA1 wQ\;bA1 bG2/;wA1 bG2\;bA1 \bG2;wQ \wS1;bA1 bG2/;wQ /bG1
+
+# Black suicide
+Base;WhiteWins;White[7];wS1;bS1 wS1-;wQ -wS1;bQ bS1/;wG1 -wQ;bG1 \bQ;wG1 bQ\;bG2 bQ/;wA1 wQ\;bA1 bG2/;wA1 bG2\;bA1 /bG1
+
+# Draw
+Base;Draw;White[11];wS1;bS1 wS1-;wQ -wS1;bQ bS1/;wG1 -wQ;bG1 \bQ;wG1 bQ\;bG2 bQ/;wA1 wQ\;bA1 bG2/;wA1 bG2\;bA1 \bG2;wQ \wS1;bG1 wA1/;wQ -bQ;bA1 \wQ;wB1 -wS1;bG3 bG1-;wB1 /bA1;bG3 -bG2
+
+# Weird stuff:
+
+# Super long hive axis-1
+Base;InProgress;White[12];wG1;bG1 wG1-;wQ -wG1;bQ bG1-;wS1 -wQ;bS1 bQ-;wS2 -wS1;bS2 bS1-;wB1 -wS2;bB1 bS2-;wB2 -wB1;bB2 bB1-;wG2 -wB2;bG2 bB2-;wG3 -wG2;bG3 bG2-;wA1 -wG3;bA1 bG3-;wA2 -wA1;bA2 bA1-;wA3 -wA2;bA3 bA2-
+wA3 \wA2;wA3 \wA1;wA3 \wG3;wA3 \wG2;wA3 \wB2;wA3 \wB1;wA3 \wS2;wA3 \wS1;wA3 \wQ;wA3 \wG1;wA3 \bG1;wA3 \bQ;wA3 \bS1;wA3 \bS2;wA3 \bB1;wA3 \bB2;wA3 \bG2;wA3 \bG3;wA3 \bA1;wA3 \bA2;wA3 \bA3;wA3 bA3/;wA3 bA3-;wA3 bA3\;wA3 bA2\;wA3 bA1\;wA3 bG3\;wA3 bG2\;wA3 bB2\;wA3 bB1\;wA3 bS2\;wA3 bS1\;wA3 bQ\;wA3 bG1\;wA3 wG1\;wA3 wQ\;wA3 wS1\;wA3 wS2\;wA3 wB1\;wA3 wB2\;wA3 wG2\;wA3 wG3\;wA3 wA1\;wA3 wA2\;wA3 /wA2
+
+# Super long hive axis-2
+Base+MLP;InProgress;White[15];wM;bM wM\;wL \wM;bL bM\;wP \wL;bP bL\;wQ \wP;bQ bP\;wS1 \wQ;bS1 bQ\;wS2 \wS1;bS2 bS1\;wB1 \wS2;bB1 bS2\;wB2 \wB1;bB2 bB1\;wG1 \wB2;bG1 bB2\;wG2 \wG1;bG2 bG1\;wG3 \wG2;bG3 bG2\;wA1 \wG3;bA1 bG3\;wA2 \wA1;bA2 bA1\;wA3 \wA2;bA3 bA2\
+wA3 wA2/;wA3 wA1/;wA3 wG3/;wA3 wG2/;wA3 wG1/;wA3 wB2/;wA3 wB1/;wA3 wS2/;wA3 wS1/;wA3 wQ/;wA3 wP/;wA3 wL/;wA3 wM/;wA3 bM/;wA3 bL/;wA3 bP/;wA3 bQ/;wA3 bS1/;wA3 bS2/;wA3 bB1/;wA3 bB2/;wA3 bG1/;wA3 bG2/;wA3 bG3/;wA3 bA1/;wA3 bA2/;wA3 bA3/;wA3 bA3-;wA3 bA3\;wA3 /bA3;wA3 /bA2;wA3 /bA1;wA3 /bG3;wA3 /bG2;wA3 /bG1;wA3 /bB2;wA3 /bB1;wA3 /bS2;wA3 /bS1;wA3 /bQ;wA3 /bP;wA3 /bL;wA3 /bM;wA3 /wM;wA3 /wL;wA3 /wP;wA3 /wQ;wA3 /wS1;wA3 /wS2;wA3 /wB1;wA3 /wB2;wA3 /wG1;wA3 /wG2;wA3 /wG3;wA3 /wA1;wA3 /wA2;wA3 -wA2
+
+# Super long hive axis-3
+Base+MLP;InProgress;White[15];wM;bM wM/;wL /wM;bL bM/;wP /wL;bP bL/;wQ /wP;bQ bP/;wS1 /wQ;bS1 bQ/;wS2 /wS1;bS2 bS1/;wB1 /wS2;bB1 bS2/;wB2 /wB1;bB2 bB1/;wG1 /wB2;bG1 bB2/;wG2 /wG1;bG2 bG1/;wG3 /wG2;bG3 bG2/;wA1 /wG3;bA1 bG3/;wA2 /wA1;bA2 bA1/;wA3 /wA2;bA3 bA2/
+wA3 -wA2;wA3 -wA1;wA3 -wG3;wA3 -wG2;wA3 -wG1;wA3 -wB2;wA3 -wB1;wA3 -wS2;wA3 -wS1;wA3 -wQ;wA3 -wP;wA3 -wL;wA3 -wM;wA3 -bM;wA3 -bL;wA3 -bP;wA3 -bQ;wA3 -bS1;wA3 -bS2;wA3 -bB1;wA3 -bB2;wA3 -bG1;wA3 -bG2;wA3 -bG3;wA3 -bA1;wA3 -bA2;wA3 -bA3;wA3 \bA3;wA3 bA3/;wA3 bA3-;wA3 bA3\;wA3 bA2\;wA3 bA1\;wA3 bG3\;wA3 bG2\;wA3 bG1\;wA3 bB2\;wA3 bB1\;wA3 bS2\;wA3 bS1\;wA3 bQ\;wA3 bP\;wA3 bL\;wA3 bM\;wA3 wM\;wA3 wL\;wA3 wP\;wA3 wQ\;wA3 wS1\;wA3 wS2\;wA3 wB1\;wA3 wB2\;wA3 wG1\;wA3 wG2\;wA3 wG3\;wA3 wA1\;wA3 wA2\
+
+# Draw by threefold repetition
+Base;Draw;White[7];wS1;bB1 wS1-;wQ \wS1;bQ bB1\;wQ -wS1;bQ bB1-;wQ \wS1;bQ bB1\;wQ -wS1;bQ bB1-;wQ \wS1;bQ bB1\
+
+# Beetle gate
+Base;InProgress;White[12];wB1;bS1 wB1-;wQ \wB1;bQ bS1/;wB2 -wQ;bB1 bQ\;wS1 /wB2;bB1 bS1;wG1 /wS1;bQ \bB1;wG2 wG1\;bB2 bQ/;wG3 wG2\;bB2 \bQ;wA1 wG3-;bB2 wQ;wA2 wA1-;bA1 bQ/;wS2 wA2-;bA1 bB1/;wA3 wS2/;bA1 wA3/
+wB1 bB2;wB1 bB1;wB1 /bB1;wB1 wB2\
+
+# Ladybug gate
+Base+L;InProgress;White[14];wL;bG1 wL/;wQ -wL;bQ bG1/;wQ -bG1;bG2 bQ-;wB1 \wQ;bB1 bG2-;wS1 \wB1;bB1 bG2;wS2 \wS1;bG3 \bQ;wG1 wS2/;bB2 bG3/;wB2 wG1/;bB2 bG3;wA1 wB2-;bA1 bB1-;wA2 wA1-;bA1 bB1\;wG2 wA2-;bA1 bB1-;wG3 wG2\;bA1 bB1\;wA3 wG3\;bA1 wA3\
+wL -bB2;wL /bB2;wL /wB1;wL /wS1;wL bQ\;wL bG1\;wL /wQ
+
+# Pillbug gate
+Base+P;InProgress;White[9];wP;bB1 wP-;wQ /wP;bQ bB1/;wQ wP\;bQ \bB1;wQ /wP;bA1 bQ/;wQ wP\;bA1 -bQ;wQ /wP;bB2 \bQ;wQ wP\;bB2 bQ;bA1 -wP;bB1 wQ
+bA1 -bB2;bA1 /wP
