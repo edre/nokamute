@@ -4,10 +4,14 @@ Nokamute is a hive AI focused on speed.
 
 ## Features ##
 
-The single binary can run a [Universal Hive
+The single executable can:
+
+* Run a [Universal Hive
 Protocol](https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol)
-engine, play against a human on the command line, or play against another UHP
-engine.
+engine (`nokamute uhp`)
+* Debug and play against a human on the command line (`nokamute cli`)
+* Play against another UHP engine (`nokamute play path/to/myengine ai`)
+* Run a UHP testsuite against an engine (`nokamute uhp-debug path/to/myengine`)
 
 For a graphical interface to play against nokamute, you can use [MzingaViewer](https://github.com/jonthysell/Mzinga/wiki/MzingaViewer) and under Viewer Options, set the Engine to your nokamute executable.
 
