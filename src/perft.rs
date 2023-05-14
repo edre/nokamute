@@ -9,24 +9,14 @@ fn standard_games(game_string: &str) -> &str {
     }
 }
 
-pub fn perft_single_thread(game_string: &str) {
+pub fn perft(game_string: &str, parallel: bool) {
     let game_string = standard_games(game_string);
     println!("{}", game_string);
     let mut b = Board::from_game_string(game_string).unwrap();
     if game_string.contains(';') {
         b.println();
     }
-    minimax::perft::<Rules>(&mut b, 20, false);
-}
-
-pub fn perft_multi_thread(game_string: &str) {
-    let game_string = standard_games(game_string);
-    println!("{}", game_string);
-    let mut b = Board::from_game_string(game_string).unwrap();
-    if game_string.contains(';') {
-        b.println();
-    }
-    minimax::perft::<Rules>(&mut b, 20, true);
+    minimax::perft::<Rules>(&mut b, 20, parallel);
 }
 
 pub fn uhp_tests(engine_cmd: &[String]) -> bool {
