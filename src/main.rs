@@ -14,10 +14,8 @@ commands:
  play [--game-type=] [--depth=] [--timeout=] [player1] [player2]:
         Play a game, with each player being "human", "ai|nokamute",
         or a path to a UHP engine
- perft [game_state]:
+ perft [--parallel] [game_state]:
         Count the number of board states at each depth
- perft-cheating [game_state]:
-        Perft, but with multiple threads to get the answer sooner
  uhp-debug [--search=game_state] engine_command
         Run external UHP engine through correctness testsuite,
         then randomly search for discrepancies with nokamute's move generator.
@@ -63,14 +61,13 @@ fn main() {
             play_game(config, &game_type, player1, player2, depth, timeout);
         }
         "perft" => {
-            // For engine performance comparisons.
+            let parallel = args.contains(&"--parallel".to_string());
+            let mut args = args.clone();
+            args.retain(|a| a != "--parallel");
             let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base");
-            perft_single_thread(game_type);
-        }
-        "perft-cheating" => {
-            // For more quickly getting values for correctness checking.
-            let game_type = args.get(1).map(|s| s.as_ref()).unwrap_or("Base");
-            perft_multi_thread(game_type);
+            // Single threaded mode for engine performance comparisons.
+            // Multi-threaded mode for getting values faster for correctness checking.
+            perft(game_type, parallel);
         }
         "uhp-debug" => {
             let mut parsed_args = pico_args::Arguments::from_vec(
