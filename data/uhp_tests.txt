@@ -47,6 +47,10 @@ Base;WhiteWins;White[7];wS1;bS1 wS1-;wQ -wS1;bQ bS1/;wG1 -wQ;bG1 \bQ;wG1 bQ\;bG2
 # Draw
 Base;Draw;White[11];wS1;bS1 wS1-;wQ -wS1;bQ bS1/;wG1 -wQ;bG1 \bQ;wG1 bQ\;bG2 bQ/;wA1 wQ\;bA1 bG2/;wA1 bG2\;bA1 \bG2;wQ \wS1;bG1 wA1/;wQ -bQ;bA1 \wQ;wB1 -wS1;bG3 bG1-;wB1 /bA1;bG3 -bG2
 
+# Pass
+Base;InProgress;White[7];wA1;bS1 wA1-;wQ -wA1;bQ bS1/;wQ \wA1;bA1 bS1\;wQ -wA1;bA2 bQ\;wQ \wA1;bA1 \wQ;wG1 /wQ;bA2 /wG1
+pass
+
 # Weird stuff:
 
 # Super long hive axis-1
