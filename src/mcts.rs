@@ -1,5 +1,4 @@
 use crate::{Board, Rules, Turn};
-use minimax;
 use minimax::Game;
 use rand::rngs::ThreadRng;
 use rand::Rng;
@@ -22,6 +21,6 @@ impl minimax::RolloutPolicy for BiasedRollouts {
 
             board.undo(turn);
         }
-        return turns[0];
+        turns[0]
     }
 }
