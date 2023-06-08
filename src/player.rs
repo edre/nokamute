@@ -2,6 +2,7 @@ extern crate minimax;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::cli::CliPlayer;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::mcts::BiasedRollouts;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
