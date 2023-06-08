@@ -13,6 +13,7 @@ mod eval;
 pub use eval::*;
 mod hex_grid;
 pub use hex_grid::*;
+mod mcts;
 mod notation;
 pub use notation::*;
 #[cfg(not(target_arch = "wasm32"))]

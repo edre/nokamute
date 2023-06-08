@@ -2,6 +2,7 @@ extern crate minimax;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::cli::CliPlayer;
+use crate::mcts::BiasedRollouts;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
 use crate::{nokamute_version, BasicEvaluator, Board, Bug, Rules, Turn};
@@ -244,7 +245,13 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
     let strategy: Option<String> = args.opt_value_from_str("--strategy")?;
     config.strategy = match strategy.as_deref().unwrap_or("iterative") {
         "random" => PlayerStrategy::Random,
-        "mcts" => PlayerStrategy::Mcts(MCTSOptions::default().with_max_rollout_depth(200)),
+        "mcts" => {
+            let mut options = MCTSOptions::default()
+                .with_max_rollout_depth(200)
+                .with_rollouts_before_expanding(5);
+            options.verbose = config.opts.verbose;
+            PlayerStrategy::Mcts(options)
+        }
         "mtdf" => {
             config.opts = config.opts.with_mtdf();
             config.num_threads = Some(1);
@@ -304,7 +311,13 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     opts = opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(Box::new(MonteCarloTreeSearch::new(opts)), self.random_opening)
+                NokamutePlayer::new(
+                    Box::new(MonteCarloTreeSearch::new_with_policy(
+                        opts,
+                        Box::new(BiasedRollouts {}),
+                    )),
+                    self.random_opening,
+                )
             }
             PlayerStrategy::Iterative(parallel_opts) => {
                 let mut parallel_opts = *parallel_opts;
