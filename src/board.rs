@@ -588,29 +588,24 @@ impl Board {
     }
 
     fn generate_walk3(&self, orig: Hex, turns: &mut Vec<Turn>) {
-        fn dfs(
-            hex: Hex, orig: Hex, board: &Board, path: &mut [Hex; 3], depth: usize,
-            visited: &mut HexSet, turns: &mut Vec<Turn>,
-        ) {
-            if path[..depth].contains(&hex) {
-                return;
-            }
-            if depth == 3 {
-                if !visited.get(hex) {
-                    turns.push(Turn::Move(orig, hex));
-                    visited.set(hex);
+        let mut buf1 = [0; 6];
+        let mut buf2 = [0; 6];
+        let mut buf3 = [0; 6];
+        let mut visited = HexSet::new();
+        visited.set(orig);
+
+        for s1 in self.slidable_adjacent(&mut buf1, orig, orig) {
+            for s2 in self.slidable_adjacent(&mut buf2, orig, s1) {
+                if s2 != orig {
+                    for s3 in self.slidable_adjacent(&mut buf3, orig, s2) {
+                        if s3 != s1 && !visited.get(s3) {
+                            turns.push(Turn::Move(orig, s3));
+                            visited.set(s3);
+                        }
+                    }
                 }
-                return;
-            }
-            path[depth] = hex;
-            let mut buf = [0; 6];
-            for adj in board.slidable_adjacent(&mut buf, orig, hex) {
-                dfs(adj, orig, board, path, depth + 1, visited, turns);
             }
         }
-        let mut path = [0; 3];
-        let mut visited = HexSet::new();
-        dfs(orig, orig, self, &mut path, 0, &mut visited, turns);
     }
 
     fn generate_walk_all(&self, orig: Hex, turns: &mut Vec<Turn>) {
