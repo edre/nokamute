@@ -36,7 +36,7 @@ engine flags:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let (config, args) = configure_player().unwrap();
-    match args.get(0).unwrap_or(&"uhp".to_owned()).as_ref() {
+    match args.first().unwrap_or(&"uhp".to_owned()).as_ref() {
         "cli" => {
             terminal_game_interface(config);
         }

@@ -205,7 +205,7 @@ impl Board {
         &self, mut piece_string: &str,
     ) -> Option<(Color, Bug, u8, Option<Direction>)> {
         let first = piece_string.chars().next()?;
-        let last = piece_string.chars().rev().next()?;
+        let last = piece_string.chars().next_back()?;
         let dir = if "\\-/".contains(first) {
             piece_string = &piece_string[1..];
             Some(match first {

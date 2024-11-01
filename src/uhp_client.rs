@@ -37,7 +37,7 @@ impl UhpClient {
         };
         let id = client.consume_output()?;
         client.name = id
-            .get(0)
+            .first()
             .cloned()
             .unwrap_or_default()
             .strip_prefix("id ")
