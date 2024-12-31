@@ -656,7 +656,10 @@ impl Board {
         }
     }
 
-    fn generate_throws(&self, immovable: &HexSet, hex: Hex, turns: &mut Vec<Turn>) -> bool {
+    fn generate_throws(
+        &self, immovable: &HexSet, hex: Hex, turns: &mut Vec<Turn>, throw_starts: &mut HexSet,
+        throw_ends: &mut HexSet,
+    ) {
         let mut starts = [0; 6];
         let mut num_starts = 0;
         let mut ends = [0; 6];
@@ -681,9 +684,10 @@ impl Board {
         for &start in starts[..num_starts].iter() {
             for &end in ends[..num_ends].iter() {
                 turns.push(Turn::Move(start, end));
+                throw_starts.set(start);
+                throw_ends.set(end);
             }
         }
-        num_starts > 0 && num_ends > 0
     }
 
     fn generate_mosquito(&self, hex: Hex, turns: &mut Vec<Turn>) {
@@ -745,25 +749,47 @@ impl Board {
             immovable.set(*moved);
         }
 
-        let mut dedup = false;
+        // Pillbug throws need to be deduped against organic movements, so generate them first.
+        let mut throw_starts = HexSet::new();
+        let mut throw_ends = HexSet::new();
+        let first_move = turns.len();
+        let mut marker;
         for &hex in self.occupied_hexes[self.to_move() as usize].iter() {
+            marker = turns.len();
             let node = self.node(hex);
-            if node.is_stacked() {
-                self.generate_stack_walking(hex, turns);
-                // Don't let mosquito on stack use pillbug ability.
-                // Although the rules don't seem to specify either way.
+            if stunned == Some(&hex) {
                 continue;
             }
-            // Check for throw ability before movability, as pinned pillbugs can still throw.
-            let pillbug_powers = node.bug() == Bug::Pillbug
+            if node.bug() == Bug::Pillbug
                 || (node.bug() == Bug::Mosquito
+                    && !node.is_stacked()
                     && adjacent(hex).iter().any(|&adj| {
                         let n = self.node(adj);
                         n.occupied() && n.bug() == Bug::Pillbug
-                    }));
-            // However pillbugs just thrown cannot throw.
-            if pillbug_powers && stunned != Some(&hex) {
-                dedup |= self.generate_throws(&immovable, hex, turns);
+                    }))
+            {
+                self.generate_throws(&immovable, hex, turns, &mut throw_starts, &mut throw_ends);
+                // Dedup throws from pillbug and mosquito
+                if marker > 0 {
+                    let mut i = marker;
+                    while i < turns.len() {
+                        if turns[first_move..marker].contains(&turns[i]) {
+                            turns.swap_remove(i);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+            }
+        }
+        let num_throws = turns.len();
+
+        for &hex in self.occupied_hexes[self.to_move() as usize].iter() {
+            marker = turns.len();
+            let node = self.node(hex);
+            if node.is_stacked() {
+                self.generate_stack_walking(hex, turns);
+                continue;
             }
             if immovable.get(hex) {
                 continue;
@@ -781,14 +807,26 @@ impl Board {
                 Bug::Ladybug => self.generate_ladybug(hex, turns),
                 Bug::Pillbug => self.generate_walk1(hex, turns),
             }
-        }
 
-        if dedup {
-            // Mosquitos and pillbugs can create duplicate turns, so sort and dedup.
-            // TODO: Maybe only enable this for perft?
-            // Dups get resolved quickly with the transposition table and this dedup is very slow.
-            turns.sort_unstable();
-            turns.dedup();
+            // Dedup against pillbug throws.
+            if throw_starts.get(hex) {
+                let mut i = marker;
+                while i < turns.len() {
+                    let turn = turns[i];
+                    let end = match turn {
+                        Turn::Move(_, end) => end,
+                        _ => {
+                            i += 1;
+                            continue;
+                        }
+                    };
+                    if throw_ends.get(end) && turns[first_move..num_throws].contains(&turn) {
+                        turns.swap_remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
         }
     }
 }
@@ -1236,8 +1274,10 @@ mod tests {
         // ．．💊💊．
         let mut turns = Vec::new();
         let immovable = HexSet::new();
+        let mut starts = HexSet::new();
+        let mut ends = HexSet::new();
         let start = loc_to_hex((1, 1));
-        board.generate_throws(&immovable, start, &mut turns);
+        board.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
         assert_eq!(4, turns.len());
         board.assert_movements(&turns[..2], (1, 2), &[(1, 0), (2, 1)]);
         board.assert_movements(&turns[2..], (0, 1), &[(1, 0), (2, 1)]);
@@ -1246,7 +1286,7 @@ mod tests {
         board.remove_loc((0, 0));
         board.insert_loc((0, 1), Bug::Pillbug, Color::Black);
         turns.clear();
-        board.generate_throws(&immovable, start, &mut turns);
+        board.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
         assert_eq!(2, turns.len());
         board.assert_movements(&turns, (0, 0), &[(1, 0), (2, 1)]);
 
@@ -1257,7 +1297,7 @@ mod tests {
         board.remove_loc((0, 1));
         board.remove_loc((1, 2));
         turns = Vec::new();
-        board.generate_throws(&immovable, start, &mut turns);
+        board.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
         assert_eq!(2, turns.len());
         board.assert_movements(&turns, (0, 0), &[(0, 1), (1, 2)]);
     }
