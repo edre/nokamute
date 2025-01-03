@@ -281,7 +281,10 @@ impl PlayerConfig {
         Self {
             #[cfg(not(target_arch = "wasm32"))]
             num_threads: None,
-            opts: IterativeOptions::new().with_countermoves().with_table_byte_size(100 << 20),
+            opts: IterativeOptions::new()
+                .with_countermoves()
+                .with_countermove_history()
+                .with_table_byte_size(100 << 20),
             #[cfg(not(target_arch = "wasm32"))]
             strategy: PlayerStrategy::Iterative(ParallelOptions::new()),
             eval: BasicEvaluator::default(),
