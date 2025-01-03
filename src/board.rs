@@ -426,12 +426,6 @@ impl Board {
     // Linear algorithm to find all cut vertexes.
     // Algorithm explanation: https://web.archive.org/web/20180830110222/https://www.eecs.wsu.edu/~holder/courses/CptS223/spr08/slides/graphapps.pdf
     // Example code: https://cp-algorithms.com/graph/cutpoints.html
-    //
-    // TODO: cache movability for each tile, and somehow iteratively update it
-    // Need to persist the DFS tree from an arbitrary root.
-    // DFS iteration order is important.
-    // Perhaps you can find the first-explored neighbor and restart the DFS search at that point?
-    // This would be very fast for repeated insertion/removal of leaf nodes (Placement heavy parts of search).
     pub(crate) fn find_cut_vertexes(&self) -> HexSet {
         struct State<'a> {
             board: &'a Board,
@@ -452,23 +446,24 @@ impl Board {
             low: [0; GRID_SIZE],
             visit_num: 1,
         };
-        fn dfs(state: &mut State, hex: Hex, parent: Hex, root: bool) {
+        fn dfs(state: &mut State, hex: Hex, parent: Hex) {
             state.visited.set(hex);
             state.num[hex as usize] = state.visit_num;
             state.low[hex as usize] = state.visit_num;
             state.visit_num += 1;
+            let root = hex == parent;
             let mut children = 0;
             for adj in adjacent(hex) {
                 if !state.board.occupied(adj) {
                     continue;
                 }
-                if !root && adj == parent {
+                if adj == parent {
                     continue;
                 }
                 if state.visited.get(adj) {
                     state.low[hex as usize] = min(state.low[hex as usize], state.num[adj as usize]);
                 } else {
-                    dfs(state, adj, hex, false);
+                    dfs(state, adj, hex);
                     state.low[hex as usize] = min(state.low[hex as usize], state.low[adj as usize]);
                     if state.low[adj as usize] >= state.num[hex as usize] && !root {
                         state.immovable.set(hex);
@@ -482,7 +477,7 @@ impl Board {
         }
 
         let start = self.queens[0]; // Some occupied node.
-        dfs(&mut state, start, 0, true);
+        dfs(&mut state, start, start);
         state.immovable
     }
 
