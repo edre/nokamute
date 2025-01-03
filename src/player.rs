@@ -302,7 +302,6 @@ impl PlayerConfig {
         Box::new(match &self.strategy {
             PlayerStrategy::Random => NokamutePlayer::new_with_name(
                 "random",
-                #[allow(clippy::box_default)] // Clippy is broken
                 Box::new(minimax::Random::default()),
                 self.random_opening,
             ),
