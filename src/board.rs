@@ -384,21 +384,20 @@ impl Board {
 
 impl Board {
     fn generate_placements(&self, turns: &mut Vec<Turn>) {
-        let mut enemy_adjacent = HexSet::new();
+        let mut no_placement = HexSet::new();
         for &enemy in self.occupied_hexes[self.to_move().other()].iter() {
             for adj in adjacent(enemy) {
-                enemy_adjacent.set(adj);
+                no_placement.set(adj);
             }
         }
 
-        let mut visited = HexSet::new();
         for &friend in self.occupied_hexes[self.to_move() as usize].iter() {
             for hex in adjacent(friend) {
-                if visited.get(hex) {
+                if no_placement.get(hex) {
                     continue;
                 }
-                visited.set(hex);
-                if self.occupied(hex) || enemy_adjacent.get(hex) {
+                no_placement.set(hex);
+                if self.occupied(hex) {
                     continue;
                 }
                 for (bug, num_left) in self.get_available_bugs().iter() {
