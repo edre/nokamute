@@ -305,7 +305,7 @@ impl PlayerConfig {
         Box::new(match &self.strategy {
             PlayerStrategy::Random => NokamutePlayer::new_with_name(
                 "random",
-                Box::new(minimax::Random::default()),
+                Box::<Random<Rules>>::default(),
                 self.random_opening,
             ),
             PlayerStrategy::Mcts(opts) => {
