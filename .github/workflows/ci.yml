@@ -37,19 +37,19 @@ jobs:
       run: sh ./.github/release.sh
 
     - name: Upload Linux Build Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: nokamute_linux_amd64.tar.gz
         path: nokamute_linux_amd64.tar.gz
     
     - name: Upload Windows Build Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: nokamute_win64.zip
         path: nokamute_win64.zip
 
     - name: Upload Wasm Build Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: nokamute_wasm32.zip
         path: nokamute_wasm32.zip
