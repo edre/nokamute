@@ -352,18 +352,12 @@ impl Board {
             Turn::Move(start, end) => {
                 let (bug, bug_num, color) = self.remove(start);
                 self.insert(end, bug, bug_num, color);
-                // Encode a marker of last moved location for pillbug throwability.
-                self.zobrist_hash ^= end as u64;
             }
             _ => {}
         };
         self.turn_num += 1;
         // Encode positions differently based on who is to move.
         self.zobrist_hash ^= 0xa6c11b626b105b7c;
-        // Undo last-moved zobrist bits.
-        if let Some(Turn::Move(_, end)) = self.turn_history.last() {
-            self.zobrist_hash ^= *end as u64;
-        }
         self.zobrist_history.push(self.zobrist_hash);
         self.turn_history.push(turn);
     }
@@ -372,9 +366,8 @@ impl Board {
         self.turn_num -= 1;
         self.zobrist_history.pop();
         self.turn_history.pop();
-        if let Some(Turn::Move(_, end)) = self.turn_history.last() {
-            self.zobrist_hash ^= *end as u64;
-        }
+        // Encode positions differently based on who is to move.
+        self.zobrist_hash ^= 0xa6c11b626b105b7c;
         match turn {
             Turn::Place(hex, bug) => {
                 self.remove(hex);
@@ -383,12 +376,9 @@ impl Board {
             Turn::Move(start, end) => {
                 let (bug, bug_num, color) = self.remove(end);
                 self.insert(start, bug, bug_num, color);
-                self.zobrist_hash ^= end as u64;
             }
             Turn::Pass => {}
         }
-        // Encode positions differently based on who is to move.
-        self.zobrist_hash ^= 0xa6c11b626b105b7c;
     }
 }
 
@@ -877,11 +867,15 @@ impl minimax::Game for Rules {
             // Check for position repeat stalemate.
             // More than 32 turns ago, we're not going to bother looking.
             // Check every 4 turns as both players need to move and move back to repeat.
-            // Last turn is at zobrist_history[n-1], so offset by 1.
-            let start = if n < 35 { (n - 1) % 4 } else { n - 33 };
-            let recent_past = &board.zobrist_history[start..n];
-            let position_repeat_count =
-                recent_past.iter().step_by(4).filter(|&&hash| hash == board.zobrist_hash).count();
+            let position_repeat_count = board
+                .zobrist_history
+                .iter()
+                .rev()
+                .step_by(4)
+                .skip(1)
+                .take(8)
+                .filter(|&&hash| hash == board.zobrist_hash)
+                .count();
             if position_repeat_count >= 2 {
                 // Draw by stalemate.
                 return Some(minimax::Winner::Draw);
@@ -910,7 +904,14 @@ impl minimax::Game for Rules {
     }
 
     fn zobrist_hash(board: &Board) -> u64 {
-        board.zobrist_hash
+        // The internal zobrist history only cares about detecting repeated positions.
+        // Users of this function care about caching computations from this board state,
+        // and also need some marker of which bugs cannot be moved by the pillbug.
+        let mut hash = board.zobrist_hash;
+        if let Some(Turn::Move(_, end)) = board.turn_history.last() {
+            hash ^= *end as u64
+        }
+        hash
     }
 
     fn null_move(_: &Board) -> Option<Turn> {
@@ -960,6 +961,7 @@ pub(crate) fn hex_to_loc(hex: Hex) -> Loc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use minimax::Game;
 
     #[test]
     fn test_hex_loc() {
@@ -1299,8 +1301,6 @@ mod tests {
 
     #[test]
     fn test_winner() {
-        use minimax::Game;
-
         // Draw by threefold repetition.
         let mut board = Board::default();
         let x1 = loc_to_hex((-1, -1));
@@ -1338,5 +1338,12 @@ mod tests {
         // Redo re-reverts draw state.
         board.apply(Turn::Move(y2, y1));
         assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
+    }
+
+    #[test]
+    fn test_winner5() {
+        // Regression test for issue #5.
+        let board = Board::from_game_string(r"Base;InProgress;black[11];wA1;bA1 wA1-;wQ /wA1;bQ bA1/;wS1 /wQ;bS1 bQ-;wS2 wQ\;bS2 bS1\;wS1 wS2-;bB1 /bS2;wA2 -wA1;bA2 bA1-;wB1 \wA1;bB1 bA2;wB1 wA2;bB1 bQ;wB1 wQ;bB1 \bB1;wB1 wB1-;bB1 bQ;wB1 wQ").unwrap();
+        assert_eq!(None, Rules::get_winner(&board));
     }
 }
