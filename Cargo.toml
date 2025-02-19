@@ -1,7 +1,7 @@
 [package]
 name = "nokamute"
 description = "Hive AI focused on speed"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/edre/nokamute"
