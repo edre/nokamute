@@ -10,8 +10,8 @@ license = "MIT"
 
 [dependencies]
 git-version = "0.3"
-minimax = "0.5.4"
-rand = "0.8"
+minimax = { git = "https://github.com/edre/minimax-rs", rev = "bb04bc3ca4623545fbe3c31603335b9138ba50ca" }
+rand = "0.9"
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 pico-args = "0.4"

@@ -31,7 +31,7 @@ jobs:
     - uses: jetli/wasm-bindgen-action@v0.2.0
     - run: rustup target add wasm32-unknown-unknown
     - name: Wasm Tests
-      run: wasm-pack test --firefox --headless
+      run: RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack test --firefox --headless
 
     - name: Build Release
       run: sh ./.github/release.sh
