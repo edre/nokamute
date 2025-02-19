@@ -2,23 +2,13 @@ extern crate minimax;
 
 use crate::bug::Bug;
 use crate::hex_grid::*;
-use std::borrow::Borrow;
 use std::cmp::{max, min};
 use std::collections::hash_map::DefaultHasher;
 use std::default::Default;
 use std::hash::Hasher;
+use std::sync::OnceLock;
 
-lazy_static! {
-    static ref ZOBRIST_TABLE: Box<[u64; GRID_SIZE * 2]> = {
-        let mut table = Box::new([0u64; GRID_SIZE * 2]);
-        let mut hasher = DefaultHasher::new();
-        for i in 0..table.len() {
-            hasher.write_usize(i);
-            table[i] = hasher.finish();
-        }
-        table
-    };
-}
+static ZOBRIST_TABLE: OnceLock<[u64; GRID_SIZE * 2]> = OnceLock::new();
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Color {
@@ -301,6 +291,16 @@ impl Board {
                 game_type_bits |= 1 << i;
             }
         }
+        let zobrist_table = ZOBRIST_TABLE.get_or_init(|| {
+            let mut table = [0u64; GRID_SIZE * 2];
+            let mut hasher = DefaultHasher::new();
+            for (i, entry) in table.iter_mut().enumerate() {
+                hasher.write_usize(i);
+                *entry = hasher.finish();
+            }
+            table
+        });
+
         Board {
             nodes: [Node::empty(); GRID_SIZE],
             underworld: [UnderNode::empty(); 8],
@@ -309,7 +309,7 @@ impl Board {
             queens: [START_HEX; 2],
             occupied_hexes: [Vec::new(), Vec::new()],
             turn_num: 0,
-            zobrist_table: ZOBRIST_TABLE.borrow(),
+            zobrist_table,
             zobrist_hash: 0,
             zobrist_history: Vec::new(),
             turn_history: Vec::new(),

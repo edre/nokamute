@@ -9,7 +9,6 @@ license = "MIT"
 
 [dependencies]
 git-version = "0.3"
-lazy_static = "^1.4.0"
 minimax = "0.5.2"
 rand = "0.8"
 
