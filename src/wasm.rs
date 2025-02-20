@@ -1,20 +1,17 @@
 use crate::{PlayerConfig, UhpServer};
 use std::io::Cursor;
+use std::sync::{LazyLock, Mutex};
 use wasm_bindgen::prelude::*;
 
-static mut UHP_SERVER: *mut UhpServer<Cursor<Vec<u8>>> = std::ptr::null_mut();
+static UHP_SERVER: LazyLock<Mutex<UhpServer<Cursor<Vec<u8>>>>> = LazyLock::new(|| {
+    let mut config = PlayerConfig::new();
+    config.opts = config.opts.with_table_byte_size(8 << 20);
+    Mutex::new(UhpServer::new(config, Cursor::new(Vec::new())))
+});
 
 #[wasm_bindgen]
 pub fn uhp(args: &str) -> String {
-    // Manual lazy_static.
-    let server = unsafe {
-        if UHP_SERVER.is_null() {
-            let mut config = PlayerConfig::new();
-            config.opts = config.opts.with_table_byte_size(8 << 20);
-            UHP_SERVER = Box::into_raw(Box::new(UhpServer::new(config, Cursor::new(Vec::new()))));
-        }
-        UHP_SERVER.as_mut().unwrap()
-    };
+    let mut server = UHP_SERVER.lock().unwrap();
     server.swap_output(Cursor::new(Vec::new()));
     server.command(args);
     let buf = server.swap_output(Cursor::new(Vec::new()));

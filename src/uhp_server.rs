@@ -12,7 +12,7 @@ pub struct UhpServer<W: Write> {
     board: Option<Board>,
     pv_dirty: bool,
     config: PlayerConfig,
-    engine: Option<Box<dyn Player>>,
+    engine: Option<Box<dyn Player + Send>>,
     output: W,
 }
 

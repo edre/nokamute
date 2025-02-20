@@ -101,18 +101,18 @@ pub fn play_game(
 
 struct NokamutePlayer {
     board: Board,
-    strategy: Box<dyn Strategy<Rules>>,
+    strategy: Box<dyn Strategy<Rules> + Send>,
     random_opening: bool,
     name: String,
 }
 
 impl NokamutePlayer {
-    fn new(strategy: Box<dyn Strategy<Rules>>, random_opening: bool) -> Self {
+    fn new(strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool) -> Self {
         Self::new_with_name(&format!("nokamute {}", nokamute_version()), strategy, random_opening)
     }
 
     fn new_with_name(
-        name: &str, mut strategy: Box<dyn Strategy<Rules>>, random_opening: bool,
+        name: &str, mut strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool,
     ) -> Self {
         strategy.set_timeout(Duration::from_secs(5));
         NokamutePlayer { board: Board::default(), strategy, random_opening, name: name.to_owned() }
@@ -293,7 +293,7 @@ impl PlayerConfig {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn new_player(&self) -> Box<dyn Player> {
+    pub(crate) fn new_player(&self) -> Box<dyn Player + Send> {
         Box::new(NokamutePlayer::new(
             Box::new(IterativeSearch::new(self.eval, self.opts)),
             self.random_opening,
@@ -301,7 +301,7 @@ impl PlayerConfig {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn new_player(&self) -> Box<dyn Player> {
+    pub(crate) fn new_player(&self) -> Box<dyn Player + Send> {
         Box::new(match &self.strategy {
             PlayerStrategy::Random => NokamutePlayer::new_with_name(
                 "random",
