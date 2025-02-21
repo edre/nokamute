@@ -135,7 +135,7 @@ impl Board {
     }
 
     fn zobrist(&self, hex: Hex, bug: Bug, color: Color, height: u8) -> u64 {
-        let hash = self.zobrist_table[(hex as usize) << 1 | (color as usize)];
+        let hash = self.zobrist_table[((hex as usize) << 1) | color as usize];
         // I don't really want to multiply the table by another factor of 7*8, so
         // just realign the existing random bits.
         // Also include the color to move hash.
@@ -489,8 +489,8 @@ impl Board {
             }
         }
         // Wrap around in each direction
-        occupied |= occupied << 6 | occupied << 12;
-        let slidable = (!occupied & (occupied << 1 ^ occupied >> 1)) >> 6;
+        occupied |= (occupied << 6) | (occupied << 12);
+        let slidable = (!occupied & ((occupied << 1) ^ (occupied >> 1))) >> 6;
 
         neighbors.iter().enumerate().filter_map(move |(i, &hex)| {
             if (slidable >> i) & 1 != 0 {
@@ -927,8 +927,8 @@ impl minimax::Game for Rules {
         // the highest bit from each hex.
         const MASK: u16 = 0x7f;
         match turn {
-            Turn::Place(hex, bug) => (bug as u16) << 7 | hex as u16 & MASK,
-            Turn::Move(start, end) => (start as u16 & MASK) << 7 | end as u16 & MASK,
+            Turn::Place(hex, bug) => ((bug as u16) << 7) | hex as u16 & MASK,
+            Turn::Move(start, end) => ((start as u16 & MASK) << 7) | end as u16 & MASK,
             Turn::Pass => 0,
         }
     }
