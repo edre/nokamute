@@ -78,6 +78,9 @@ impl<W: Write> UhpServer<W> {
         if let Some(arg) = args.strip_prefix("depth ") {
             let depth =
                 arg.parse::<u8>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?;
+            if depth == 0 {
+                return Err(UhpError::EngineError("depth must be positive".to_string()));
+            }
             self.engine.as_mut().unwrap().set_max_depth(depth);
         } else if let Some(arg) = args.strip_prefix("time ") {
             let dur =
