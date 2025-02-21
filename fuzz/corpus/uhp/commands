@@ -1,0 +1,5 @@
+newgame Base+MLP
+validmoves
+play wG1
+play bP1
+bestmove depth 1
