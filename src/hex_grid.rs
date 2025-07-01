@@ -36,6 +36,7 @@ pub(crate) const START_HEX: Hex = ROW_SIZE / 2 * (ROW_SIZE + 1);
 
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
+#[allow(clippy::unnecessary_cast)]
 pub enum Direction {
     NW = (GRID_MASK & (ROW_SIZE + 1).wrapping_neg()) as u16,
     NE = (GRID_MASK & ROW_SIZE.wrapping_neg()) as u16,
