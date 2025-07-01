@@ -91,7 +91,7 @@ impl UhpClient {
     }
 
     pub(crate) fn raw_play(&mut self, move_string: &str) -> Result<String> {
-        let command = format!("play {}", move_string);
+        let command = format!("play {move_string}");
         let out = self.command(&command)?.join("\n");
         self.board.apply_untrusted(self.board.from_move_string(move_string)?)?;
         Ok(out)
@@ -118,7 +118,7 @@ impl UhpClient {
     }
 
     pub(crate) fn undo(&mut self, num_undo: usize) -> Result<()> {
-        self.command(&format!("undo {}", num_undo))?;
+        self.command(&format!("undo {num_undo}"))?;
         self.board.undo_count(num_undo)?;
         Ok(())
     }
@@ -146,12 +146,12 @@ impl UhpClient {
         let m = secs % 3600 / 60;
         let s = secs % 60;
         let move_string =
-            self.command(&format!("bestmove time {:02}:{:02}:{:02}", h, m, s))?.pop().unwrap();
+            self.command(&format!("bestmove time {h:02}:{m:02}:{s:02}"))?.pop().unwrap();
         self.board.from_move_string(&move_string)
     }
 
     pub(crate) fn best_move_depth(&mut self, depth: u8) -> Result<Turn> {
-        let move_string = self.command(&format!("bestmove depth {}", depth))?.pop().unwrap();
+        let move_string = self.command(&format!("bestmove depth {depth}"))?.pop().unwrap();
         self.board.from_move_string(&move_string)
     }
 }
@@ -159,7 +159,7 @@ impl UhpClient {
 impl Drop for UhpClient {
     fn drop(&mut self) {
         if let Err(err) = self.proc.kill() {
-            println!("{}", err);
+            println!("{err}");
         }
     }
 }

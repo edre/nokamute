@@ -11,7 +11,7 @@ fn standard_games(game_string: &str) -> &str {
 
 pub fn perft(game_string: &str, parallel: bool) {
     let game_string = standard_games(game_string);
-    println!("{}", game_string);
+    println!("{game_string}");
     let mut b = Board::from_game_string(game_string).unwrap();
     if game_string.contains(';') {
         b.println();
@@ -40,7 +40,7 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
             continue;
         }
 
-        print!("Test {}... ", name);
+        print!("Test {name}... ");
         let game_state_string = lines[i];
         let expected_moves_string = lines[i + 1];
         i += 2;
@@ -53,7 +53,7 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let mut groups = game_state_string.split(';');
         let game_type = groups.next().unwrap();
         if let Err(error) = engine.new_game(game_type) {
-            println!("{} newgame: {:?}", FAILED, error);
+            println!("{FAILED} newgame: {error:?}");
             success = false;
             continue;
         }
@@ -66,7 +66,7 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
             match engine.raw_play(move_string) {
                 Ok(string) => new_state = string,
                 Err(UhpError::EngineError(error)) => {
-                    println!("{} play {} failed: {}", FAILED, move_string, error);
+                    println!("{FAILED} play {move_string} failed: {error}");
                     success = false;
                     continue 'testcases;
                 }
@@ -78,19 +78,19 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let expected_state = game_state_string.split(';').nth(1).unwrap_or("not found");
         let state = new_state.split(';').nth(1).unwrap_or("not found");
         if expected_state != state {
-            println!("{} end state expected {} found {}", FAILED, expected_state, state);
+            println!("{FAILED} end state expected {expected_state} found {state}");
             success = false;
             continue;
         }
         if expected_state != "InProgress" {
-            println!("{}", PASSED);
+            println!("{PASSED}");
             continue;
         }
 
         let movestrings = match engine.raw_generate_moves() {
             Ok(s) => s,
             Err(error) => {
-                println!("{} validmoves: {:?}", FAILED, error);
+                println!("{FAILED} validmoves: {error:?}");
                 success = false;
                 continue;
             }
@@ -100,12 +100,12 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let count = movestrings.split(';').count();
         if expected_count != count {
             // TODO: verbose mode: dump difference
-            println!("{} expected {} moves, found {}", FAILED, expected_count, count);
+            println!("{FAILED} expected {expected_count} moves, found {count}");
             success = false;
             continue;
         }
 
-        println!("{}", PASSED);
+        println!("{PASSED}");
     }
     success
 }
@@ -121,7 +121,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let mut moves = Vec::new();
     for iter in 0.. {
         if iter % 100 == 0 {
-            println!("iter {}", iter);
+            println!("iter {iter}");
         }
         // Roll out a random game to the desired depth.
         let mut stack = Vec::new();
@@ -143,8 +143,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
             let engine_winner = engine.apply(m).unwrap();
             if board_winner != engine_winner {
                 println!(
-                    "iter {} game end disagreement: board_winner={:?} engine_winner={:?}",
-                    iter, board_winner, engine_winner
+                    "iter {iter} game end disagreement: board_winner={board_winner:?} engine_winner={engine_winner:?}"
                 );
                 println!("game log: {}", engine.game_log());
                 board.println();
@@ -165,8 +164,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
 
 fn dump_difference(board: &mut Board, iter: usize, nokamute_moves: &[Turn], engine_moves: &[Turn]) {
     println!(
-        "iteration {} found discrepancy: {} vs {} moves",
-        iter,
+        "iteration {iter} found discrepancy: {} vs {} moves",
         nokamute_moves.len(),
         engine_moves.len()
     );
@@ -193,7 +191,7 @@ fn dump_difference(board: &mut Board, iter: usize, nokamute_moves: &[Turn], engi
 
     let mut print_moves = |title: &str, moves: &[Turn]| {
         if !moves.is_empty() {
-            println!("{}:", title);
+            println!("{title}:");
         }
         for &m in moves.iter() {
             board.apply(m);

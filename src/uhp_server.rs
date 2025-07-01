@@ -256,9 +256,9 @@ impl<W: Write> UhpServer<W> {
         };
         if let Err(err) = result {
             if let UhpError::InvalidMove(invalid) = err {
-                writeln!(self.output, "invalidmove {}", invalid).unwrap();
+                writeln!(self.output, "invalidmove {invalid}").unwrap();
             } else {
-                writeln!(self.output, "err {:?}", err).unwrap();
+                writeln!(self.output, "err {err:?}").unwrap();
             }
         }
         false
@@ -279,7 +279,7 @@ pub fn uhp_serve(config: PlayerConfig) {
                 }
             }
             Err(err) => {
-                eprintln!("{}", err);
+                eprintln!("{err}");
                 return;
             }
         };

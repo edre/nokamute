@@ -95,7 +95,7 @@ pub fn play_game(
     }
     match face_off(game_type, player1, player2) {
         None => println!("Game over: draw."),
-        Some(name) => println!("Game over: {} won.", name),
+        Some(name) => println!("Game over: {name} won."),
     }
 }
 
@@ -182,7 +182,7 @@ impl Player for NokamutePlayer {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn exit(msg: String) -> ! {
-    eprintln!("{}", msg);
+    eprintln!("{msg}");
     std::process::exit(1)
 }
 
@@ -238,7 +238,7 @@ pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Erro
         } else if let Ok(num) = thread_arg.parse::<usize>() {
             num
         } else {
-            exit(format!("Could not parse num_threads={}. Expected int or 'max'", thread_arg));
+            exit(format!("Could not parse num_threads={thread_arg}. Expected int or 'max'"));
         }
     });
 

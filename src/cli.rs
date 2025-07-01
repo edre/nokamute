@@ -69,7 +69,7 @@ impl Board {
             while c != (endc + 1) % ROW_SIZE {
                 let hex = c + r * ROW_SIZE;
                 if let Some(index) = highlights.iter().position(|&x| x == hex) {
-                    write!(buf, "{: >2}", index)?;
+                    write!(buf, "{index: >2}")?;
                     c = (c + 1) % ROW_SIZE;
                     continue;
                 }
@@ -154,7 +154,7 @@ impl Board {
 }
 
 fn read_line(prompt: &str) -> String {
-    print!("{}", prompt);
+    print!("{prompt}");
     io::stdout().flush().unwrap();
     if let Some(input) = io::stdin().lock().lines().next() {
         input.unwrap()
@@ -392,7 +392,7 @@ pub fn terminal_game_interface(config: PlayerConfig) {
             for (i, &m) in prev_pv.iter().enumerate() {
                 prev_pv_board.apply(m);
                 if i > 0 {
-                    println!("Principal variation depth {}", i);
+                    println!("Principal variation depth {i}");
                     prev_pv_board.println();
                 }
             }
