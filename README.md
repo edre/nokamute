@@ -27,7 +27,7 @@ manager.  Run `cargo build --release` to build nokamute and its dependencies.
 The original motivation for this project was to explore the space of boardless state representations to find an efficient one. After several iterations it has much faster move generation than any other hive AI, mostly due to:
 
 * Using a compiled language (rust), and avoiding allocations and complex types like hashmaps in the inner loop.
-* A game state representation with a 16x16 flat array of bytes that wraps across 3 axes. Each byte has presense, color, height, bug, bug number (just for generating notation). Stacked bugs are stored in a small cache off of the main grid.
+* A game state representation with a 32x32 flat array of bytes that wraps across 3 axes. Each byte has presense, color, height, bug, bug number (just for generating notation). Stacked bugs are stored in a small cache off of the main grid.
 * Linear [algorithm](https://en.wikipedia.org/wiki/Biconnected_component#Pseudocode) to find all pinned bugs.
 
 The engine was developed in tandem with the generic rust [`minimax`](https://crates.io/crates/minimax) library. It implements alpha-beta and a handful of classic 20th century search optimizations. Its multithreaded implementation can make efficient use of many cores.
