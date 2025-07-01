@@ -13,10 +13,10 @@ jobs:
       run: git fetch --tags --unshallow -f
 
     - name: Run Tests
-      run: cargo test && cargo test --features=larger-grid
+      run: cargo test && cargo test --features=smaller-grid
 
     - name: Run UHP testsuite
-      run: cargo run --features=larger-grid -- --strategy=random uhp-debug target/debug/nokamute --strategy=random
+      run: cargo run -- --strategy=random uhp-debug target/debug/nokamute --strategy=random
 
     - name: Check that benchmarks build
       run: cargo build --benches

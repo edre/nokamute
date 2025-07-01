@@ -17,14 +17,14 @@
 //    0   1   2   3   4
 
 // Index of a board location.
-#[cfg(not(feature = "larger-grid"))]
+#[cfg(feature = "smaller-grid")]
 pub(crate) type Hex = u8;
-#[cfg(feature = "larger-grid")]
+#[cfg(not(feature = "smaller-grid"))]
 pub(crate) type Hex = u16;
 
-#[cfg(not(feature = "larger-grid"))]
+#[cfg(feature = "smaller-grid")]
 pub const ROW_SIZE: Hex = 16;
-#[cfg(feature = "larger-grid")]
+#[cfg(not(feature = "smaller-grid"))]
 pub const ROW_SIZE: Hex = 32;
 
 pub(crate) const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
