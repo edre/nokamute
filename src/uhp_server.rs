@@ -86,6 +86,11 @@ impl<W: Write> UhpServer<W> {
             let dur =
                 parse_hhmmss(arg).ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
             self.engine.as_mut().unwrap().set_timeout(dur);
+        } else if let Some(arg) = args.strip_prefix("seconds ") {
+            // Unofficial command offering sub-second precision.
+            let dur = parse_seconds(arg)
+                .ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
+            self.engine.as_mut().unwrap().set_timeout(dur);
         } else {
             return Err(UhpError::UnrecognizedCommand(args.to_string()));
         }
@@ -412,10 +417,53 @@ impl UhpOptionBool for BackgroundPonderingOption {
     }
 }
 
+// Parse hh:mm:ss as a duration.
 fn parse_hhmmss(time: &str) -> Option<Duration> {
     let mut toks = time.split(':');
     let hours = toks.next().unwrap_or("").parse::<u64>().ok()?;
     let minutes = toks.next().unwrap_or("").parse::<u64>().ok()?;
     let seconds = toks.next().unwrap_or("").parse::<u64>().ok()?;
+    if toks.next().is_some() {
+        return None;
+    }
     Some(Duration::from_secs(hours * 3600 + minutes * 60 + seconds))
+}
+
+#[test]
+fn test_parse_hhmmss() {
+    assert_eq!(Some(Duration::from_secs(7)), parse_hhmmss("00:00:07"));
+    assert_eq!(Some(Duration::from_secs(3661)), parse_hhmmss("01:01:01"));
+    assert_eq!(None, parse_hhmmss("45"));
+    assert_eq!(None, parse_hhmmss("1:23"));
+    assert_eq!(None, parse_hhmmss("01:02:03:04"));
+    assert_eq!(None, parse_hhmmss("five"));
+}
+
+// Parse nnn[.nnn] as number of seconds.
+fn parse_seconds(time: &str) -> Option<Duration> {
+    let dot = time.find('.');
+    let secs = time[..dot.unwrap_or(time.len())].parse::<u64>().ok()?;
+    let mut dur = Duration::from_secs(secs);
+    if let Some(i) = dot {
+        let trailing = &time[i + 1..];
+        let mut len = trailing.len();
+        if len > 9 {
+            return None;
+        }
+        let mut subsecs = trailing.parse::<u64>().ok()?;
+        while len < 9 {
+            len += 1;
+            subsecs *= 10;
+        }
+        dur += Duration::from_nanos(subsecs);
+    }
+    Some(dur)
+}
+
+#[test]
+fn test_parse_seconds() {
+    assert_eq!(Some(Duration::from_millis(5)), parse_seconds("0.005"));
+    assert_eq!(Some(Duration::from_mins(1)), parse_seconds("60"));
+    assert_eq!(None, parse_seconds("01:23:45"));
+    assert_eq!(None, parse_seconds("2e1"));
 }
