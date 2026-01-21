@@ -15,7 +15,6 @@ rand = "0.9"
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 pico-args = "0.4"
-termcolor = "^1.1"
 
 [target.'cfg(target_arch="wasm32")'.dependencies]
 wasm-bindgen = "0.2"

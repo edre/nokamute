@@ -1,11 +1,19 @@
-extern crate termcolor;
-
 use crate::player::{Player, PlayerConfig};
 use crate::{Board, Bug, Color, Hex, Rules, Turn, ROW_SIZE, START_HEX};
 use minimax::{Game, Strategy};
+use std::fmt::{Display, Formatter, Result};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
-use termcolor::WriteColor;
+
+impl Display for Board {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        write!(f, "{}", self.fancy_fmt(&[]))
+    }
+}
+
+const FREE_SPACE: char = '\u{ff0e}';
+const INVERT_BG_COLOR: &str = "\x1b[7m";
+const RESET_COLOR: &str = "\x1b[0m";
 
 impl Board {
     // return the Hex to the upper left and lower right of all occupied nodes.
@@ -48,97 +56,88 @@ impl Board {
         (minr, maxr, minc, maxc)
     }
 
-    pub fn fancy_fmt(
-        &self, buf: &mut termcolor::Buffer, highlights: &[Hex],
-    ) -> std::io::Result<()> {
+    pub fn fancy_fmt(&self, highlights: &[Hex]) -> String {
+        let mut buf = String::new();
         let (startr, endr, startc, endc) = self.bounding_box();
-        let free_space = "\u{ff0e}".as_bytes();
 
         let mut r = startr;
         while r != (endr + 1) % ROW_SIZE {
             // Print prefix to get staggered hex rows
             let buflen = endr.wrapping_sub(r) % ROW_SIZE;
             if buflen % 2 == 1 {
-                buf.write_all(b" ")?;
+                buf.push(' ');
             }
             for _ in 0..buflen / 2 {
-                buf.write_all(free_space)?;
+                buf.push(FREE_SPACE);
             }
 
             let mut c = startc;
             while c != (endc + 1) % ROW_SIZE {
                 let hex = c + r * ROW_SIZE;
                 if let Some(index) = highlights.iter().position(|&x| x == hex) {
-                    write!(buf, "{index: >2}")?;
+                    // Manual 2-byte space padding.
+                    buf.push(if index > 9 { ((index / 10) + 48) as u8 as char } else { ' ' });
+                    buf.push(((index % 10) + 48) as u8 as char);
                     c = (c + 1) % ROW_SIZE;
                     continue;
                 }
                 let node = self.node(hex);
                 if node.occupied() {
                     if node.color() == Color::White {
-                        // Invert terminal background color for white pieces.
-                        buf.set_color(
-                            termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
-                        )?;
+                        buf.push_str(INVERT_BG_COLOR);
                     }
-                    write!(buf, "{}", node.bug().codepoint())?;
+                    buf.push(node.bug().codepoint());
                     if node.color() == Color::White {
-                        // Reset coloring.
-                        buf.reset()?;
+                        buf.push_str(RESET_COLOR);
                     }
                 } else {
                     // Empty cell. Full width period.
-                    buf.write_all(free_space)?;
+                    buf.push(FREE_SPACE);
                 }
                 c = (c + 1) % ROW_SIZE;
             }
 
             // Stagger rows the other way to make the space look rectangular.
             for _ in 0..r.wrapping_sub(startr) % ROW_SIZE / 2 {
-                buf.write_all(free_space)?;
+                buf.push(FREE_SPACE);
             }
 
             // On 2nd and 3rd rows, print remaining bugs from each side
             if r == (startr + 1) % ROW_SIZE {
-                buf.write_all(b" ")?;
-                self.write_remaining(Color::White, buf)?;
+                buf.push(' ');
+                self.write_remaining(Color::White, &mut buf);
             } else if r == (startr + 2) % ROW_SIZE {
-                self.write_remaining(Color::Black, buf)?;
+                self.write_remaining(Color::Black, &mut buf);
             }
 
-            buf.write_all(b"\n")?;
+            buf.push('\n');
             r = (r + 1) % ROW_SIZE;
         }
-        Ok(())
+        buf
     }
 
-    fn write_remaining(&self, color: Color, buf: &mut termcolor::Buffer) -> std::io::Result<()> {
+    fn write_remaining(&self, color: Color, buf: &mut String) {
         for bug in Bug::iter_all() {
             let count = self.remaining[color as usize][bug as usize];
             let prefix = if count == 2 {
-                b"2"
+                '2'
             } else if count == 3 {
-                b"3"
+                '3'
             } else {
-                b" "
+                ' '
             };
             if count > 0 {
-                buf.write_all(prefix)?;
+                buf.push(prefix);
                 if color == Color::White {
-                    // Invert terminal background color for white pieces.
-                    buf.set_color(
-                        termcolor::ColorSpec::new().set_bg(Some(termcolor::Color::White)),
-                    )?;
+                    buf.push_str(INVERT_BG_COLOR);
                 }
-                write!(buf, "{}", bug.codepoint())?;
+                buf.push(bug.codepoint());
                 if color == Color::White {
-                    // Reset coloring.
-                    buf.reset()?;
+                    buf.push_str(RESET_COLOR);
                 }
-                buf.write_all(b" ")?;
+                buf.push(' ');
             }
         }
-        Ok(())
     }
 
     pub(crate) fn println(&self) {
@@ -146,10 +145,7 @@ impl Board {
     }
 
     pub(crate) fn println_highlights(&self, highlights: &[Hex]) {
-        let writer = termcolor::BufferWriter::stdout(termcolor::ColorChoice::Auto);
-        let mut buffer = writer.buffer();
-        self.fancy_fmt(&mut buffer, highlights).unwrap();
-        writer.print(&buffer).unwrap();
+        print!("{}", self.fancy_fmt(highlights));
     }
 }
 
