@@ -123,7 +123,7 @@ pub struct Board {
 
 impl Board {
     pub fn to_move(&self) -> Color {
-        if self.turn_num % 2 == 0 {
+        if self.turn_num.is_multiple_of(2) {
             Color::White
         } else {
             Color::Black

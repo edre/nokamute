@@ -12,10 +12,10 @@ impl Board {
     // Given wrapping, the second may be less than the first.
     fn bounding_box(&self) -> (Hex, Hex, Hex, Hex) {
         let empty_rows = (0..ROW_SIZE)
-            .map(|r| ((0..ROW_SIZE).all(|c| !self.occupied(r * ROW_SIZE + c))))
+            .map(|r| (0..ROW_SIZE).all(|c| !self.occupied(r * ROW_SIZE + c)))
             .collect::<Vec<bool>>();
         let empty_cols = (0..ROW_SIZE)
-            .map(|c| ((0..ROW_SIZE).all(|r| !self.occupied(r * ROW_SIZE + c))))
+            .map(|c| (0..ROW_SIZE).all(|r| !self.occupied(r * ROW_SIZE + c)))
             .collect::<Vec<bool>>();
         if empty_rows.iter().all(|&r| r) {
             // Center around start hex
