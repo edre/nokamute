@@ -66,6 +66,15 @@ pub mod test {
     }
 
     #[wasm_bindgen_test]
+    fn bestmove_depthorseconds_test() {
+        uhp("newgame Base");
+        let mut best = uhp("bestmove depthorseconds 1 3600");
+        assert!(["wA1", "wB1", "wG1", "wS1"].contains(&best.as_str()));
+        best = uhp("bestmove depthorseconds 99 0.05");
+        assert!(["wA1", "wB1", "wG1", "wS1"].contains(&best.as_str()));
+    }
+
+    #[wasm_bindgen_test]
     fn options_test() {
         assert!(uhp("options").contains("TableSizeMiB"));
         assert_eq!(uhp("options get TableSizeMiB"), "TableSizeMiB;int;8;100;1;256");

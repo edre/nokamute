@@ -75,24 +75,35 @@ impl<W: Write> UhpServer<W> {
     fn best_move(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = false;
         let board = self.board.as_ref().ok_or(UhpError::GameNotStarted)?;
+        let arg_error = || UhpError::UnrecognizedCommand(args.to_string());
         if let Some(arg) = args.strip_prefix("depth ") {
-            let depth =
-                arg.parse::<u8>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?;
+            let depth = arg.parse::<u8>().map_err(|_| arg_error())?;
             if depth == 0 {
                 return Err(UhpError::EngineError("depth must be positive".to_string()));
             }
             self.engine.as_mut().unwrap().set_max_depth(depth);
         } else if let Some(arg) = args.strip_prefix("time ") {
-            let dur =
-                parse_hhmmss(arg).ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
+            let dur = parse_hhmmss(arg).ok_or_else(arg_error)?;
             self.engine.as_mut().unwrap().set_timeout(dur);
         } else if let Some(arg) = args.strip_prefix("seconds ") {
             // Unofficial command offering sub-second precision.
-            let dur = parse_seconds(arg)
-                .ok_or_else(|| UhpError::UnrecognizedCommand(args.to_string()))?;
+            let dur = parse_seconds(arg).ok_or_else(arg_error)?;
             self.engine.as_mut().unwrap().set_timeout(dur);
+        } else if let Some(arg) = args.strip_prefix("depthorseconds ") {
+            // Unofficial command stopping whichever comes first.
+            let mut toks = arg.split(" ");
+            let depth =
+                toks.next().ok_or_else(arg_error)?.parse::<u8>().map_err(|_| arg_error())?;
+            if depth == 0 {
+                return Err(UhpError::EngineError("depth must be positive".to_string()));
+            }
+            let dur = parse_seconds(toks.next().ok_or_else(arg_error)?).ok_or_else(arg_error)?;
+            if toks.next().is_some() {
+                return Err(arg_error());
+            }
+            self.engine.as_mut().unwrap().set_depth_or_timeout(depth, dur);
         } else {
-            return Err(UhpError::UnrecognizedCommand(args.to_string()));
+            return Err(arg_error());
         }
         let m = self.engine.as_mut().unwrap().generate_move();
         writeln!(self.output, "{}", board.to_move_string(m))?;

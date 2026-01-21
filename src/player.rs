@@ -22,6 +22,7 @@ pub(crate) trait Player {
     }
     fn set_max_depth(&mut self, _depth: u8) {}
     fn set_timeout(&mut self, _time: Duration) {}
+    fn set_depth_or_timeout(&mut self, _depth: u8, _time: Duration) {}
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -177,6 +178,10 @@ impl Player for NokamutePlayer {
 
     fn set_timeout(&mut self, time: Duration) {
         self.strategy.set_timeout(time);
+    }
+
+    fn set_depth_or_timeout(&mut self, depth: u8, time: Duration) {
+        self.strategy.set_depth_or_timeout(depth, time);
     }
 }
 
