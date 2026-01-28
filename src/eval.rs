@@ -117,7 +117,7 @@ impl Evaluator for BasicEvaluator {
                 * self.value(bug);
         }
 
-        for &hex in board.occupied_hexes[0].iter().chain(board.occupied_hexes[1].iter()) {
+        for &hex in board.occupied_hexes.iter().flatten() {
             let node = board.node(hex);
             let mut bug_score = self.value(node.bug());
             let mut pillbug_powers = node.bug() == Bug::Pillbug;
