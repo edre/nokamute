@@ -16,7 +16,7 @@ commands:
         or a path to a UHP engine
  perft [--parallel] [game_state]:
         Count the number of board states at each depth
- uhp-debug [--search=game_state] engine_command
+ uhp-debug [--search=game_state] [--verbose|--uhp-verbose] engine_command
         Run external UHP engine through correctness testsuite,
         then randomly search for discrepancies with nokamute's move generator.
 
@@ -74,6 +74,10 @@ fn main() {
                 args.iter().map(|s| s.into()).collect::<Vec<OsString>>(),
             );
             let search_string: Option<String> = parsed_args.opt_value_from_str("--search").unwrap();
+            // `--verbose` / `-v` is consumed by `configure_player()` as a global engine flag, so
+            // treat that as uhp-debug verbosity too. We also accept `--uhp-verbose` here to avoid
+            // collisions with flags intended for the external engine command.
+            let verbose = config.verbose() || parsed_args.contains("--uhp-verbose");
             let args = parsed_args
                 .finish()
                 .into_iter()
@@ -83,7 +87,7 @@ fn main() {
                 println!("uhp-debug requires engine command");
                 return;
             }
-            let success = uhp_tests(&args[1..]);
+            let success = uhp_tests_with_verbosity(&args[1..], verbose);
             if let Some(string) = search_string {
                 perft_debug(&args[1..], &string, 20);
             }

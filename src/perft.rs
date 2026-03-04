@@ -20,6 +20,10 @@ pub fn perft(game_string: &str, parallel: bool) {
 }
 
 pub fn uhp_tests(engine_cmd: &[String]) -> bool {
+    uhp_tests_with_verbosity(engine_cmd, false)
+}
+
+pub fn uhp_tests_with_verbosity(engine_cmd: &[String], verbose: bool) -> bool {
     const FAILED: &str = "\x1b[31mFAILED\x1b[m";
     const PASSED: &str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
@@ -54,6 +58,9 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let game_type = groups.next().unwrap();
         if let Err(error) = engine.new_game(game_type) {
             println!("{FAILED} newgame: {error:?}");
+            if verbose {
+                println!("  testcase: {game_state_string}");
+            }
             success = false;
             continue;
         }
@@ -62,11 +69,22 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         groups.next();
 
         let mut new_state = "Base;NotStarted".to_string();
+        let mut played_moves = Vec::new();
         for move_string in groups {
             match engine.raw_play(move_string) {
-                Ok(string) => new_state = string,
+                Ok(string) => {
+                    played_moves.push(move_string);
+                    new_state = string;
+                }
                 Err(UhpError::EngineError(error)) => {
                     println!("{FAILED} play {move_string} failed: {error}");
+                    if verbose {
+                        println!("  testcase: {game_state_string}");
+                        if !played_moves.is_empty() {
+                            println!("  played: {}", played_moves.join(";"));
+                            println!("  game log: {}", engine.game_log());
+                        }
+                    }
                     success = false;
                     continue 'testcases;
                 }
@@ -79,6 +97,10 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let state = new_state.split(';').nth(1).unwrap_or("not found");
         if expected_state != state {
             println!("{FAILED} end state expected {expected_state} found {state}");
+            if verbose {
+                println!("  testcase: {game_state_string}");
+                println!("  engine state: {new_state}");
+            }
             success = false;
             continue;
         }
@@ -91,16 +113,40 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
             Ok(s) => s,
             Err(error) => {
                 println!("{FAILED} validmoves: {error:?}");
+                if verbose {
+                    println!("  testcase: {game_state_string}");
+                    println!("  game log: {}", engine.game_log());
+                }
                 success = false;
                 continue;
             }
         };
-        // TODO: actually compare moves
-        let expected_count = expected_moves_string.split(';').count();
-        let count = movestrings.split(';').count();
+
+        // TODO: compare moves (not just counts) in non-verbose mode.
+        let expected_moves =
+            expected_moves_string.split(';').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>();
+        let engine_moves =
+            movestrings.split(';').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>();
+
+        let expected_count = expected_moves.len();
+        let count = engine_moves.len();
         if expected_count != count {
-            // TODO: verbose mode: dump difference
             println!("{FAILED} expected {expected_count} moves, found {count}");
+            if verbose {
+                let (missing, extra) = multiset_diff(&expected_moves, &engine_moves);
+                println!("  testcase: {game_state_string}");
+                if let Ok(b) = Board::from_game_string(game_state_string) {
+                    b.println();
+                }
+                if !missing.is_empty() {
+                    println!("  missing moves: {}", missing.join(";"));
+                }
+                if !extra.is_empty() {
+                    println!("  extra moves: {}", extra.join(";"));
+                }
+                println!("  expected moves: {expected_moves_string}");
+                println!("  engine moves: {movestrings}");
+            }
             success = false;
             continue;
         }
@@ -108,6 +154,38 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         println!("{PASSED}");
     }
     success
+}
+
+fn multiset_diff(expected: &[&str], actual: &[&str]) -> (Vec<String>, Vec<String>) {
+    use std::collections::BTreeMap;
+
+    fn add(map: &mut BTreeMap<String, isize>, key: &str, delta: isize) {
+        let key = key.trim();
+        if key.is_empty() {
+            return;
+        }
+        *map.entry(key.to_string()).or_insert(0) += delta;
+    }
+
+    let mut counts = BTreeMap::<String, isize>::new();
+    for &m in expected {
+        add(&mut counts, m, 1);
+    }
+    for &m in actual {
+        add(&mut counts, m, -1);
+    }
+
+    let mut missing = Vec::new();
+    let mut extra = Vec::new();
+    for (m, delta) in counts {
+        if delta > 0 {
+            missing.push(if delta == 1 { m } else { format!("{m} x{delta}") });
+        } else if delta < 0 {
+            let delta = -delta;
+            extra.push(if delta == 1 { m } else { format!("{m} x{delta}") });
+        }
+    }
+    (missing, extra)
 }
 
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
@@ -225,6 +303,11 @@ fn test_perft() {
     b = Board::from_game_type("Base+MLP").unwrap();
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
+}
+
+#[test]
+fn test_uhp_tests_public_signature() {
+    let _: fn(&[String]) -> bool = uhp_tests;
 }
 
 // Regression suite for bugs caught by perft-debug.
