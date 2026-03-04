@@ -821,7 +821,10 @@ impl minimax::Game for Rules {
     type S = Board;
     type M = Turn;
 
-    fn generate_moves(board: &Board, turns: &mut Vec<Turn>) {
+    fn generate_moves(board: &Board, turns: &mut Vec<Turn>) -> Option<minimax::Winner> {
+        if let Some(winner) = Self::get_winner(board) {
+            return Some(winner);
+        }
         if board.turn_num < 2 {
             // Special case for the first 2 turns:
             for (bug, num_left) in board.get_available_bugs().iter() {
@@ -840,7 +843,7 @@ impl minimax::Game for Rules {
                     }
                 }
             }
-            return;
+            return None;
         }
 
         // Once queen has been placed, pieces may move.
@@ -857,6 +860,7 @@ impl minimax::Game for Rules {
         if turns.is_empty() {
             turns.push(Turn::Pass);
         }
+        None
     }
 
     fn get_winner(board: &Board) -> Option<minimax::Winner> {
