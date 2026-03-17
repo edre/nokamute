@@ -13,7 +13,7 @@ jobs:
       run: git fetch --tags --unshallow -f
 
     - name: Run Tests
-      run: cargo test && cargo test --features=smaller-grid
+      run: cargo test
 
     - name: Run UHP testsuite
       run: cargo run -- --strategy=random uhp-debug target/debug/nokamute --strategy=random

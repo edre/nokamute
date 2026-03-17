@@ -71,11 +71,11 @@ impl Bug {
     }
 
     // Whether this bug can only move (itself) by crawling.
-    pub(crate) fn crawler(&self) -> bool {
+    pub fn crawler(&self) -> bool {
         matches!(*self, Bug::Ant | Bug::Queen | Bug::Spider | Bug::Pillbug)
     }
 
-    pub(crate) fn initial_quantity() -> &'static [u8; 8] {
+    pub fn initial_quantity() -> &'static [u8; 8] {
         &[1, 3, 2, 3, 2, 1, 1, 1]
     }
 }

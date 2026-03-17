@@ -9,7 +9,7 @@ use std::ops::Drop;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Duration;
 
-pub(crate) struct UhpClient {
+pub struct UhpClient {
     proc: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
@@ -19,7 +19,7 @@ pub(crate) struct UhpClient {
 }
 
 impl UhpClient {
-    pub(crate) fn new(cmd_args: &[String]) -> Result<UhpClient> {
+    pub fn new(cmd_args: &[String]) -> Result<UhpClient> {
         let mut proc = Command::new(&cmd_args[0])
             .args(&cmd_args[1..])
             .stdin(Stdio::piped())
@@ -82,7 +82,7 @@ impl UhpClient {
         self.consume_output()
     }
 
-    pub(crate) fn new_game(&mut self, game_type: &str) -> Result<String> {
+    pub fn new_game(&mut self, game_type: &str) -> Result<String> {
         let mut command = "newgame ".to_owned();
         command.push_str(game_type);
         let output = self.command(&command)?.join("\n");
@@ -90,14 +90,14 @@ impl UhpClient {
         Ok(output)
     }
 
-    pub(crate) fn raw_play(&mut self, move_string: &str) -> Result<String> {
+    pub fn raw_play(&mut self, move_string: &str) -> Result<String> {
         let command = format!("play {move_string}");
         let out = self.command(&command)?.join("\n");
         self.board.apply_untrusted(self.board.from_move_string(move_string)?)?;
         Ok(out)
     }
 
-    pub(crate) fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
+    pub fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
         let command = format!("play {}", self.board.to_move_string(m));
         let out = self.command(&command)?.join("\n");
         self.board.apply_untrusted(m)?;
@@ -117,18 +117,18 @@ impl UhpClient {
         })
     }
 
-    pub(crate) fn undo(&mut self, num_undo: usize) -> Result<()> {
+    pub fn undo(&mut self, num_undo: usize) -> Result<()> {
         self.command(&format!("undo {num_undo}"))?;
         self.board.undo_count(num_undo)?;
         Ok(())
     }
 
-    pub(crate) fn raw_generate_moves(&mut self) -> Result<String> {
+    pub fn raw_generate_moves(&mut self) -> Result<String> {
         Ok(self.command("validmoves")?[0].clone())
     }
 
     // Ask the engine for the next possible moves.
-    pub(crate) fn generate_moves(&mut self) -> Result<Vec<Turn>> {
+    pub fn generate_moves(&mut self) -> Result<Vec<Turn>> {
         let mut moves = Vec::new();
         for move_string in self.raw_generate_moves()?.split(';') {
             moves.push(self.board.from_move_string(move_string)?);
@@ -136,11 +136,11 @@ impl UhpClient {
         Ok(moves)
     }
 
-    pub(crate) fn game_log(&mut self) -> String {
+    pub fn game_log(&mut self) -> String {
         self.board.game_log()
     }
 
-    pub(crate) fn best_move(&mut self, timeout: Duration) -> Result<Turn> {
+    pub fn best_move(&mut self, timeout: Duration) -> Result<Turn> {
         let secs = timeout.as_secs();
         let h = secs / 3600;
         let m = secs % 3600 / 60;
@@ -150,7 +150,7 @@ impl UhpClient {
         self.board.from_move_string(&move_string)
     }
 
-    pub(crate) fn best_move_depth(&mut self, depth: u8) -> Result<Turn> {
+    pub fn best_move_depth(&mut self, depth: u8) -> Result<Turn> {
         let move_string = self.command(&format!("bestmove depth {depth}"))?.pop().unwrap();
         self.board.from_move_string(&move_string)
     }
@@ -164,14 +164,14 @@ impl Drop for UhpClient {
     }
 }
 
-pub(crate) struct UhpPlayer {
+pub struct UhpPlayer {
     client: UhpClient,
     timeout: Option<Duration>,
     depth: Option<u8>,
 }
 
 impl UhpPlayer {
-    pub(crate) fn new(cmd: &str) -> Result<Self> {
+    pub fn new(cmd: &str) -> Result<Self> {
         Ok(UhpPlayer { client: UhpClient::new(&[cmd.to_owned()])?, timeout: None, depth: None })
     }
 }

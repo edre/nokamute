@@ -53,7 +53,7 @@ impl Board {
         Ok(Board::new(starting))
     }
 
-    pub(super) fn hex_name(&self, hex: Hex, out: &mut String) {
+    pub fn hex_name(&self, hex: Hex, out: &mut String) {
         if self.occupied(hex) {
             self.tile_name(self.node(hex), out);
             return;
@@ -81,7 +81,7 @@ impl Board {
         out.push_str("??");
     }
 
-    pub(super) fn tile_name(&self, node: Node, out: &mut String) {
+    pub fn tile_name(&self, node: Node, out: &mut String) {
         out.push(match node.color() {
             Color::White => 'w',
             Color::Black => 'b',
@@ -92,7 +92,7 @@ impl Board {
         }
     }
 
-    pub(super) fn new_tile_name(&self, bug: Bug, out: &mut String) {
+    pub fn new_tile_name(&self, bug: Bug, out: &mut String) {
         out.push(match self.to_move() {
             Color::White => 'w',
             Color::Black => 'b',
@@ -105,7 +105,7 @@ impl Board {
         }
     }
 
-    pub(super) fn to_move_string(&self, m: crate::Turn) -> String {
+    pub fn to_move_string(&self, m: crate::Turn) -> String {
         let mut out = String::new();
         match m {
             Turn::Move(start, _) => {
@@ -244,7 +244,7 @@ impl Board {
     }
 
     // Returns the location of the piece, or None if it is not on the board.
-    pub(crate) fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Hex> {
+    pub fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Hex> {
         self.occupied_hexes[color as usize]
             .iter()
             .copied()
@@ -266,7 +266,7 @@ impl Board {
 
     // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn from_move_string(&self, move_string: &str) -> Result<Turn> {
+    pub fn from_move_string(&self, move_string: &str) -> Result<Turn> {
         let err = || UhpError::InvalidMove(move_string.to_owned());
         if move_string == "pass" {
             return Ok(Turn::Pass);
@@ -311,7 +311,7 @@ impl Board {
         Ok(Turn::Place(end, bug))
     }
 
-    pub(crate) fn from_game_string(s: &str) -> Result<Self> {
+    pub fn from_game_string(s: &str) -> Result<Self> {
         let mut toks = s.split(';');
         let game_type = toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
         let mut board = Board::from_game_type(game_type)?;
@@ -331,7 +331,7 @@ impl Board {
         Ok(board)
     }
 
-    pub(crate) fn apply_untrusted(&mut self, m: Turn) -> Result<()> {
+    pub fn apply_untrusted(&mut self, m: Turn) -> Result<()> {
         let mut moves = Vec::new();
         Rules::generate_moves(self, &mut moves);
         if !moves.contains(&m) {
@@ -341,7 +341,7 @@ impl Board {
         Ok(())
     }
 
-    pub(crate) fn undo_count(&mut self, count: usize) -> Result<()> {
+    pub fn undo_count(&mut self, count: usize) -> Result<()> {
         for _ in 0..count {
             let m = self.turn_history.last().copied().ok_or(UhpError::TooManyUndos)?;
             self.undo(m);
@@ -349,11 +349,11 @@ impl Board {
         Ok(())
     }
 
-    pub(crate) fn last_move(&self) -> Option<Turn> {
+    pub fn last_move(&self) -> Option<Turn> {
         self.turn_history.last().copied()
     }
 
-    pub(crate) fn valid_moves(&self) -> String {
+    pub fn valid_moves(&self) -> String {
         let mut moves = Vec::new();
         Rules::generate_moves(self, &mut moves);
         let mut out = String::new();

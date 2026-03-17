@@ -1,9 +1,9 @@
-// Board representation: wrapping grid of tile locations.
-// Rows wrap around, and each row wraps to the next row.
-// It's like a spiral around a torus.
-//
+/// A Hex is an index into a location on the wrapping grid.
+///
+/// Rows wrap around, and each row wraps to the next row.
+/// It's like a spiral around a torus.
+pub type Hex = u16;
 // A 4x4 example:
-//
 //         11  12  13  14  15
 //           \ / \ / \ / \ /
 //       15 - 0 - 1 - 2 - 3 - 4
@@ -16,27 +16,18 @@
 //     / \ / \ / \ / \
 //    0   1   2   3   4
 
-// Index of a board location.
-#[cfg(feature = "smaller-grid")]
-pub(crate) type Hex = u8;
-#[cfg(not(feature = "smaller-grid"))]
-pub(crate) type Hex = u16;
-
-#[cfg(feature = "smaller-grid")]
-pub const ROW_SIZE: Hex = 16;
-#[cfg(not(feature = "smaller-grid"))]
+/// How many Hexes until it wraps around to the next row.
 pub const ROW_SIZE: Hex = 32;
-
-pub(crate) const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
-pub(crate) const GRID_MASK: Hex = (GRID_SIZE as Hex).wrapping_sub(1);
+/// How many Hexes in the grid.
+pub const GRID_SIZE: usize = ROW_SIZE as usize * ROW_SIZE as usize;
+pub const GRID_MASK: Hex = (GRID_SIZE as Hex).wrapping_sub(1);
 // In the middle of the columns and the rows.
 // To slightly increase cache locality in the early game,
 // and to make formatting slightly simpler.
-pub(crate) const START_HEX: Hex = ROW_SIZE / 2 * (ROW_SIZE + 1);
+pub const START_HEX: Hex = ROW_SIZE / 2 * (ROW_SIZE + 1);
 
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
-#[allow(clippy::unnecessary_cast)]
 pub enum Direction {
     NW = (GRID_MASK & (ROW_SIZE + 1).wrapping_neg()) as u16,
     NE = (GRID_MASK & ROW_SIZE.wrapping_neg()) as u16,
@@ -49,7 +40,6 @@ pub enum Direction {
 // In clockwise order
 impl Direction {
     pub fn all() -> &'static [Direction; 6] {
-        // Omits None.
         &[Direction::NW, Direction::NE, Direction::E, Direction::SE, Direction::SW, Direction::W]
     }
 
@@ -58,7 +48,7 @@ impl Direction {
     }
 }
 
-pub(crate) fn adjacent(hex: Hex) -> [Hex; 6] {
+pub fn adjacent(hex: Hex) -> [Hex; 6] {
     // In clockwise order
     [
         Direction::NW.apply(hex),
@@ -112,20 +102,21 @@ const HEXSET_NUM_WORDS: usize = GRID_SIZE / 32;
 const HEXSET_SHIFT: u32 = GRID_SIZE.trailing_zeros() - 5;
 const HEXSET_MASK: usize = HEXSET_NUM_WORDS - 1;
 
-pub(crate) struct HexSet {
+/// An efficient set of Hex values.
+pub struct HexSet {
     table: [u32; HEXSET_NUM_WORDS],
 }
 
 impl HexSet {
-    pub(crate) fn new() -> HexSet {
+    pub fn new() -> HexSet {
         HexSet { table: [0; HEXSET_NUM_WORDS] }
     }
 
-    pub(crate) fn set(&mut self, hex: Hex) {
+    pub fn set(&mut self, hex: Hex) {
         self.table[hex as usize & HEXSET_MASK] |= 1 << (hex as u32 >> HEXSET_SHIFT);
     }
 
-    pub(crate) fn get(&self, hex: Hex) -> bool {
+    pub fn get(&self, hex: Hex) -> bool {
         (self.table[hex as usize & HEXSET_MASK] >> (hex as u32 >> HEXSET_SHIFT)) & 1 != 0
     }
 }
