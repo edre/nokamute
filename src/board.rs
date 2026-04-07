@@ -97,6 +97,9 @@ impl UnderNode {
     pub fn hex(&self) -> Hex {
         self.hex
     }
+    pub fn height(&self) -> u8 {
+        self.height
+    }
 }
 
 #[derive(Clone)]

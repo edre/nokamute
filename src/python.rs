@@ -8,8 +8,11 @@ use pyo3::exceptions::PyValueError;
 use crate::board::{Board, Color, Turn, hex_to_loc};
 use crate::bug::Bug;
 use crate::eval::BasicEvaluator;
+use crate::hex_grid::Hex;
 
 use minimax::{Game, Evaluator};
+use numpy::ndarray::Array3;
+use numpy::{IntoPyArray, PyArray3};
 
 /// A Hive game move.
 #[pyclass]
@@ -272,9 +275,116 @@ impl GameState {
         let qs = self.board.queens_surrounded();
         (qs[0], qs[1])
     }
+
+    /// Returns the board tensor as a numpy array of shape (84, 32, 32).
+    fn encode_board<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyArray3<f32>>> {
+        const BOARD_SIZE: usize = 32;
+        const CENTER: i32 = 16;
+        const PLANE_SIZE: usize = BOARD_SIZE * BOARD_SIZE;
+        const NUM_CHANNELS: usize = 84;
+        const TOTAL: usize = NUM_CHANNELS * PLANE_SIZE;
+
+        let mut data = vec![0.0f32; TOTAL];
+
+        // Determine centering offset.
+        let (offset_q, offset_r) = self.encode_offset();
+
+        // Write piece data (channels 0-79): 5 stack layers x 16 channels.
+        // Collect pieces per hex, sorted by height, to assign layer indices.
+        type Stack = Vec<(Hex, Vec<(u8, Bug, Color)>)>;
+        let mut stacks: Stack = Vec::new();
+
+        // Gather top-of-stack pieces from occupied_hexes.
+        for color_idx in 0..2 {
+            for &hex in &self.board.occupied_hexes[color_idx] {
+                let node = self.board.node(hex);
+                let top_height = node.clipped_height().max(1);
+                // Find or create stack entry for this hex.
+                if let Some(entry) = stacks.iter_mut().find(|(h, _)| *h == hex) {
+                    entry.1.push((top_height, node.bug(), node.color()));
+                } else {
+                    stacks.push((hex, vec![(top_height, node.bug(), node.color())]));
+                }
+            }
+        }
+
+        // Gather underworld (buried) pieces.
+        for under in self.board.get_underworld() {
+            let node = under.node();
+            if !node.occupied() {
+                continue;
+            }
+            let hex = under.hex();
+            let height = under.height();
+            if let Some(entry) = stacks.iter_mut().find(|(h, _)| *h == hex) {
+                entry.1.push((height, node.bug(), node.color()));
+            } else {
+                stacks.push((hex, vec![(height, node.bug(), node.color())]));
+            }
+        }
+
+        // Write each stack to the tensor.
+        for (hex, mut pieces) in stacks {
+            let (q, r) = hex_to_loc(hex);
+            let bq = q as i32 - offset_q + CENTER;
+            let br = r as i32 - offset_r + CENTER;
+            if bq < 0 || bq >= BOARD_SIZE as i32 || br < 0 || br >= BOARD_SIZE as i32 {
+                continue;
+            }
+            let bq = bq as usize;
+            let br = br as usize;
+            let spatial_idx = bq * BOARD_SIZE + br;
+
+            // Sort by height ascending (bottom of stack first).
+            pieces.sort_by_key(|&(h, _, _)| h);
+
+            for (layer_idx, &(_, bug, color)) in pieces.iter().enumerate() {
+                if layer_idx >= 5 {
+                    break;
+                }
+                let piece_type_idx = bug_to_encode_idx(bug);
+                let color_offset = if color == Color::White { 0 } else { 8 };
+                let channel = layer_idx * 16 + color_offset + piece_type_idx;
+                data[channel * PLANE_SIZE + spatial_idx] = 1.0;
+            }
+        }
+
+        // Write global scalar planes (channels 80-83).
+        let current_player = if self.board.to_move() == Color::White { 1.0f32 } else { 0.0 };
+        let turn_normalized = self.board.turn_num as f32 / 200.0;
+        let white_queen_placed =
+            if self.board.remaining[0][Bug::Queen as usize] == 0 { 1.0f32 } else { 0.0 };
+        let black_queen_placed =
+            if self.board.remaining[1][Bug::Queen as usize] == 0 { 1.0f32 } else { 0.0 };
+
+        let globals = [current_player, turn_normalized, white_queen_placed, black_queen_placed];
+        for (i, &value) in globals.iter().enumerate() {
+            let offset = (80 + i) * PLANE_SIZE;
+            data[offset..offset + PLANE_SIZE].fill(value);
+        }
+
+        let array = Array3::from_shape_vec((84, 32, 32), data)
+            .map_err(|e| PyValueError::new_err(format!("Shape error: {}", e)))?;
+        Ok(array.into_pyarray(py))
+    }
 }
 
 // --- Helpers ---
+
+/// Map Bug enum to the tensor encoding piece type index.
+/// Matches bug_name_to_sort_ord ordering.
+fn bug_to_encode_idx(bug: Bug) -> usize {
+    match bug {
+        Bug::Queen => 0,
+        Bug::Beetle => 1,
+        Bug::Grasshopper => 2,
+        Bug::Ant => 3,
+        Bug::Spider => 4,
+        Bug::Mosquito => 5,
+        Bug::Ladybug => 6,
+        Bug::Pillbug => 7,
+    }
+}
 
 /// Sort ordinal for piece types in the canonical action-space ordering.
 /// Intentionally differs from Bug enum discriminants to group pieces intuitively.
@@ -289,6 +399,37 @@ fn bug_name_to_sort_ord(name: &str) -> u8 {
         "ladybug" => 6,
         "pillbug" => 7,
         _ => 255,
+    }
+}
+
+impl GameState {
+    /// Compute the (q, r) centering offset for tensor encoding.
+    fn encode_offset(&self) -> (i32, i32) {
+        // Priority 1: White queen position.
+        if self.board.remaining[0][Bug::Queen as usize] == 0 {
+            let (q, r) = hex_to_loc(self.board.queens[0]);
+            return (q as i32, r as i32);
+        }
+        // Priority 2: Centroid of occupied hexes.
+        let mut sum_q = 0i32;
+        let mut sum_r = 0i32;
+        let mut count = 0i32;
+        for color_hexes in &self.board.occupied_hexes {
+            for &hex in color_hexes {
+                let (q, r) = hex_to_loc(hex);
+                sum_q += q as i32;
+                sum_r += r as i32;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            let avg_q = (sum_q as f32 / count as f32).round() as i32;
+            let avg_r = (sum_r as f32 / count as f32).round() as i32;
+            (avg_q, avg_r)
+        } else {
+            // Priority 3: Empty board.
+            (0, 0)
+        }
     }
 }
 
