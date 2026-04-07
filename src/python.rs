@@ -1,6 +1,5 @@
 //! Python bindings for nokamute via PyO3.
 //!
-//! Exposes GameState, Move, and related types for use from Python.
 //! Build with: `maturin develop --features python`
 
 use pyo3::prelude::*;
@@ -52,14 +51,16 @@ impl PyMove {
         }
     }
 
-    /// Return a canonical sort key for deterministic ordering.
+    /// Canonical sort key for deterministic move ordering.
+    /// Uses a custom piece ordering (not Bug enum discriminant order)
+    /// to group related pieces for more intuitive action-space layout.
     fn sort_key(&self) -> (u8, u8, i8, i8, i8, i8) {
         let move_type_ord = match self.move_type.as_str() {
             "place" => 0,
             "move" => 1,
             _ => 2,
         };
-        let piece_ord = self.piece_type.as_ref().map_or(255, |p| bug_name_to_index(p));
+        let piece_ord = self.piece_type.as_ref().map_or(255, |p| bug_name_to_sort_ord(p));
         (
             move_type_ord,
             piece_ord,
@@ -71,7 +72,6 @@ impl PyMove {
     }
 }
 
-/// Piece information tuple: (piece_type, color, q, r, stack_height)
 #[pyclass]
 #[derive(Clone)]
 pub struct PyPiece {
@@ -101,15 +101,21 @@ impl PyPiece {
     }
 }
 
-/// Main game state wrapper around nokamute's Board.
 #[pyclass]
 pub struct GameState {
     board: Board,
 }
 
+fn color_to_player(c: Color) -> i8 {
+    match c {
+        Color::White => 1,
+        Color::Black => -1,
+    }
+}
+
 #[pymethods]
 impl GameState {
-    /// Create a new game. Optionally pass a UHP game string to restore state.
+    /// Optionally pass a UHP game string to restore state.
     #[new]
     #[pyo3(signature = (uhp_string=None))]
     fn new(uhp_string: Option<&str>) -> PyResult<Self> {
@@ -125,83 +131,78 @@ impl GameState {
         }
     }
 
-    /// Deep clone the game state.
     fn clone(&self) -> GameState {
         GameState {
             board: self.board.clone(),
         }
     }
 
-    /// Get the current player: 1 for White, -1 for Black.
+    /// 1 for White, -1 for Black.
     fn current_player(&self) -> i8 {
-        match self.board.to_move() {
-            Color::White => 1,
-            Color::Black => -1,
-        }
+        color_to_player(self.board.to_move())
     }
 
-    /// Get the current turn number (0-indexed).
     fn turn_number(&self) -> u16 {
         self.board.turn_num
     }
 
-    /// Check if the game is over.
     fn is_over(&self) -> bool {
         crate::board::Rules::get_winner(&self.board).is_some()
     }
 
-    /// Get the winner: 1 (White), -1 (Black), 0 (draw).
-    /// Returns 0 if game is not over.
-    fn winner(&self) -> i8 {
+    /// Returns 1 (White), -1 (Black), 0 (draw), or None if game is not over.
+    fn game_result(&self) -> Option<i8> {
         match crate::board::Rules::get_winner(&self.board) {
-            Some(minimax::Winner::PlayerToMove) => self.current_player(),
-            Some(minimax::Winner::PlayerJustMoved) => -self.current_player(),
-            Some(minimax::Winner::Draw) => 0,
-            None => 0,
+            Some(minimax::Winner::PlayerToMove) => Some(self.current_player()),
+            Some(minimax::Winner::PlayerJustMoved) => Some(-self.current_player()),
+            Some(minimax::Winner::Draw) => Some(0),
+            None => None,
         }
     }
 
-    /// Get all legal moves as a list of PyMove objects.
+    /// Returns 1 (White), -1 (Black), 0 (draw or not over).
+    fn winner(&self) -> i8 {
+        self.game_result().unwrap_or(0)
+    }
+
     fn legal_moves(&self) -> Vec<PyMove> {
         let mut turns = Vec::new();
         crate::board::Rules::generate_moves(&self.board, &mut turns);
-        turns.into_iter().map(|t| turn_to_pymove(&self.board, t)).collect()
+        let mut moves = Vec::with_capacity(turns.len());
+        for t in turns {
+            moves.push(turn_to_pymove(&self.board, t));
+        }
+        moves
     }
 
-    /// Apply a move to the game state (mutates in place).
     fn apply_move(&mut self, pymove: &PyMove) {
         self.board.apply(pymove.turn);
     }
 
-    /// Undo the last applied move.
     fn undo_move(&mut self, pymove: &PyMove) {
         self.board.undo(pymove.turn);
     }
 
-    /// Get all pieces on the board, including stacked pieces.
-    /// Returns a list of PyPiece objects with (piece_type, color, q, r, stack_height).
     fn pieces(&self) -> Vec<PyPiece> {
-        let mut result = Vec::new();
+        let capacity = self.board.occupied_hexes[0].len()
+            + self.board.occupied_hexes[1].len()
+            + self.board.get_underworld().len();
+        let mut result = Vec::with_capacity(capacity);
 
         for color_idx in 0..2 {
-
             for &hex in &self.board.occupied_hexes[color_idx] {
                 let node = self.board.node(hex);
                 let (q, r) = hex_to_loc(hex);
-                let height = node.clipped_height();
-
-                // Top piece
                 result.push(PyPiece {
-                    piece_type: bug_to_string(node.bug()),
-                    color: if node.color() == Color::White { 1 } else { -1 },
+                    piece_type: node.bug().name().to_string(),
+                    color: color_to_player(node.color()),
                     q,
                     r,
-                    stack_height: height.max(1),
+                    stack_height: node.clipped_height().max(1),
                 });
             }
         }
 
-        // Add underworld pieces (pieces under stacks)
         for under in self.board.get_underworld() {
             let node = under.node();
             if !node.occupied() {
@@ -209,8 +210,8 @@ impl GameState {
             }
             let (q, r) = hex_to_loc(under.hex());
             result.push(PyPiece {
-                piece_type: bug_to_string(node.bug()),
-                color: if node.color() == Color::White { 1 } else { -1 },
+                piece_type: node.bug().name().to_string(),
+                color: color_to_player(node.color()),
                 q,
                 r,
                 stack_height: node.clipped_height().max(1),
@@ -220,74 +221,64 @@ impl GameState {
         result
     }
 
-    /// Get the UHP game string representation.
     fn game_string(&self) -> String {
         self.board.game_string()
     }
 
-    /// Get the UHP move string for a move.
     fn move_string(&self, pymove: &PyMove) -> String {
         self.board.to_move_string(pymove.turn)
     }
 
-    /// Parse a UHP move string into a PyMove.
     fn parse_move(&self, move_string: &str) -> PyResult<PyMove> {
         let turn = self.board.from_move_string(move_string)
             .map_err(|e| PyValueError::new_err(format!("Invalid move string: {:?}", e)))?;
         Ok(turn_to_pymove(&self.board, turn))
     }
 
-    /// Get all valid moves as UHP strings.
     fn valid_moves_uhp(&self) -> String {
         self.board.valid_moves()
     }
 
-    /// Evaluate the current position using nokamute's heuristic.
-    /// Returns a score from the current player's perspective.
+    /// Heuristic score from the current player's perspective.
     fn evaluate(&self) -> f64 {
         let eval = BasicEvaluator::default();
-        let score = eval.evaluate(&self.board);
-        score as f64
+        eval.evaluate(&self.board) as f64
     }
 
-    /// Get the game type string (e.g., "Base+MLP").
     fn game_type(&self) -> String {
         self.board.game_type()
     }
 
-    /// Check if White's queen has been placed.
+    fn queen_placed(&self, player: i8) -> PyResult<bool> {
+        let color_idx = match player {
+            1 => 0,
+            -1 => 1,
+            _ => return Err(PyValueError::new_err("player must be 1 or -1")),
+        };
+        Ok(self.board.remaining[color_idx][Bug::Queen as usize] == 0)
+    }
+
+    /// Kept for convenience; prefer queen_placed(1) / queen_placed(-1).
     fn white_queen_placed(&self) -> bool {
         self.board.remaining[0][Bug::Queen as usize] == 0
     }
 
-    /// Check if Black's queen has been placed.
     fn black_queen_placed(&self) -> bool {
         self.board.remaining[1][Bug::Queen as usize] == 0
     }
 
-    /// Get the number of neighbors surrounding each queen: [black_count, white_count].
+    /// Returns (white_neighbor_count, black_neighbor_count).
     fn queens_neighbor_count(&self) -> (usize, usize) {
         let qs = self.board.queens_surrounded();
         (qs[0], qs[1])
     }
 }
 
-// Helper functions
+// --- Helpers ---
 
-fn bug_to_string(bug: Bug) -> String {
-    match bug {
-        Bug::Queen => "queen",
-        Bug::Grasshopper => "grasshopper",
-        Bug::Spider => "spider",
-        Bug::Ant => "ant",
-        Bug::Beetle => "beetle",
-        Bug::Mosquito => "mosquito",
-        Bug::Ladybug => "ladybug",
-        Bug::Pillbug => "pillbug",
-    }.to_string()
-}
-
-fn bug_name_to_index(name: &str) -> u8 {
+/// Sort ordinal for piece types in the canonical action-space ordering.
+/// Intentionally differs from Bug enum discriminants to group pieces intuitively.
+fn bug_name_to_sort_ord(name: &str) -> u8 {
     match name {
         "queen" => 0,
         "beetle" => 1,
@@ -308,7 +299,7 @@ fn turn_to_pymove(board: &Board, turn: Turn) -> PyMove {
             PyMove {
                 turn,
                 move_type: "place".to_string(),
-                piece_type: Some(bug_to_string(bug)),
+                piece_type: Some(bug.name().to_string()),
                 source_q: None,
                 source_r: None,
                 dest_q: Some(q),
@@ -318,17 +309,11 @@ fn turn_to_pymove(board: &Board, turn: Turn) -> PyMove {
         Turn::Move(src, dst) => {
             let (sq, sr) = hex_to_loc(src);
             let (dq, dr) = hex_to_loc(dst);
-            // Get the piece type at the source
             let node = board.node(src);
-            let piece_type = if node.occupied() {
-                Some(bug_to_string(node.bug()))
-            } else {
-                None
-            };
             PyMove {
                 turn,
                 move_type: "move".to_string(),
-                piece_type,
+                piece_type: Some(node.bug().name().to_string()),
                 source_q: Some(sq),
                 source_r: Some(sr),
                 dest_q: Some(dq),
@@ -347,7 +332,6 @@ fn turn_to_pymove(board: &Board, turn: Turn) -> PyMove {
     }
 }
 
-/// nokamute Python module
 #[pymodule]
 pub fn nokamute(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<GameState>()?;

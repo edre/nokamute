@@ -108,7 +108,7 @@ pub struct Board {
     underworld: [UnderNode; 8],
     underworld_size: usize,
     pub remaining: [[u8; 8]; 2],
-    pub queens: [Hex; 2],
+    pub(crate) queens: [Hex; 2],
     pub occupied_hexes: [Vec<Hex>; 2],
 
     pub turn_num: u16,
