@@ -45,21 +45,21 @@ impl Node {
         Node((self.0 & !3) | clipped_height)
     }
 
-    pub(crate) fn color(self) -> Color {
+    pub fn color(self) -> Color {
         // Color enum is densely packed in 1 bit.
         unsafe { std::mem::transmute::<u8, Color>(self.0 >> 7) }
     }
 
-    pub(crate) fn bug(self) -> Bug {
+    pub fn bug(self) -> Bug {
         // Bug enum is densely packed in 3 bits.
         unsafe { std::mem::transmute::<u8, Bug>((self.0 >> 4) & 7) }
     }
 
-    pub(crate) fn bug_num(self) -> u8 {
+    pub fn bug_num(self) -> u8 {
         (self.0 >> 2) & 3
     }
 
-    pub(crate) fn occupied(self) -> bool {
+    pub fn occupied(self) -> bool {
         self.0 != 0
     }
 
@@ -67,7 +67,7 @@ impl Node {
         self.clipped_height() > 1
     }
 
-    pub(crate) fn clipped_height(self) -> u8 {
+    pub fn clipped_height(self) -> u8 {
         self.0 & 0x3
     }
 }
@@ -97,6 +97,9 @@ impl UnderNode {
     pub fn hex(&self) -> Hex {
         self.hex
     }
+    pub fn height(&self) -> u8 {
+        self.height
+    }
 }
 
 #[derive(Clone)]
@@ -107,11 +110,11 @@ pub struct Board {
     // Sorted by height (for each hex) and no gaps.
     underworld: [UnderNode; 8],
     underworld_size: usize,
-    pub(crate) remaining: [[u8; 8]; 2],
+    pub remaining: [[u8; 8]; 2],
     pub(crate) queens: [Hex; 2],
-    pub(crate) occupied_hexes: [Vec<Hex>; 2],
+    pub occupied_hexes: [Vec<Hex>; 2],
 
-    pub(crate) turn_num: u16,
+    pub turn_num: u16,
     zobrist_table: &'static [u64; GRID_SIZE * 2],
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
@@ -130,7 +133,7 @@ impl Board {
         }
     }
 
-    pub(crate) fn node(&self, hex: Hex) -> Node {
+    pub fn node(&self, hex: Hex) -> Node {
         self.nodes[hex as usize]
     }
 
@@ -242,7 +245,7 @@ impl Board {
         self.underworld_height(hex, self.node(hex))
     }
 
-    pub(crate) fn occupied(&self, hex: Hex) -> bool {
+    pub fn occupied(&self, hex: Hex) -> bool {
         self.node(hex).occupied()
     }
 
@@ -276,7 +279,7 @@ impl Board {
         self.turn_num > 5 && self.get_remaining()[Bug::Queen as usize] > 0
     }
 
-    pub(crate) fn queens_surrounded(&self) -> [usize; 2] {
+    pub fn queens_surrounded(&self) -> [usize; 2] {
         let mut out = [0; 2];
         for (i, entry) in out.iter_mut().enumerate() {
             *entry = adjacent(self.queens[i]).iter().filter(|adj| self.occupied(**adj)).count();
@@ -942,15 +945,14 @@ impl minimax::Game for Rules {
     }
 }
 
-// Coordinates for populating test positions.
-pub(crate) type Loc = (i8, i8);
+// Relative coordinates centered on START_HEX.
+pub type Loc = (i8, i8);
 pub fn loc_to_hex(loc: Loc) -> Hex {
     // Centered in the middle of the board.
     START_HEX.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as Hex)).wrapping_add(loc.0 as Hex)
 }
 
-#[cfg(test)]
-pub(crate) fn hex_to_loc(hex: Hex) -> Loc {
+pub fn hex_to_loc(hex: Hex) -> Loc {
     let mut x = (hex.wrapping_sub(START_HEX - ROW_SIZE / 2) / ROW_SIZE) as i8;
     if x > 7 {
         x -= ROW_SIZE as i8;
