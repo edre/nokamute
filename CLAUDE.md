@@ -53,7 +53,7 @@ Implements the `minimax::Game` trait. Uses a **linear biconnected component algo
 ### Interface Layers
 - **UHP Server** (`uhp_server.rs`): stdin/stdout protocol, compatible with MzingaViewer. Supports Mosquito, Ladybug, Pillbug expansions.
 - **CLI** (`cli.rs`): Interactive terminal play with Unicode board rendering.
-- **Python** (`python.rs`): PyO3 bindings exposing `GameState`, `PyMove`, `PyPiece` classes. Built with `maturin`.
+- **Python** (`python.rs`): PyO3 bindings exposing `GameState`, `PyMove`, `PyPiece` classes. Includes `encode_board()` for ML tensor output (84x32x32 numpy array). Built with `maturin`.
 - **WASM** (`wasm.rs`): Single `uhp(args) -> str` function wrapping a lazy-locked UHP server.
 
 ### Entry Point (main.rs)
@@ -63,11 +63,12 @@ CLI dispatcher with subcommands: `cli`, `uhp`, `play`, `perft`, `uhp-debug`. Key
 
 - `larger-grid` (default) — 32x32 hex grid
 - `smaller-grid` — 16x16 grid, more memory efficient but less accurate at edges
-- `python` — enables PyO3 bindings, changes crate type to cdylib+rlib
+- `python` — enables PyO3 + numpy bindings, changes crate type to cdylib+rlib. Use `cargo check --lib --features python` to verify (not `cargo build`, which fails at link time without a Python interpreter).
 
 ## Key Design Decisions
 
 - **Performance is the primary goal.** Flat arrays, packed structs, minimal allocations. Changes should not regress cache behavior or add unnecessary indirection.
 - **Zobrist hashing** for board state (lazy-initialized via `OnceLock`).
 - **Deterministic move ordering** in Python bindings (via `sort_key()`) for reproducible ML training.
-- Bug types are an enum with 8 variants: Queen, Ant, Spider, Beetle, Grasshopper, Mosquito, Ladybug, Pillbug.
+- **Canonical piece type ordering** (`bug_sort_ord`): Queen=0, Beetle=1, Grasshopper=2, Ant=3, Spider=4, Mosquito=5, Ladybug=6, Pillbug=7. This differs from the `Bug` enum discriminants and is used by both tensor encoding and move sorting.
+- Bug types are an enum with 8 variants: Queen, Grasshopper, Spider, Ant, Beetle, Mosquito, Ladybug, Pillbug (note: enum order differs from sort order above).
