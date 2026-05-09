@@ -430,23 +430,42 @@ impl UhpOptionBool for BackgroundPonderingOption {
 
 // Parse hh:mm:ss as a duration.
 fn parse_hhmmss(time: &str) -> Option<Duration> {
+    // Plain integer = milliseconds, e.g. "1000" == 1 second.
+    if !time.contains(':') {
+        let millis = time.parse::<u64>().ok()?;
+        return Some(Duration::from_millis(millis));
+    }
     let mut toks = time.split(':');
     let hours = toks.next().unwrap_or("").parse::<u64>().ok()?;
     let minutes = toks.next().unwrap_or("").parse::<u64>().ok()?;
-    let seconds = toks.next().unwrap_or("").parse::<u64>().ok()?;
+    let sec_field = toks.next().unwrap_or("");
     if toks.next().is_some() {
         return None;
     }
-    Some(Duration::from_secs(hours * 3600 + minutes * 60 + seconds))
+    let (sec_str, ms_str) = match sec_field.split_once('.') {
+        Some((s, ms)) => (s, Some(ms)),
+        None => (sec_field, None),
+    };
+    let mut dur = Duration::from_secs(hours * 3600 + minutes * 60 + sec_str.parse::<u64>().ok()?);
+    if let Some(ms_str) = ms_str {
+        if ms_str.is_empty() {
+            return None;
+        }
+        dur += Duration::from_millis(ms_str.parse::<u64>().ok()?);
+    }
+    Some(dur)
 }
 
 #[test]
 fn test_parse_hhmmss() {
     assert_eq!(Some(Duration::from_secs(7)), parse_hhmmss("00:00:07"));
     assert_eq!(Some(Duration::from_secs(3661)), parse_hhmmss("01:01:01"));
-    assert_eq!(None, parse_hhmmss("45"));
+    assert_eq!(Some(Duration::from_millis(45)), parse_hhmmss("45"));
+    assert_eq!(Some(Duration::from_millis(1000)), parse_hhmmss("1000"));
+    assert_eq!(Some(Duration::from_millis(1500)), parse_hhmmss("00:00:01.500"));
+    assert_eq!(Some(Duration::from_millis(1004)), parse_hhmmss("00:00:01.004"));
     assert_eq!(None, parse_hhmmss("1:23"));
-    assert_eq!(None, parse_hhmmss("01:02:03:04"));
+    assert_eq!(None, parse_hhmmss("00:00:01."));
     assert_eq!(None, parse_hhmmss("five"));
 }
 
