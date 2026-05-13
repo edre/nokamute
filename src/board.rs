@@ -869,14 +869,14 @@ impl minimax::Game for Rules {
         if n > 10 {
             // Check for position repeat stalemate.
             // More than 32 turns ago, we're not going to bother looking.
-            // Check every 4 turns as both players need to move and move back to repeat.
+            // Step by 2 since positions only repeat on even half-move boundaries.
             let position_repeat_count = board
                 .zobrist_history
                 .iter()
                 .rev()
-                .step_by(4)
+                .step_by(2)
                 .skip(1)
-                .take(8)
+                .take(16)
                 .filter(|&&hash| hash == board.zobrist_hash)
                 .count();
             if position_repeat_count >= 2 {
