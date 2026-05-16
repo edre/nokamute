@@ -1350,4 +1350,13 @@ mod tests {
         let board = Board::from_game_string(r"Base;InProgress;black[11];wA1;bA1 wA1-;wQ /wA1;bQ bA1/;wS1 /wQ;bS1 bQ-;wS2 wQ\;bS2 bS1\;wS1 wS2-;bB1 /bS2;wA2 -wA1;bA2 bA1-;wB1 \wA1;bB1 bA2;wB1 wA2;bB1 bQ;wB1 wQ;bB1 \bB1;wB1 wB1-;bB1 bQ;wB1 wQ").unwrap();
         assert_eq!(None, Rules::get_winner(&board));
     }
+
+    #[test]
+    fn test_winner_sixmove_cycle() {
+        // Regression: 6-move repetition cycles were not detected with step_by(4).
+        let before = Board::from_game_string(r"Base+ML;InProgress;Black[9];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1").unwrap();
+        assert_eq!(None, Rules::get_winner(&before));
+        let after = Board::from_game_string(r"Base+ML;InProgress;White[10];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/").unwrap();
+        assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&after));
+    }
 }
