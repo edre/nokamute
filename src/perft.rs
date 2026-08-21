@@ -20,6 +20,10 @@ pub fn perft(game_string: &str, parallel: bool) {
 }
 
 pub fn uhp_tests(engine_cmd: &[String]) -> bool {
+    uhp_tests_with_verbosity(engine_cmd, false)
+}
+
+pub fn uhp_tests_with_verbosity(engine_cmd: &[String], verbose: bool) -> bool {
     const FAILED: &str = "\x1b[31mFAILED\x1b[m";
     const PASSED: &str = "\x1b[32mpassed\x1b[m";
     let mut engine = UhpClient::new(engine_cmd).unwrap();
@@ -54,6 +58,9 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let game_type = groups.next().unwrap();
         if let Err(error) = engine.new_game(game_type) {
             println!("{FAILED} newgame: {error:?}");
+            if verbose {
+                println!("  testcase: {game_state_string}");
+            }
             success = false;
             continue;
         }
@@ -62,11 +69,22 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         groups.next();
 
         let mut new_state = "Base;NotStarted".to_string();
+        let mut played_moves = Vec::new();
         for move_string in groups {
             match engine.raw_play(move_string) {
-                Ok(string) => new_state = string,
+                Ok(string) => {
+                    played_moves.push(move_string);
+                    new_state = string;
+                }
                 Err(UhpError::EngineError(error)) => {
                     println!("{FAILED} play {move_string} failed: {error}");
+                    if verbose {
+                        println!("  testcase: {game_state_string}");
+                        if !played_moves.is_empty() {
+                            println!("  played: {}", played_moves.join(";"));
+                            println!("  game log: {}", engine.game_log());
+                        }
+                    }
                     success = false;
                     continue 'testcases;
                 }
@@ -79,6 +97,10 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         let state = new_state.split(';').nth(1).unwrap_or("not found");
         if expected_state != state {
             println!("{FAILED} end state expected {expected_state} found {state}");
+            if verbose {
+                println!("  testcase: {game_state_string}");
+                println!("  engine state: {new_state}");
+            }
             success = false;
             continue;
         }
@@ -91,16 +113,56 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
             Ok(s) => s,
             Err(error) => {
                 println!("{FAILED} validmoves: {error:?}");
+                if verbose {
+                    println!("  testcase: {game_state_string}");
+                    println!("  game log: {}", engine.game_log());
+                }
                 success = false;
                 continue;
             }
         };
-        // TODO: actually compare moves
-        let expected_count = expected_moves_string.split(';').count();
-        let count = movestrings.split(';').count();
-        if expected_count != count {
-            // TODO: verbose mode: dump difference
-            println!("{FAILED} expected {expected_count} moves, found {count}");
+
+        let expected_moves =
+            expected_moves_string.split(';').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>();
+        let engine_moves =
+            movestrings.split(';').filter(|s| !s.trim().is_empty()).collect::<Vec<_>>();
+
+        let expected_count = expected_moves.len();
+        let count = engine_moves.len();
+        // Different reference pieces can describe the same UHP move, so compare parsed turns.
+        let board = match Board::from_game_string(game_state_string) {
+            Ok(board) => board,
+            Err(error) => {
+                println!("{FAILED} invalid testcase: {error:?}");
+                success = false;
+                continue;
+            }
+        };
+        let difference = semantic_move_diff(&board, &expected_moves, &engine_moves);
+        if !difference.is_empty() {
+            if expected_count != count {
+                println!("{FAILED} expected {expected_count} moves, found {count}");
+            } else {
+                println!("{FAILED} valid moves differ ({count} moves each)");
+            }
+            if verbose {
+                println!("  testcase: {game_state_string}");
+                board.println();
+                if !difference.missing.is_empty() {
+                    println!("  missing moves: {}", difference.missing.join(";"));
+                }
+                if !difference.extra.is_empty() {
+                    println!("  extra moves: {}", difference.extra.join(";"));
+                }
+                if !difference.invalid_expected.is_empty() {
+                    println!("  invalid expected moves: {}", difference.invalid_expected.join(";"));
+                }
+                if !difference.invalid_actual.is_empty() {
+                    println!("  invalid engine moves: {}", difference.invalid_actual.join(";"));
+                }
+                println!("  expected moves: {expected_moves_string}");
+                println!("  engine moves: {movestrings}");
+            }
             success = false;
             continue;
         }
@@ -108,6 +170,75 @@ pub fn uhp_tests(engine_cmd: &[String]) -> bool {
         println!("{PASSED}");
     }
     success
+}
+
+#[derive(Debug, Default, Eq, PartialEq)]
+struct MoveDifference<'a> {
+    missing: Vec<&'a str>,
+    extra: Vec<&'a str>,
+    invalid_expected: Vec<&'a str>,
+    invalid_actual: Vec<&'a str>,
+}
+
+impl MoveDifference<'_> {
+    fn is_empty(&self) -> bool {
+        self.missing.is_empty()
+            && self.extra.is_empty()
+            && self.invalid_expected.is_empty()
+            && self.invalid_actual.is_empty()
+    }
+}
+
+fn semantic_move_diff<'a>(
+    board: &Board, expected: &[&'a str], actual: &[&'a str],
+) -> MoveDifference<'a> {
+    use std::collections::BTreeMap;
+
+    fn group_moves<'a>(
+        board: &Board, moves: &[&'a str],
+    ) -> (BTreeMap<Turn, Vec<&'a str>>, Vec<&'a str>) {
+        let mut grouped = BTreeMap::<Turn, Vec<&str>>::new();
+        let mut invalid = Vec::new();
+        for &move_string in moves {
+            match parse_comparable_move(board, move_string) {
+                Ok(turn) => grouped.entry(turn).or_default().push(move_string),
+                Err(_) => invalid.push(move_string),
+            }
+        }
+        (grouped, invalid)
+    }
+
+    // Keep each original string so diagnostics reproduce the exact notation after matching turns.
+    let (expected_by_turn, invalid_expected) = group_moves(board, expected);
+    let (mut actual_by_turn, invalid_actual) = group_moves(board, actual);
+    let mut difference = MoveDifference { invalid_expected, invalid_actual, ..Default::default() };
+
+    for (turn, expected_strings) in expected_by_turn {
+        let actual_strings = actual_by_turn.remove(&turn).unwrap_or_default();
+        let matched = expected_strings.len().min(actual_strings.len());
+        difference.missing.extend_from_slice(&expected_strings[matched..]);
+        difference.extra.extend_from_slice(&actual_strings[matched..]);
+    }
+    for actual_strings in actual_by_turn.into_values() {
+        difference.extra.extend(actual_strings);
+    }
+
+    difference
+}
+
+fn parse_comparable_move(board: &Board, move_string: &str) -> Result<Turn, UhpError> {
+    let move_string = move_string.trim();
+    let turn = board.from_move_string(move_string)?;
+    if let Turn::Move(_, _) = turn {
+        let source = move_string.split_once(' ').map(|(source, _)| source);
+        let canonical = board.to_move_string(turn);
+        let canonical_source = canonical.split_once(' ').map(|(source, _)| source);
+        // Pillbug throws may move an opponent's piece, but the named source must still be on top.
+        if source != canonical_source {
+            return Err(UhpError::InvalidMove(move_string.to_owned()));
+        }
+    }
+    Ok(turn)
 }
 
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
@@ -225,6 +356,57 @@ fn test_perft() {
     b = Board::from_game_type("Base+MLP").unwrap();
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
+}
+
+#[test]
+fn test_uhp_tests_public_signature() {
+    let _: fn(&[String]) -> bool = uhp_tests;
+}
+
+#[test]
+fn test_semantic_move_diff_accepts_equivalent_references() {
+    let board =
+        Board::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-").unwrap();
+    let difference = semantic_move_diff(&board, &[r"wA1 \wG1"], &["wA1 wQ/"]);
+    assert!(difference.is_empty(), "{difference:?}");
+}
+
+#[test]
+fn test_semantic_move_diff_finds_equal_count_mismatch() {
+    let board =
+        Board::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-").unwrap();
+    let difference = semantic_move_diff(&board, &[r"wA1 \wG1"], &["wA1 -wQ"]);
+    assert_eq!(difference.missing, vec![r"wA1 \wG1"]);
+    assert_eq!(difference.extra, vec!["wA1 -wQ"]);
+}
+
+#[test]
+fn test_semantic_move_diff_finds_duplicates_and_invalid_moves() {
+    let board =
+        Board::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-").unwrap();
+    let difference = semantic_move_diff(
+        &board,
+        &[r"wA1 \wG1", "invalid-fixture-move"],
+        &[r"wA1 \wG1", "wA1 wQ/", "invalid-engine-move"],
+    );
+    assert_eq!(difference.extra, vec!["wA1 wQ/"]);
+    assert_eq!(difference.invalid_expected, vec!["invalid-fixture-move"]);
+    assert_eq!(difference.invalid_actual, vec!["invalid-engine-move"]);
+}
+
+#[test]
+fn test_semantic_move_diff_rejects_covered_sources() {
+    let board = Board::from_game_string(
+        r"Base;InProgress;White[10];wG1;bG1 wG1-;wQ /wG1;bQ bG1-;wS1 wQ\;bA1 bQ-;wB1 /wS1;bA1 -wQ;wB1 wS1\;bA2 bQ-;wB1 /wS1;bA2 wG1\;wB1 wS1\;bA3 bQ-;wB1 /wS1;bS1 bQ\;wB1 wS1;bS1 wB1\",
+    )
+    .unwrap();
+    let legal = "wB1 /wB1";
+    let covered = "wS1 /wB1";
+    assert_eq!(board.from_move_string(legal).unwrap(), board.from_move_string(covered).unwrap());
+
+    let difference = semantic_move_diff(&board, &[legal], &[covered]);
+    assert_eq!(difference.missing, vec![legal]);
+    assert_eq!(difference.invalid_actual, vec![covered]);
 }
 
 // Regression suite for bugs caught by perft-debug.

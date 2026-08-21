@@ -297,6 +297,10 @@ impl PlayerConfig {
         }
     }
 
+    pub fn verbose(&self) -> bool {
+        self.opts.verbose
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn new_player(&self) -> Box<dyn Player + Send> {
         Box::new(NokamutePlayer::new(
