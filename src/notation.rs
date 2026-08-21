@@ -59,7 +59,7 @@ impl Board {
             return;
         }
         // Name this relative to an adjacent tile.
-        for (dir, adj) in (0..6).zip(adjacent(hex).into_iter()) {
+        for (dir, adj) in (0..6).zip(adjacent(hex)) {
             if self.occupied(adj) {
                 // Reverse directions; they're from the other bug's perspective.
                 out.push_str(match dir {

@@ -656,11 +656,9 @@ impl Board {
                     ends[num_ends] = adj;
                     num_ends += 1;
                 }
-                1 => {
-                    if !immovable.get(adj) {
-                        starts[num_starts] = adj;
-                        num_starts += 1;
-                    }
+                1 if !immovable.get(adj) => {
+                    starts[num_starts] = adj;
+                    num_starts += 1;
                 }
                 _ => {}
             }
