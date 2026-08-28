@@ -26,3 +26,7 @@ mod uhp_server;
 pub use uhp_server::*;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
+#[cfg(feature = "python")]
+mod python;
+#[cfg(feature = "python")]
+pub use python::*;

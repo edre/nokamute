@@ -12,6 +12,8 @@ license = "MIT"
 git-version = "0.3"
 minimax = "0.6.0"
 rand = "0.9"
+numpy = { version = "0.23", optional = true }
+pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 pico-args = "0.4"
@@ -30,11 +32,13 @@ wasm-bindgen-test = "0.3"
 smaller-grid = []
 # No-op for backwards compatibility.
 larger-grid = []
+# Python bindings via PyO3
+python = ["pyo3", "numpy"]
 
 [[bench]]
 name = "minimax"
 harness = false
 
-# For wasm32 library builds.
+# cdylib needed for wasm32 and Python (PyO3) builds.
 [lib]
 crate-type=["cdylib", "rlib"]
