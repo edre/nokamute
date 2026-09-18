@@ -2,6 +2,7 @@ extern crate minimax;
 
 use crate::notation::{Result, UhpError};
 use crate::*;
+use minimax::Game;
 
 use std::io::Write;
 #[cfg(not(target_arch = "wasm32"))]
@@ -75,6 +76,9 @@ impl<W: Write> UhpServer<W> {
     fn best_move(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = false;
         let board = self.board.as_ref().ok_or(UhpError::GameNotStarted)?;
+        if Rules::get_winner(board).is_some() {
+            return Err(UhpError::EngineError("the game is already over".to_string()));
+        }
         let arg_error = || UhpError::UnrecognizedCommand(args.to_string());
         if let Some(arg) = args.strip_prefix("depth ") {
             let depth = arg.parse::<u8>().map_err(|_| arg_error())?;
@@ -477,4 +481,40 @@ fn test_parse_seconds() {
     assert_eq!(Some(Duration::from_mins(1)), parse_seconds("60"));
     assert_eq!(None, parse_seconds("01:23:45"));
     assert_eq!(None, parse_seconds("2e1"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn test_server() -> UhpServer<Cursor<Vec<u8>>> {
+        let mut config = PlayerConfig::new();
+        config.opts = config.opts.with_table_byte_size(1 << 20);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            config.num_threads = Some(1);
+        }
+        UhpServer::new(config, Cursor::new(Vec::new()))
+    }
+
+    fn command(server: &mut UhpServer<Cursor<Vec<u8>>>, input: &str) -> String {
+        server.swap_output(Cursor::new(Vec::new()));
+        server.command(input);
+        let buf = server.swap_output(Cursor::new(Vec::new()));
+        String::from_utf8(buf.into_inner()).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn bestmove_on_finished_game_returns_error_instead_of_panicking() {
+        let mut server = test_server();
+        // Same six-move-repetition draw position exercised by
+        // board::tests::test_winner_sixmove_cycle: Rules::get_winner() is Some(Draw) here.
+        command(
+            &mut server,
+            r"newgame Base+ML;White[10];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/",
+        );
+
+        assert!(command(&mut server, "bestmove depth 1").contains("err"));
+    }
 }
