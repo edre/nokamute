@@ -266,7 +266,7 @@ impl Board {
 
     // https://github.com/jonthysell/Mzinga/wiki/UniversalHiveProtocol#movestring
     #[allow(clippy::wrong_self_convention)]
-    pub(crate) fn from_move_string(&self, move_string: &str) -> Result<Turn> {
+    pub fn from_move_string(&self, move_string: &str) -> Result<Turn> {
         let err = || UhpError::InvalidMove(move_string.to_owned());
         if move_string == "pass" {
             return Ok(Turn::Pass);
@@ -311,7 +311,7 @@ impl Board {
         Ok(Turn::Place(end, bug))
     }
 
-    pub(crate) fn from_game_string(s: &str) -> Result<Self> {
+    pub fn from_game_string(s: &str) -> Result<Self> {
         let mut toks = s.split(';');
         let game_type = toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
         let mut board = Board::from_game_type(game_type)?;
@@ -353,7 +353,7 @@ impl Board {
         self.turn_history.last().copied()
     }
 
-    pub(crate) fn valid_moves(&self) -> String {
+    pub fn valid_moves(&self) -> String {
         let mut moves = Vec::new();
         Rules::generate_moves(self, &mut moves);
         let mut out = String::new();
