@@ -1,7 +1,7 @@
 extern crate minimax;
 
 use crate::notation::{Result, UhpError};
-use crate::{Board, Color, Player, Turn};
+use crate::{Color, GameState, Player, Turn};
 
 use minimax::Winner;
 use std::io::{BufRead, BufReader, Write};
@@ -13,7 +13,7 @@ pub struct UhpClient {
     proc: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
-    board: Board,
+    game: GameState,
     pub name: String,
     pub capabilities: String,
 }
@@ -31,7 +31,7 @@ impl UhpClient {
             proc,
             input,
             output,
-            board: Board::new_core_set(),
+            game: GameState::new_core_set(),
             name: String::new(),
             capabilities: String::new(),
         };
@@ -86,29 +86,29 @@ impl UhpClient {
         let mut command = "newgame ".to_owned();
         command.push_str(game_type);
         let output = self.command(&command)?.join("\n");
-        self.board = Board::from_game_string(game_type)?;
+        self.game = GameState::from_game_string(game_type)?;
         Ok(output)
     }
 
     pub fn raw_play(&mut self, move_string: &str) -> Result<String> {
         let command = format!("play {move_string}");
         let out = self.command(&command)?.join("\n");
-        self.board.apply_untrusted(self.board.from_move_string(move_string)?)?;
+        self.game.apply_untrusted(self.game.from_move_string(move_string)?)?;
         Ok(out)
     }
 
     pub fn apply(&mut self, m: Turn) -> Result<Option<Winner>> {
-        let command = format!("play {}", self.board.to_move_string(m));
+        let command = format!("play {}", self.game.to_move_string(m));
         let out = self.command(&command)?.join("\n");
-        self.board.apply_untrusted(m)?;
+        self.game.apply_untrusted(m)?;
         Ok(match out.split(';').nth(1).unwrap_or_default() {
             "Draw" => Some(Winner::Draw),
-            "WhiteWins" => Some(if self.board.to_move() == Color::White {
+            "WhiteWins" => Some(if self.game.to_move() == Color::White {
                 Winner::PlayerToMove
             } else {
                 Winner::PlayerJustMoved
             }),
-            "BlackWins" => Some(if self.board.to_move() == Color::Black {
+            "BlackWins" => Some(if self.game.to_move() == Color::Black {
                 Winner::PlayerToMove
             } else {
                 Winner::PlayerJustMoved
@@ -119,7 +119,7 @@ impl UhpClient {
 
     pub fn undo(&mut self, num_undo: usize) -> Result<()> {
         self.command(&format!("undo {num_undo}"))?;
-        self.board.undo_count(num_undo)?;
+        self.game.undo_count(num_undo)?;
         Ok(())
     }
 
@@ -131,13 +131,13 @@ impl UhpClient {
     pub fn generate_moves(&mut self) -> Result<Vec<Turn>> {
         let mut moves = Vec::new();
         for move_string in self.raw_generate_moves()?.split(';') {
-            moves.push(self.board.from_move_string(move_string)?);
+            moves.push(self.game.from_move_string(move_string)?);
         }
         Ok(moves)
     }
 
     pub fn game_log(&mut self) -> String {
-        self.board.game_log()
+        self.game.game_log()
     }
 
     pub fn best_move(&mut self, timeout: Duration) -> Result<Turn> {
@@ -147,12 +147,12 @@ impl UhpClient {
         let s = secs % 60;
         let move_string =
             self.command(&format!("bestmove time {h:02}:{m:02}:{s:02}"))?.pop().unwrap();
-        self.board.from_move_string(&move_string)
+        self.game.from_move_string(&move_string)
     }
 
     pub fn best_move_depth(&mut self, depth: u8) -> Result<Turn> {
         let move_string = self.command(&format!("bestmove depth {depth}"))?.pop().unwrap();
-        self.board.from_move_string(&move_string)
+        self.game.from_move_string(&move_string)
     }
 }
 

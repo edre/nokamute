@@ -6,7 +6,7 @@ use crate::cli::CliPlayer;
 use crate::mcts::BiasedRollouts;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
-use crate::{nokamute_version, BasicEvaluator, Board, Bug, Rules, Turn};
+use crate::{nokamute_version, BasicEvaluator, Bug, GameState, Rules, Turn};
 use minimax::*;
 use std::time::Duration;
 
@@ -29,7 +29,7 @@ pub(crate) trait Player {
 fn face_off(
     game_type: &str, mut player1: Box<dyn Player>, mut player2: Box<dyn Player>,
 ) -> Option<String> {
-    let mut b = Board::from_game_type(game_type).unwrap();
+    let mut b = GameState::from_game_type(game_type).unwrap();
     player1.new_game(game_type);
     player2.new_game(game_type);
     let mut players = [player1, player2];
@@ -101,7 +101,7 @@ pub fn play_game(
 }
 
 struct NokamutePlayer {
-    board: Board,
+    game: GameState,
     strategy: Box<dyn Strategy<Rules> + Send>,
     random_opening: bool,
     name: String,
@@ -116,7 +116,12 @@ impl NokamutePlayer {
         name: &str, mut strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool,
     ) -> Self {
         strategy.set_timeout(Duration::from_secs(5));
-        NokamutePlayer { board: Board::default(), strategy, random_opening, name: name.to_owned() }
+        NokamutePlayer {
+            game: GameState::default(),
+            strategy,
+            random_opening,
+            name: name.to_owned(),
+        }
     }
 }
 
@@ -126,24 +131,23 @@ impl Player for NokamutePlayer {
     }
 
     fn new_game(&mut self, game_string: &str) {
-        self.board = Board::from_game_string(game_string).unwrap();
+        self.game = GameState::from_game_string(game_string).unwrap();
     }
 
     fn play_move(&mut self, m: Turn) {
-        self.board.apply(m);
+        self.game.apply(m);
     }
 
     fn undo_move(&mut self, m: Turn) {
-        self.board.undo(m);
+        self.game.undo(m);
     }
 
     fn generate_move(&mut self) -> Turn {
         if self.random_opening {
             // Ignore minimax and just throw out a random jumpy bug for the first move.
-            if self.board.turn_num < 2 {
+            if self.game.turn_num < 2 {
                 loop {
-                    let turn =
-                        minimax::Random::<Rules>::default().choose_move(&self.board).unwrap();
+                    let turn = minimax::Random::<Rules>::default().choose_move(&self.game).unwrap();
                     if let Turn::Place(_, bug) = turn {
                         if matches!(
                             bug,
@@ -153,10 +157,9 @@ impl Player for NokamutePlayer {
                         }
                     }
                 }
-            } else if self.board.turn_num < 4 {
+            } else if self.game.turn_num < 4 {
                 loop {
-                    let turn =
-                        minimax::Random::<Rules>::default().choose_move(&self.board).unwrap();
+                    let turn = minimax::Random::<Rules>::default().choose_move(&self.game).unwrap();
                     if let Turn::Place(_, bug) = turn {
                         if bug == Bug::Queen {
                             return turn;
@@ -165,7 +168,7 @@ impl Player for NokamutePlayer {
                 }
             }
         }
-        self.strategy.choose_move(&self.board).unwrap()
+        self.strategy.choose_move(&self.game).unwrap()
     }
 
     fn principal_variation(&self) -> Vec<Turn> {

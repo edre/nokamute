@@ -1,7 +1,6 @@
 extern crate git_version;
 extern crate minimax;
-use crate::{adjacent, Board, Bug, Color, Direction, Hex, Node, Rules, Turn, START_HEX};
-use minimax::Game;
+use crate::{adjacent, Bug, Color, Direction, GameState, Hex, Node, Turn, START_HEX};
 
 #[derive(Debug)]
 pub enum UhpError {
@@ -31,8 +30,8 @@ pub fn nokamute_version() -> &'static str {
     version.strip_prefix('v').unwrap_or(version)
 }
 
-impl Board {
-    // New board from UHP GameTypeString, e.g. "Base+MLP"
+impl GameState {
+    // New game from UHP GameTypeString, e.g. "Base+MLP"
     pub fn from_game_type(game_type: &str) -> Result<Self> {
         let err = || UhpError::InvalidGameType(game_type.to_owned());
         let mut starting = [1, 3, 2, 3, 2, 0, 0, 0];
@@ -50,7 +49,7 @@ impl Board {
                 }
             }
         }
-        Ok(Board::new(starting))
+        Ok(GameState::new(starting))
     }
 
     pub fn hex_name(&self, hex: Hex, out: &mut String) {
@@ -168,7 +167,7 @@ impl Board {
         if self.turn_history.is_empty() {
             return "NotStarted";
         }
-        match Rules::get_winner(self) {
+        match self.get_winner() {
             Some(minimax::Winner::Draw) => "Draw",
             Some(minimax::Winner::PlayerToMove) => match self.to_move() {
                 Color::Black => "BlackWins",
@@ -187,12 +186,12 @@ impl Board {
     }
 
     pub fn game_log(&self) -> String {
-        let mut board = Board::from_game_type(&self.game_type()).unwrap();
+        let mut game = GameState::from_game_type(&self.game_type()).unwrap();
         let mut log = String::new();
         for &m in &self.turn_history {
-            log.push_str(&board.to_move_string(m));
+            log.push_str(&game.to_move_string(m));
             log.push(';');
-            board.apply(m);
+            game.apply(m);
         }
         if log.ends_with(';') {
             log.pop();
@@ -243,7 +242,7 @@ impl Board {
         Some((color, bug, bug_num, dir))
     }
 
-    // Returns the location of the piece, or None if it is not on the board.
+    // Returns the location of the piece, or None if it is not in play.
     pub fn find_bug(&self, color: Color, bug: Bug, bug_num: u8) -> Option<Hex> {
         self.occupied_hexes[color as usize]
             .iter()
@@ -314,26 +313,26 @@ impl Board {
     pub fn from_game_string(s: &str) -> Result<Self> {
         let mut toks = s.split(';');
         let game_type = toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
-        let mut board = Board::from_game_type(game_type)?;
+        let mut game = GameState::from_game_type(game_type)?;
         // We don't actually care about the game state, but
         // we'll just treat this like a game type if it's
         if toks.next().is_none() {
-            return Ok(board);
+            return Ok(game);
         }
         // Don't care about turn string either.
         // Although it would say which color moved first?
         toks.next().ok_or_else(|| UhpError::InvalidGameString(s.to_owned()))?;
         // The rest are move strings.
         for move_string in toks {
-            let m = board.from_move_string(move_string)?;
-            board.apply_untrusted(m)?;
+            let m = game.from_move_string(move_string)?;
+            game.apply_untrusted(m)?;
         }
-        Ok(board)
+        Ok(game)
     }
 
     pub fn apply_untrusted(&mut self, m: Turn) -> Result<()> {
         let mut moves = Vec::new();
-        Rules::generate_moves(self, &mut moves);
+        self.generate_moves(&mut moves);
         if !moves.contains(&m) {
             return Err(UhpError::InvalidMove("That is not a valid move".to_string()));
         }
@@ -355,7 +354,7 @@ impl Board {
 
     pub fn valid_moves(&self) -> String {
         let mut moves = Vec::new();
-        Rules::generate_moves(self, &mut moves);
+        self.generate_moves(&mut moves);
         let mut out = String::new();
         for m in moves {
             out.push_str(&self.to_move_string(m));
@@ -372,31 +371,31 @@ impl Board {
 mod tests {
     use super::*;
     use crate::Rules;
-    use minimax::{Game, Strategy};
+    use minimax::Strategy;
 
     #[test]
     fn test_move_string_round_trip() {
-        let mut board = Board::from_game_type("Base+MLP").unwrap();
+        let mut game = GameState::from_game_type("Base+MLP").unwrap();
         let mut rand = minimax::Random::<Rules>::new();
         for iter in 0..20 {
             let mut depth = 0;
             for _ in 0..20 {
                 depth += 1;
-                let m = rand.choose_move(&board).unwrap();
-                let move_string = board.to_move_string(m);
+                let m = rand.choose_move(&game).unwrap();
+                let move_string = game.to_move_string(m);
                 assert_eq!(
                     m,
-                    board.from_move_string(&move_string).unwrap(),
+                    game.from_move_string(&move_string).unwrap(),
                     "iter={}, move_string={}",
                     iter,
                     move_string,
                 );
-                board.apply_untrusted(m).unwrap();
-                if Rules::get_winner(&board).is_some() {
+                game.apply_untrusted(m).unwrap();
+                if game.get_winner().is_some() {
                     break;
                 }
             }
-            board.undo_count(depth).unwrap();
+            game.undo_count(depth).unwrap();
         }
     }
 }

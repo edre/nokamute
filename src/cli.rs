@@ -1,11 +1,11 @@
 use crate::player::{Player, PlayerConfig};
-use crate::{Board, Bug, Color, Hex, Rules, Turn, ROW_SIZE, START_HEX};
+use crate::{Bug, Color, GameState, Hex, Rules, Turn, ROW_SIZE, START_HEX};
 use minimax::{Game, Strategy};
 use std::fmt::{Display, Formatter, Result};
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
 
-impl Display for Board {
+impl Display for GameState {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.fancy_fmt(&[]))
     }
@@ -15,7 +15,7 @@ const FREE_SPACE: char = '\u{ff0e}';
 const INVERT_BG_COLOR: &str = "\x1b[7m";
 const RESET_COLOR: &str = "\x1b[0m";
 
-impl Board {
+impl GameState {
     // return the Hex to the upper left and lower right of all occupied nodes.
     // Given wrapping, the second may be less than the first.
     fn bounding_box(&self) -> (Hex, Hex, Hex, Hex) {
@@ -160,8 +160,8 @@ fn read_line(prompt: &str) -> String {
     }
 }
 
-fn input_hex(board: &Board, prompt: &str, options: &[Hex]) -> Option<Hex> {
-    board.println_highlights(options);
+fn input_hex(game: &GameState, prompt: &str, options: &[Hex]) -> Option<Hex> {
+    game.println_highlights(options);
     let line = read_line(prompt);
     let index = if let Ok(num) = line.parse::<usize>() {
         num
@@ -199,7 +199,7 @@ fn input_bug(options: &[Bug]) -> Option<Bug> {
     }
 }
 
-fn input_movement(board: &Board, moves: &[Turn]) -> Option<Turn> {
+fn input_movement(game: &GameState, moves: &[Turn]) -> Option<Turn> {
     let mut starts = moves
         .iter()
         .filter_map(|m| if let Turn::Move(start, _) = m { Some(*start) } else { None })
@@ -210,7 +210,7 @@ fn input_movement(board: &Board, moves: &[Turn]) -> Option<Turn> {
         println!("No movements available.");
         return None;
     }
-    let start = input_hex(board, "Move which bug? ", &starts)?;
+    let start = input_hex(game, "Move which bug? ", &starts)?;
 
     let mut ends = moves
         .iter()
@@ -228,12 +228,12 @@ fn input_movement(board: &Board, moves: &[Turn]) -> Option<Turn> {
         .collect::<Vec<_>>();
     ends.sort_unstable();
     ends.dedup();
-    let end = input_hex(board, "Move to where? ", &ends)?;
+    let end = input_hex(game, "Move to where? ", &ends)?;
 
     Some(Turn::Move(start, end))
 }
 
-fn input_placement(board: &Board, moves: &[Turn]) -> Option<Turn> {
+fn input_placement(game: &GameState, moves: &[Turn]) -> Option<Turn> {
     let mut places = moves
         .iter()
         .filter_map(|m| if let Turn::Place(place, _) = m { Some(*place) } else { None })
@@ -244,7 +244,7 @@ fn input_placement(board: &Board, moves: &[Turn]) -> Option<Turn> {
         println!("No placements available.");
         return None;
     }
-    let place = input_hex(board, "Place new bug where? ", &places)?;
+    let place = input_hex(game, "Place new bug where? ", &places)?;
 
     let bugs = moves
         .iter()
@@ -256,12 +256,12 @@ fn input_placement(board: &Board, moves: &[Turn]) -> Option<Turn> {
 }
 
 pub(crate) struct CliPlayer {
-    board: Board,
+    game: GameState,
 }
 
 impl CliPlayer {
     pub(crate) fn new() -> Self {
-        Self { board: Board::default() }
+        Self { game: GameState::default() }
     }
 }
 
@@ -271,31 +271,31 @@ impl Player for CliPlayer {
     }
 
     fn new_game(&mut self, game_type: &str) {
-        self.board = Board::from_game_type(game_type).unwrap();
+        self.game = GameState::from_game_type(game_type).unwrap();
     }
 
     fn play_move(&mut self, turn: Turn) {
-        self.board.apply(turn)
+        self.game.apply(turn)
     }
 
     fn undo_move(&mut self, turn: Turn) {
-        self.board.undo(turn);
+        self.game.undo(turn);
     }
 
     fn generate_move(&mut self) -> Turn {
         let mut moves = Vec::new();
-        Rules::generate_moves(&self.board, &mut moves);
+        Rules::generate_moves(&self.game, &mut moves);
         if moves[0] == Turn::Pass {
             return Turn::Pass;
         }
         loop {
             let line = read_line("move or place: ");
             if line.starts_with("move") {
-                if let Some(m) = input_movement(&self.board, &moves) {
+                if let Some(m) = input_movement(&self.game, &moves) {
                     break m;
                 }
             } else if line.starts_with("place") {
-                if let Some(m) = input_placement(&self.board, &moves) {
+                if let Some(m) = input_placement(&self.game, &moves) {
                     break m;
                 }
             }
@@ -305,13 +305,13 @@ impl Player for CliPlayer {
 
 pub fn terminal_game_interface(config: PlayerConfig) {
     let mut player = config.new_player();
-    let mut board = Board::default();
+    let mut game = GameState::default();
     let mut history = Vec::<Turn>::new();
     let mut prev_pv = Vec::new();
-    let mut prev_pv_board = Board::default();
+    let mut prev_pv_game = GameState::default();
     loop {
-        if let Some(winner) = Rules::get_winner(&board) {
-            board.println();
+        if let Some(winner) = game.get_winner() {
+            game.println();
             if winner == minimax::Winner::Draw {
                 println!("Game over. Draw.");
             } else {
@@ -321,15 +321,15 @@ pub fn terminal_game_interface(config: PlayerConfig) {
         }
         // Precompute possible moves.
         let mut moves = Vec::new();
-        Rules::generate_moves(&board, &mut moves);
+        game.generate_moves(&mut moves);
         if moves[0] == Turn::Pass {
             // Auto-pass if there are no valid moves.
-            board.apply(Turn::Pass);
+            game.apply(Turn::Pass);
             continue;
         }
 
-        board.println();
-        print!("{:?} to move", board.to_move());
+        game.println();
+        print!("{:?} to move", game.to_move());
         let line = read_line(": ");
 
         if line.starts_with("ai") {
@@ -346,10 +346,10 @@ pub fn terminal_game_interface(config: PlayerConfig) {
             }
             let m = player.generate_move();
             player.play_move(m);
-            prev_pv_board = board.clone();
+            prev_pv_game = game.clone();
             prev_pv = player.principal_variation();
             history.push(m);
-            board.apply(m);
+            game.apply(m);
         } else if line.starts_with("mcts") {
             let opts = minimax::MCTSOptions::default().with_max_rollout_depth(200);
             let mut mcts = minimax::MonteCarloTreeSearch::<Rules>::new(opts);
@@ -358,47 +358,47 @@ pub fn terminal_game_interface(config: PlayerConfig) {
                     mcts.set_max_rollouts(num);
                 }
             }
-            if let Some(m) = mcts.choose_move(&board) {
+            if let Some(m) = mcts.choose_move(&game) {
                 history.push(m);
-                board.apply(m);
+                game.apply(m);
                 player.play_move(m);
             }
         } else if line.starts_with("move") {
-            if let Some(m) = input_movement(&board, &moves) {
+            if let Some(m) = input_movement(&game, &moves) {
                 history.push(m);
-                board.apply(m);
+                game.apply(m);
                 player.play_move(m);
             }
         } else if line.starts_with("place") {
-            if let Some(m) = input_placement(&board, &moves) {
+            if let Some(m) = input_placement(&game, &moves) {
                 history.push(m);
-                board.apply(m);
+                game.apply(m);
                 player.play_move(m);
             }
         } else if line.starts_with("pass") {
             history.push(Turn::Pass);
-            board.apply(Turn::Pass);
+            game.apply(Turn::Pass);
             player.play_move(Turn::Pass);
         } else if line.starts_with("undo") {
             if let Some(m) = history.pop() {
-                board.undo(m);
+                game.undo(m);
                 player.undo_move(m);
             }
         } else if line.starts_with("pv") {
             for (i, &m) in prev_pv.iter().enumerate() {
-                prev_pv_board.apply(m);
+                prev_pv_game.apply(m);
                 if i > 0 {
                     println!("Principal variation depth {i}");
-                    prev_pv_board.println();
+                    prev_pv_game.println();
                 }
             }
             for &m in prev_pv.iter().rev() {
-                prev_pv_board.undo(m);
+                prev_pv_game.undo(m);
             }
-            println!("Current board:");
+            println!("Current game:");
         } else if line.starts_with("newgame") {
             let game_string = read_line("Game type? ");
-            board = if let Ok(b) = Board::from_game_string(&game_string) {
+            game = if let Ok(b) = GameState::from_game_string(&game_string) {
                 b
             } else {
                 println!("Invalid game string");

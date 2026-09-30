@@ -9,13 +9,13 @@ fn help() {
         r#"nokamute hive engine {}
 
 commands:
- cli:   Interactive interface to a board
+ cli:   Interactive interface to a game
  uhp:   Run as a Universal Hive Protocol engine
  play [--game-type=] [--depth=] [--timeout=] [player1] [player2]:
         Play a game, with each player being "human", "ai|nokamute",
         or a path to a UHP engine
  perft [--parallel] [game_state]:
-        Count the number of board states at each depth
+        Count the number of game states at each depth
  uhp-debug [--search=game_state] [--verbose|--uhp-verbose] engine_command
         Run external UHP engine through correctness testsuite,
         then randomly search for discrepancies with nokamute's move generator.

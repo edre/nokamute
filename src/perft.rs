@@ -1,5 +1,5 @@
 use crate::uhp_client::UhpClient;
-use crate::{Board, Rules, Turn, UhpError};
+use crate::{GameState, Rules, Turn, UhpError};
 use minimax::{Game, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
@@ -12,7 +12,7 @@ fn standard_games(game_string: &str) -> &str {
 pub fn perft(game_string: &str, parallel: bool) {
     let game_string = standard_games(game_string);
     println!("{game_string}");
-    let mut b = Board::from_game_string(game_string).unwrap();
+    let mut b = GameState::from_game_string(game_string).unwrap();
     if game_string.contains(';') {
         b.println();
     }
@@ -130,15 +130,15 @@ pub fn uhp_tests_with_verbosity(engine_cmd: &[String], verbose: bool) -> bool {
         let expected_count = expected_moves.len();
         let count = engine_moves.len();
         // Different reference pieces can describe the same UHP move, so compare parsed turns.
-        let board = match Board::from_game_string(game_state_string) {
-            Ok(board) => board,
+        let game = match GameState::from_game_string(game_state_string) {
+            Ok(game) => game,
             Err(error) => {
                 println!("{FAILED} invalid testcase: {error:?}");
                 success = false;
                 continue;
             }
         };
-        let difference = semantic_move_diff(&board, &expected_moves, &engine_moves);
+        let difference = semantic_move_diff(&game, &expected_moves, &engine_moves);
         if !difference.is_empty() {
             if expected_count != count {
                 println!("{FAILED} expected {expected_count} moves, found {count}");
@@ -147,7 +147,7 @@ pub fn uhp_tests_with_verbosity(engine_cmd: &[String], verbose: bool) -> bool {
             }
             if verbose {
                 println!("  testcase: {game_state_string}");
-                board.println();
+                game.println();
                 if !difference.missing.is_empty() {
                     println!("  missing moves: {}", difference.missing.join(";"));
                 }
@@ -190,17 +190,17 @@ impl MoveDifference<'_> {
 }
 
 fn semantic_move_diff<'a>(
-    board: &Board, expected: &[&'a str], actual: &[&'a str],
+    game: &GameState, expected: &[&'a str], actual: &[&'a str],
 ) -> MoveDifference<'a> {
     use std::collections::BTreeMap;
 
     fn group_moves<'a>(
-        board: &Board, moves: &[&'a str],
+        game: &GameState, moves: &[&'a str],
     ) -> (BTreeMap<Turn, Vec<&'a str>>, Vec<&'a str>) {
         let mut grouped = BTreeMap::<Turn, Vec<&str>>::new();
         let mut invalid = Vec::new();
         for &move_string in moves {
-            match parse_comparable_move(board, move_string) {
+            match parse_comparable_move(game, move_string) {
                 Ok(turn) => grouped.entry(turn).or_default().push(move_string),
                 Err(_) => invalid.push(move_string),
             }
@@ -209,8 +209,8 @@ fn semantic_move_diff<'a>(
     }
 
     // Keep each original string so diagnostics reproduce the exact notation after matching turns.
-    let (expected_by_turn, invalid_expected) = group_moves(board, expected);
-    let (mut actual_by_turn, invalid_actual) = group_moves(board, actual);
+    let (expected_by_turn, invalid_expected) = group_moves(game, expected);
+    let (mut actual_by_turn, invalid_actual) = group_moves(game, actual);
     let mut difference = MoveDifference { invalid_expected, invalid_actual, ..Default::default() };
 
     for (turn, expected_strings) in expected_by_turn {
@@ -226,12 +226,12 @@ fn semantic_move_diff<'a>(
     difference
 }
 
-fn parse_comparable_move(board: &Board, move_string: &str) -> Result<Turn, UhpError> {
+fn parse_comparable_move(game: &GameState, move_string: &str) -> Result<Turn, UhpError> {
     let move_string = move_string.trim();
-    let turn = board.from_move_string(move_string)?;
+    let turn = game.from_move_string(move_string)?;
     if let Turn::Move(_, _) = turn {
         let source = move_string.split_once(' ').map(|(source, _)| source);
-        let canonical = board.to_move_string(turn);
+        let canonical = game.to_move_string(turn);
         let canonical_source = canonical.split_once(' ').map(|(source, _)| source);
         // Pillbug throws may move an opponent's piece, but the named source must still be on top.
         if source != canonical_source {
@@ -246,7 +246,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     let game_string = standard_games(game_string);
     let mut engine = UhpClient::new(engine_cmd).unwrap();
     engine.new_game(game_string).unwrap();
-    let mut board = Board::from_game_string(game_string).unwrap();
+    let mut game = GameState::from_game_string(game_string).unwrap();
     // Generate random positions at the given depth, and compare output.
     let mut rand = minimax::Random::<Rules>::new();
     let mut moves = Vec::new();
@@ -259,28 +259,28 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
         for _ in 0..depth {
             // Check for discrepancies on every move.
             moves.clear();
-            Rules::generate_moves(&board, &mut moves);
+            Rules::generate_moves(&game, &mut moves);
             let engine_moves = engine.generate_moves().unwrap();
             if moves.len() != engine_moves.len() {
                 println!("game log: {}", engine.game_log());
-                dump_difference(&mut board, iter, &moves, &engine_moves);
+                dump_difference(&mut game, iter, &moves, &engine_moves);
                 return;
             }
 
-            let m = rand.choose_move(&board).unwrap();
+            let m = rand.choose_move(&game).unwrap();
             stack.push(m);
-            board.apply(m);
-            let board_winner = Rules::get_winner(&board);
+            game.apply(m);
+            let game_winner = Rules::get_winner(&game);
             let engine_winner = engine.apply(m).unwrap();
-            if board_winner != engine_winner {
+            if game_winner != engine_winner {
                 println!(
-                    "iter {iter} game end disagreement: board_winner={board_winner:?} engine_winner={engine_winner:?}"
+                    "iter {iter} game end disagreement: game_winner={game_winner:?} engine_winner={engine_winner:?}"
                 );
                 println!("game log: {}", engine.game_log());
-                board.println();
+                game.println();
                 return;
             }
-            if board_winner.is_some() {
+            if game_winner.is_some() {
                 break;
             }
         }
@@ -288,19 +288,21 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
         // Unwrap
         engine.undo(stack.len()).unwrap();
         while let Some(m) = stack.pop() {
-            board.undo(m);
+            game.undo(m);
         }
     }
 }
 
-fn dump_difference(board: &mut Board, iter: usize, nokamute_moves: &[Turn], engine_moves: &[Turn]) {
+fn dump_difference(
+    game: &mut GameState, iter: usize, nokamute_moves: &[Turn], engine_moves: &[Turn],
+) {
     println!(
         "iteration {iter} found discrepancy: {} vs {} moves",
         nokamute_moves.len(),
         engine_moves.len()
     );
     println!("position:");
-    board.println();
+    game.println();
     let mut common = Vec::new();
     let mut nokamute_only = Vec::new();
     let mut engine_only = Vec::new();
@@ -325,9 +327,9 @@ fn dump_difference(board: &mut Board, iter: usize, nokamute_moves: &[Turn], engi
             println!("{title}:");
         }
         for &m in moves.iter() {
-            board.apply(m);
-            board.println();
-            board.undo(m);
+            game.apply(m);
+            game.println();
+            game.undo(m);
         }
     };
 
@@ -349,11 +351,11 @@ fn find_dups(moves: &[Turn]) -> Vec<Turn> {
 
 #[test]
 fn test_perft() {
-    let mut b = Board::from_game_type("Base").unwrap();
+    let mut b = GameState::from_game_type("Base").unwrap();
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 4, 96, 1440, 21600]);
 
-    b = Board::from_game_type("Base+MLP").unwrap();
+    b = GameState::from_game_type("Base+MLP").unwrap();
     let move_counts = minimax::perft::<Rules>(&mut b, 4, false);
     assert_eq!(move_counts, vec![1, 7, 294, 6678, 151686]);
 }
@@ -365,27 +367,27 @@ fn test_uhp_tests_public_signature() {
 
 #[test]
 fn test_semantic_move_diff_accepts_equivalent_references() {
-    let board =
-        Board::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-").unwrap();
-    let difference = semantic_move_diff(&board, &[r"wA1 \wG1"], &["wA1 wQ/"]);
+    let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
+        .unwrap();
+    let difference = semantic_move_diff(&game, &[r"wA1 \wG1"], &["wA1 wQ/"]);
     assert!(difference.is_empty(), "{difference:?}");
 }
 
 #[test]
 fn test_semantic_move_diff_finds_equal_count_mismatch() {
-    let board =
-        Board::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-").unwrap();
-    let difference = semantic_move_diff(&board, &[r"wA1 \wG1"], &["wA1 -wQ"]);
+    let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
+        .unwrap();
+    let difference = semantic_move_diff(&game, &[r"wA1 \wG1"], &["wA1 -wQ"]);
     assert_eq!(difference.missing, vec![r"wA1 \wG1"]);
     assert_eq!(difference.extra, vec!["wA1 -wQ"]);
 }
 
 #[test]
 fn test_semantic_move_diff_finds_duplicates_and_invalid_moves() {
-    let board =
-        Board::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-").unwrap();
+    let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
+        .unwrap();
     let difference = semantic_move_diff(
-        &board,
+        &game,
         &[r"wA1 \wG1", "invalid-fixture-move"],
         &[r"wA1 \wG1", "wA1 wQ/", "invalid-engine-move"],
     );
@@ -396,15 +398,15 @@ fn test_semantic_move_diff_finds_duplicates_and_invalid_moves() {
 
 #[test]
 fn test_semantic_move_diff_rejects_covered_sources() {
-    let board = Board::from_game_string(
+    let game = GameState::from_game_string(
         r"Base;InProgress;White[10];wG1;bG1 wG1-;wQ /wG1;bQ bG1-;wS1 wQ\;bA1 bQ-;wB1 /wS1;bA1 -wQ;wB1 wS1\;bA2 bQ-;wB1 /wS1;bA2 wG1\;wB1 wS1\;bA3 bQ-;wB1 /wS1;bS1 bQ\;wB1 wS1;bS1 wB1\",
     )
     .unwrap();
     let legal = "wB1 /wB1";
     let covered = "wS1 /wB1";
-    assert_eq!(board.from_move_string(legal).unwrap(), board.from_move_string(covered).unwrap());
+    assert_eq!(game.from_move_string(legal).unwrap(), game.from_move_string(covered).unwrap());
 
-    let difference = semantic_move_diff(&board, &[legal], &[covered]);
+    let difference = semantic_move_diff(&game, &[legal], &[covered]);
     assert_eq!(difference.missing, vec![legal]);
     assert_eq!(difference.invalid_actual, vec![covered]);
 }
@@ -414,14 +416,14 @@ fn test_semantic_move_diff_rejects_covered_sources() {
 #[test]
 fn test_winner_fail() {
     use minimax::Game;
-    let b = Board::from_game_string(r#"Base+MLP;InProgress;Black[99];wP;bB1 \wP;wG1 wP-;bA1 -bB1;wL /wP;bP /bA1;wQ wP\;bQ -bA1;wQ \wG1;bG1 /bP;wL \bB1;bB2 bP\;wQ bA1\;bL -bQ;wL bB1/;wQ bL\;wG1 /wP"#).unwrap();
+    let b = GameState::from_game_string(r#"Base+MLP;InProgress;Black[99];wP;bB1 \wP;wG1 wP-;bA1 -bB1;wL /wP;bP /bA1;wQ wP\;bQ -bA1;wQ \wG1;bG1 /bP;wL \bB1;bB2 bP\;wQ bA1\;bL -bQ;wL bB1/;wQ bL\;wG1 /wP"#).unwrap();
     assert_eq!(None, Rules::get_winner(&b));
 }
 
 #[test]
 fn test_mosquito_throw() {
     // TODO: fix
-    //let b = UhpBoard::new(r#"Base+MLP;InProgress;wM;bP \wM;wS1 /wM;bB1 bP/;wB1 -wS1;bM \bB1;wQ wM\;bQ /bM;wG1 /wB1;bG1 -bM;wP -wG1;bM bB1;wQ /bP;bG2 bG1/;wP wP\;bB2 -bG1;wB2 wB1\;wQ bM\;wA1 -wB1;bA1 bM/"#);
+    //let b = Uhpgame::new(r#"Base+MLP;InProgress;wM;bP \wM;wS1 /wM;bB1 bP/;wB1 -wS1;bM \bB1;wQ wM\;bQ /bM;wG1 /wB1;bG1 -bM;wP -wG1;bM bB1;wQ /bP;bG2 bG1/;wP wP\;bB2 -bG1;wB2 wB1\;wQ bM\;wA1 -wB1;bA1 bM/"#);
     // assert the mosquito can throw the pillbug
     // another: r#"Base+MLP;wM;bB1 /wM;wP wM/;bG1 bB1\;wG1 wP/;bS1 bG1\;wQ wG1\;bQ bS1-;wG1 wP\;bM /bB1;wA1 wG1\;bM \wQ;wP -bM;bL /bG1;wP wP\;bS2 bS1\;wB1 wA1-;wQ -bM"#
     // Assert pillbug can throw mosquito

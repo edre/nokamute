@@ -100,7 +100,7 @@ impl UnderNode {
 }
 
 #[derive(Clone)]
-pub struct Board {
+pub struct GameState {
     // Indexed by Hex.
     pub nodes: [Node; GRID_SIZE],
     // Tiles that are under other tiles.
@@ -115,13 +115,13 @@ pub struct Board {
     zobrist_table: &'static [u64; GRID_SIZE * 2],
     zobrist_hash: u64,
     zobrist_history: Vec<u64>,
-    // Board history.
+    // Game history.
     pub turn_history: Vec<Turn>,
 
     pub game_type_bits: u8,
 }
 
-impl Board {
+impl GameState {
     pub fn to_move(&self) -> Color {
         if self.turn_num.is_multiple_of(2) {
             Color::White
@@ -301,7 +301,7 @@ impl Board {
             table
         });
 
-        Board {
+        GameState {
             nodes: [Node::empty(); GRID_SIZE],
             underworld: [UnderNode::empty(); 8],
             underworld_size: 0,
@@ -326,7 +326,7 @@ impl Board {
     }
 }
 
-impl Default for Board {
+impl Default for GameState {
     fn default() -> Self {
         Self::new_expansions()
     }
@@ -340,7 +340,7 @@ pub enum Turn {
     Pass,
 }
 
-impl Board {
+impl GameState {
     pub fn apply(&mut self, turn: Turn) {
         match turn {
             Turn::Place(hex, bug) => {
@@ -382,7 +382,7 @@ impl Board {
     }
 }
 
-impl Board {
+impl GameState {
     fn generate_placements(&self, turns: &mut Vec<Turn>) {
         let mut no_placement = HexSet::new();
         for &enemy in self.occupied_hexes[self.to_move().other()].iter() {
@@ -417,7 +417,7 @@ impl Board {
     // Example code: https://cp-algorithms.com/graph/cutpoints.html
     pub fn find_cut_vertexes(&self) -> HexSet {
         struct State<'a> {
-            board: &'a Board,
+            game: &'a GameState,
             visited: HexSet,
             immovable: HexSet,
             // Visitation number in DFS traversal.
@@ -428,7 +428,7 @@ impl Board {
             visit_num: u8,
         }
         let mut state = State {
-            board: self,
+            game: self,
             visited: HexSet::new(),
             immovable: HexSet::new(),
             num: [0; GRID_SIZE],
@@ -443,7 +443,7 @@ impl Board {
             let root = hex == parent;
             let mut children = 0;
             for adj in adjacent(hex) {
-                if !state.board.occupied(adj) {
+                if !state.game.occupied(adj) {
                     continue;
                 }
                 if adj == parent {
@@ -813,26 +813,18 @@ impl Board {
     }
 }
 
-pub struct Rules;
-
-impl minimax::Game for Rules {
-    type S = Board;
-    type M = Turn;
-
-    fn generate_moves(board: &Board, turns: &mut Vec<Turn>) -> Option<minimax::Winner> {
-        if let Some(winner) = Self::get_winner(board) {
-            return Some(winner);
-        }
-        if board.turn_num < 2 {
+impl GameState {
+    pub fn generate_moves(&self, turns: &mut Vec<Turn>) {
+        if self.turn_num < 2 {
             // Special case for the first 2 turns:
-            for (bug, num_left) in board.get_available_bugs().iter() {
+            for (bug, num_left) in self.get_available_bugs().iter() {
                 if *bug == Bug::Queen {
                     // To reduce draws, implement tournament rule where
                     // you can't place your queen first.
                     continue;
                 }
                 if *num_left > 0 {
-                    if board.turn_num == 0 {
+                    if self.turn_num == 0 {
                         turns.push(Turn::Place(START_HEX, *bug));
                     } else {
                         for &hex in adjacent(START_HEX).iter() {
@@ -841,41 +833,40 @@ impl minimax::Game for Rules {
                     }
                 }
             }
-            return None;
+            return;
         }
 
         // Once queen has been placed, pieces may move.
-        if board.get_remaining()[Bug::Queen as usize] == 0 {
+        if self.get_remaining()[Bug::Queen as usize] == 0 {
             // For movable pieces, generate all legal moves.
-            board.generate_movements(turns);
+            self.generate_movements(turns);
         }
 
-        if board.get_remaining().iter().any(|&num| num > 0) {
+        if self.get_remaining().iter().any(|&num| num > 0) {
             // Find placeable positions.
-            board.generate_placements(turns);
+            self.generate_placements(turns);
         }
 
         if turns.is_empty() {
             turns.push(Turn::Pass);
         }
-        None
     }
 
-    fn get_winner(board: &Board) -> Option<minimax::Winner> {
-        let queens_surrounded = board.queens_surrounded();
-        let n = board.zobrist_history.len();
+    pub fn get_winner(&self) -> Option<minimax::Winner> {
+        let queens_surrounded = self.queens_surrounded();
+        let n = self.zobrist_history.len();
         if n > 10 {
             // Check for position repeat stalemate.
             // More than 32 turns ago, we're not going to bother looking.
             // Step by 2 since positions only repeat on even half-move boundaries.
-            let position_repeat_count = board
+            let position_repeat_count = self
                 .zobrist_history
                 .iter()
                 .rev()
                 .step_by(2)
                 .skip(1)
                 .take(16)
-                .filter(|&&hash| hash == board.zobrist_hash)
+                .filter(|&&hash| hash == self.zobrist_hash)
                 .count();
             if position_repeat_count >= 2 {
                 // Draw by stalemate.
@@ -886,41 +877,64 @@ impl minimax::Game for Rules {
         if queens_surrounded == [6, 6] {
             // Draw by simultaneous queen surrounding.
             Some(minimax::Winner::Draw)
-        } else if queens_surrounded[board.to_move() as usize] == 6 {
+        } else if queens_surrounded[self.to_move() as usize] == 6 {
             Some(minimax::Winner::PlayerJustMoved)
-        } else if queens_surrounded[board.to_move().other()] == 6 {
+        } else if queens_surrounded[self.to_move().other()] == 6 {
             Some(minimax::Winner::PlayerToMove)
         } else {
             None
         }
     }
 
-    fn apply(board: &mut Board, turn: Turn) -> Option<Board> {
-        board.apply(turn);
-        None
-    }
-
-    fn undo(board: &mut Board, turn: Turn) {
-        board.undo(turn);
-    }
-
-    fn zobrist_hash(board: &Board) -> u64 {
+    pub fn zobrist_hash(&self) -> u64 {
         // The internal zobrist history only cares about detecting repeated positions.
-        // Users of this function care about caching computations from this board state,
+        // Users of this function care about caching computations from this game state,
         // and also need some marker of which bugs cannot be moved by the pillbug.
-        let mut hash = board.zobrist_hash;
-        if let Some(Turn::Move(_, end)) = board.turn_history.last() {
+        let mut hash = self.zobrist_hash;
+        if let Some(Turn::Move(_, end)) = self.turn_history.last() {
             hash ^= *end as u64
         }
         hash
     }
+}
 
-    fn null_move(_: &Board) -> Option<Turn> {
+pub struct Rules;
+
+impl minimax::Game for Rules {
+    type S = GameState;
+    type M = Turn;
+
+    fn generate_moves(game: &GameState, turns: &mut Vec<Turn>) -> Option<minimax::Winner> {
+        if let Some(winner) = game.get_winner() {
+            return Some(winner);
+        }
+        game.generate_moves(turns);
+        None
+    }
+
+    fn get_winner(game: &GameState) -> Option<minimax::Winner> {
+        game.get_winner()
+    }
+
+    fn apply(game: &mut GameState, turn: Turn) -> Option<GameState> {
+        game.apply(turn);
+        None
+    }
+
+    fn undo(game: &mut GameState, turn: Turn) {
+        game.undo(turn);
+    }
+
+    fn zobrist_hash(game: &GameState) -> u64 {
+        game.zobrist_hash()
+    }
+
+    fn null_move(_: &GameState) -> Option<Turn> {
         Some(Turn::Pass)
     }
 
-    fn notation(board: &Board, turn: Turn) -> Option<String> {
-        Some(board.to_move_string(turn))
+    fn notation(game: &GameState, turn: Turn) -> Option<String> {
+        Some(game.to_move_string(turn))
     }
 
     fn table_index(turn: Turn) -> u16 {
@@ -943,7 +957,7 @@ impl minimax::Game for Rules {
 // Coordinates for populating test positions.
 pub type Loc = (i8, i8);
 pub fn loc_to_hex(loc: Loc) -> Hex {
-    // Centered in the middle of the board.
+    // Centered in the middle of the grid.
     START_HEX.wrapping_add(ROW_SIZE.wrapping_mul(loc.1 as Hex)).wrapping_add(loc.0 as Hex)
 }
 
@@ -963,7 +977,6 @@ pub fn hex_to_loc(hex: Hex) -> Loc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use minimax::Game;
 
     #[test]
     fn test_hex_loc() {
@@ -976,7 +989,7 @@ mod tests {
         }
     }
 
-    impl Board {
+    impl GameState {
         fn insert_loc(&mut self, loc: Loc, bug: Bug, color: Color) {
             self.insert(loc_to_hex(loc), bug, 0, color);
         }
@@ -985,7 +998,7 @@ mod tests {
             self.remove(loc_to_hex(loc));
         }
 
-        fn fill_board(&mut self, locs: &[Loc], bug: Bug) {
+        fn fill_hexes(&mut self, locs: &[Loc], bug: Bug) {
             for &loc in locs {
                 self.insert(loc_to_hex(loc), bug, 0, Color::Black);
             }
@@ -1024,16 +1037,16 @@ mod tests {
 
     #[test]
     fn test_gen_placement() {
-        let mut board = Board::default();
+        let mut game = GameState::default();
         for i in 1..8 {
-            board.remaining[0][i] = 0;
-            board.remaining[1][i] = 0;
+            game.remaining[0][i] = 0;
+            game.remaining[1][i] = 0;
         }
-        board.insert_loc((0, 0), Bug::Queen, Color::White);
-        board.insert_loc((1, 0), Bug::Queen, Color::Black);
+        game.insert_loc((0, 0), Bug::Queen, Color::White);
+        game.insert_loc((1, 0), Bug::Queen, Color::Black);
         let mut turns = Vec::new();
-        board.generate_placements(&mut turns);
-        board.assert_placements(
+        game.generate_placements(&mut turns);
+        game.assert_placements(
             &turns,
             &[((-1, -1), Bug::Queen), ((-1, 0), Bug::Queen), ((0, 1), Bug::Queen)],
         );
@@ -1041,15 +1054,15 @@ mod tests {
 
     #[test]
     fn test_cut_vertex() {
-        let mut board = Board::default();
+        let mut game = GameState::default();
         //．．🐝🐝🐝🐝
         // ．．．🐝．🐝🐝
         //．．．．🐝🐝
-        board.fill_board(
+        game.fill_hexes(
             &[(0, 0), (0, 1), (1, 0), (2, 1), (1, 2), (2, 2), (-1, 0), (-2, 0), (3, 1)],
             Bug::Queen,
         );
-        let cuts = board.find_cut_vertexes();
+        let cuts = game.find_cut_vertexes();
         let mut cut_locs = vec![];
         for hex in 0..GRID_MASK {
             if cuts.get(hex) {
@@ -1061,67 +1074,61 @@ mod tests {
 
     #[test]
     fn test_slidable() {
-        let mut board = Board::default();
+        let mut game = GameState::default();
         let x = START_HEX;
         let mut buf = [0; 6];
         // One neighbor.
-        board.insert_loc((0, 0), Bug::Queen, Color::Black);
-        board.insert_loc((1, 0), Bug::Queen, Color::Black);
+        game.insert_loc((0, 0), Bug::Queen, Color::Black);
+        game.insert_loc((1, 0), Bug::Queen, Color::Black);
         assert_eq!(
             vec![loc_to_hex((0, -1)), loc_to_hex((1, 1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
+            game.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
         // Two adjacent neighbors.
-        board.insert_loc((1, 1), Bug::Queen, Color::Black);
+        game.insert_loc((1, 1), Bug::Queen, Color::Black);
         assert_eq!(
             vec![loc_to_hex((0, -1)), loc_to_hex((0, 1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
+            game.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
         // Four adjacent neighbors.
-        board.insert_loc((0, 1), Bug::Queen, Color::Black);
-        board.insert_loc((-1, 0), Bug::Queen, Color::Black);
+        game.insert_loc((0, 1), Bug::Queen, Color::Black);
+        game.insert_loc((-1, 0), Bug::Queen, Color::Black);
         assert_eq!(
             vec![loc_to_hex((-1, -1)), loc_to_hex((0, -1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
+            game.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
         // Five adjacent neighbors.
-        board.insert_loc((-1, -1), Bug::Queen, Color::Black);
-        assert_eq!(
-            Vec::<Hex>::new(),
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
-        );
+        game.insert_loc((-1, -1), Bug::Queen, Color::Black);
+        assert_eq!(Vec::<Hex>::new(), game.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>());
         // 2 separated groups of neighbors.
-        board.remove_loc((0, 1));
-        assert_eq!(
-            Vec::<Hex>::new(),
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
-        );
+        game.remove_loc((0, 1));
+        assert_eq!(Vec::<Hex>::new(), game.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>());
         // 2 opposite single neighbors
-        board.remove_loc((1, 1));
-        board.remove_loc((-1, -1));
+        game.remove_loc((1, 1));
+        game.remove_loc((-1, -1));
         assert_eq!(
             vec![loc_to_hex((-1, -1)), loc_to_hex((0, -1)), loc_to_hex((1, 1)), loc_to_hex((0, 1))],
-            board.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
+            game.slidable_adjacent(&mut buf, x, x).collect::<Vec<Hex>>()
         );
     }
 
     #[test]
     fn test_generate_jumps() {
-        let mut board = Board::default();
+        let mut game = GameState::default();
         //．．．🦗🦗🦗．
         // ．．🦗．．．
         //．．．．．．
         // ．🦗．．
-        board.fill_board(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
+        game.fill_hexes(&[(0, 0), (0, 1), (0, 3), (1, 0), (2, 0)], Bug::Grasshopper);
         let mut turns = Vec::new();
-        board.generate_jumps(START_HEX, &mut turns);
-        board.assert_movements(&turns, (0, 0), &[(0, 2), (3, 0)]);
+        game.generate_jumps(START_HEX, &mut turns);
+        game.assert_movements(&turns, (0, 0), &[(0, 2), (3, 0)]);
     }
 
     #[test]
     fn test_generate_beetle() {
-        let mut board = Board::default();
-        board.fill_board(
+        let mut game = GameState::default();
+        game.fill_hexes(
             &[
                 (0, 0),
                 (0, 0),
@@ -1147,49 +1154,49 @@ mod tests {
         // Can't move left (down) or right (up) because of blocking stacks.
         // Can move onto all 4 blocking stacks.
         let mut turns = Vec::new();
-        board.generate_stack_walking(START_HEX, &mut turns);
-        board.assert_movements(&turns, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
+        game.generate_stack_walking(START_HEX, &mut turns);
+        game.assert_movements(&turns, (0, 0), &[(-1, -1), (0, -1), (0, 1), (1, 1)]);
     }
 
     #[test]
     fn test_generate_walk3() {
-        let mut board = Board::default();
+        let mut game = GameState::default();
         //．．．🕷．．．．．
         // ．．．🕷．🕷．．
         //．．．🕷．．🕷．
         // ．．．🕷🕷🕷
-        board.fill_board(
+        game.fill_hexes(
             &[(-1, -1), (0, 0), (2, 0), (0, 1), (3, 1), (1, 2), (2, 2), (3, 2)],
             Bug::Spider,
         );
         let mut turns = Vec::new();
         let start = loc_to_hex((-1, -1));
-        board.generate_walk3(start, &mut turns);
-        board.assert_movements(&turns, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
+        game.generate_walk3(start, &mut turns);
+        game.assert_movements(&turns, (-1, -1), &[(0, 2), (1, -1), (1, 1), (2, 1)]);
 
         // ．．🕷．🕷．．
         //．．🕷🕷．🕷．
         // ．．🕷🕷🕷
-        board.remove_loc((-1, -1));
-        board.insert_loc((1, 1), Bug::Spider, Color::Black);
+        game.remove_loc((-1, -1));
+        game.insert_loc((1, 1), Bug::Spider, Color::Black);
         turns.clear();
         let start = loc_to_hex((1, 1));
-        board.generate_walk3(start, &mut turns);
-        board.assert_movements(&turns, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
+        game.generate_walk3(start, &mut turns);
+        game.assert_movements(&turns, (1, 1), &[(-1, -1), (0, -1), (1, -1), (2, -1)]);
     }
 
     #[test]
     fn test_generate_walk_all() {
-        let mut board = Board::default();
+        let mut game = GameState::default();
         //．．．🐜．．．．
         // ．．．🐜．．．
         //．．．🐜．🐜．
         // ．．．🐜🐜
-        board.fill_board(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
+        game.fill_hexes(&[(-1, -1), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ant);
         let mut turns = Vec::new();
         let start = loc_to_hex((-1, -1));
-        board.generate_walk_all(start, &mut turns);
-        board.assert_movements(
+        game.generate_walk_all(start, &mut turns);
+        game.assert_movements(
             &turns,
             (-1, -1),
             &[
@@ -1210,23 +1217,23 @@ mod tests {
 
     #[test]
     fn test_generate_mosquito() {
-        let mut board = Board::default();
-        board.fill_board(&[(0, 0), (1, 1)], Bug::Mosquito);
+        let mut game = GameState::default();
+        game.fill_hexes(&[(0, 0), (1, 1)], Bug::Mosquito);
         let mut turns = Vec::new();
-        board.generate_mosquito(loc_to_hex((0, 0)), &mut turns);
+        game.generate_mosquito(loc_to_hex((0, 0)), &mut turns);
         // Mosquito on mosquito can't move at all.
-        board.assert_movements(&turns, (0, 0), &[]);
+        game.assert_movements(&turns, (0, 0), &[]);
 
         //．．🦟🦗．
         // ．🐜🪲．
-        board.insert_loc((0, 1), Bug::Ant, Color::Black);
-        board.insert_loc((1, 1), Bug::Beetle, Color::Black);
-        board.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
+        game.insert_loc((0, 1), Bug::Ant, Color::Black);
+        game.insert_loc((1, 1), Bug::Beetle, Color::Black);
+        game.insert_loc((1, 0), Bug::Grasshopper, Color::Black);
         turns.clear();
         // Dedup happens in generate_movements.
-        board.turn_num += 1;
-        board.generate_movements(&mut turns);
-        board.assert_movements(
+        game.turn_num += 1;
+        game.generate_movements(&mut turns);
+        game.assert_movements(
             &turns,
             (0, 0),
             &[
@@ -1248,16 +1255,16 @@ mod tests {
 
     #[test]
     fn test_generate_ladybug() {
-        let mut board = Board::default();
-        board.fill_board(&[(2, 3), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ladybug);
+        let mut game = GameState::default();
+        game.fill_hexes(&[(2, 3), (0, 0), (0, 1), (2, 1), (1, 2), (2, 2)], Bug::Ladybug);
         //．．．🐞．．．
         // ．．🐞．🐞．．
         //．．．🐞🐞．．
         // ．．．🐞．．
         let mut turns = Vec::new();
         let start = loc_to_hex((2, 3));
-        board.generate_ladybug(start, &mut turns);
-        board.assert_movements(
+        game.generate_ladybug(start, &mut turns);
+        game.assert_movements(
             &turns,
             (2, 3),
             &[(-1, 0), (1, 0), (2, 0), (-1, 1), (1, 1), (3, 1), (0, 2), (3, 2), (1, 3), (3, 3)],
@@ -1266,8 +1273,8 @@ mod tests {
 
     #[test]
     fn test_generate_throws() {
-        let mut board = Board::default();
-        board.fill_board(&[(1, 1), (0, 0), (0, 0), (2, 2), (2, 2), (0, 1), (1, 2)], Bug::Pillbug);
+        let mut game = GameState::default();
+        game.fill_hexes(&[(1, 1), (0, 0), (0, 0), (2, 2), (2, 2), (0, 1), (1, 2)], Bug::Pillbug);
         // ．．💊．．．
         //．．💊💊．．
         // ．．💊💊．
@@ -1276,85 +1283,85 @@ mod tests {
         let mut starts = HexSet::new();
         let mut ends = HexSet::new();
         let start = loc_to_hex((1, 1));
-        board.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
+        game.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
         assert_eq!(4, turns.len());
-        board.assert_movements(&turns[..2], (1, 2), &[(1, 0), (2, 1)]);
-        board.assert_movements(&turns[2..], (0, 1), &[(1, 0), (2, 1)]);
+        game.assert_movements(&turns[..2], (1, 2), &[(1, 0), (2, 1)]);
+        game.assert_movements(&turns[2..], (0, 1), &[(1, 0), (2, 1)]);
 
         // Create a level-2 gate to prevent one piece from being thrown.
-        board.remove_loc((0, 0));
-        board.insert_loc((0, 1), Bug::Pillbug, Color::Black);
+        game.remove_loc((0, 0));
+        game.insert_loc((0, 1), Bug::Pillbug, Color::Black);
         turns.clear();
-        board.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
+        game.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
         assert_eq!(2, turns.len());
-        board.assert_movements(&turns, (0, 0), &[(1, 0), (2, 1)]);
+        game.assert_movements(&turns, (0, 0), &[(1, 0), (2, 1)]);
 
         // Create a level-2 gate to prevent one destination to being thrown to.
-        board.insert_loc((1, 0), Bug::Pillbug, Color::Black);
-        board.insert_loc((1, 0), Bug::Pillbug, Color::Black);
-        board.remove_loc((0, 1));
-        board.remove_loc((0, 1));
-        board.remove_loc((1, 2));
+        game.insert_loc((1, 0), Bug::Pillbug, Color::Black);
+        game.insert_loc((1, 0), Bug::Pillbug, Color::Black);
+        game.remove_loc((0, 1));
+        game.remove_loc((0, 1));
+        game.remove_loc((1, 2));
         turns = Vec::new();
-        board.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
+        game.generate_throws(&immovable, start, &mut turns, &mut starts, &mut ends);
         assert_eq!(2, turns.len());
-        board.assert_movements(&turns, (0, 0), &[(0, 1), (1, 2)]);
+        game.assert_movements(&turns, (0, 0), &[(0, 1), (1, 2)]);
     }
 
     #[test]
     fn test_winner() {
         // Draw by threefold repetition.
-        let mut board = Board::default();
+        let mut game = GameState::default();
         let x1 = loc_to_hex((-1, -1));
         let x2 = loc_to_hex((-1, 0));
         let y1 = loc_to_hex((1, 1));
         let y2 = loc_to_hex((1, 0));
-        board.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Spider));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Place(x1, Bug::Queen));
-        assert_eq!(None, Rules::get_winner(&board));
+        game.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Spider));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Place(x1, Bug::Queen));
+        assert_eq!(None, game.get_winner());
         // Create the position the first time.
-        board.apply(Turn::Place(y1, Bug::Queen));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Move(x1, x2));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Move(y1, y2));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Move(x2, x1));
-        assert_eq!(None, Rules::get_winner(&board));
+        game.apply(Turn::Place(y1, Bug::Queen));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Move(x1, x2));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Move(y1, y2));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Move(x2, x1));
+        assert_eq!(None, game.get_winner());
         // Recreate position for the second time.
-        board.apply(Turn::Move(y2, y1));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Move(x1, x2));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Move(y1, y2));
-        assert_eq!(None, Rules::get_winner(&board));
-        board.apply(Turn::Move(x2, x1));
-        assert_eq!(None, Rules::get_winner(&board));
+        game.apply(Turn::Move(y2, y1));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Move(x1, x2));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Move(y1, y2));
+        assert_eq!(None, game.get_winner());
+        game.apply(Turn::Move(x2, x1));
+        assert_eq!(None, game.get_winner());
         // Recreate position for the third time.
-        board.apply(Turn::Move(y2, y1));
-        assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
+        game.apply(Turn::Move(y2, y1));
+        assert_eq!(Some(minimax::Winner::Draw), game.get_winner());
         // Undo reverts zobrist and history.
-        board.undo(Turn::Move(y2, y1));
-        assert_eq!(None, Rules::get_winner(&board));
+        game.undo(Turn::Move(y2, y1));
+        assert_eq!(None, game.get_winner());
         // Redo re-reverts draw state.
-        board.apply(Turn::Move(y2, y1));
-        assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&board));
+        game.apply(Turn::Move(y2, y1));
+        assert_eq!(Some(minimax::Winner::Draw), game.get_winner());
     }
 
     #[test]
     fn test_winner5() {
         // Regression test for issue #5.
-        let board = Board::from_game_string(r"Base;InProgress;black[11];wA1;bA1 wA1-;wQ /wA1;bQ bA1/;wS1 /wQ;bS1 bQ-;wS2 wQ\;bS2 bS1\;wS1 wS2-;bB1 /bS2;wA2 -wA1;bA2 bA1-;wB1 \wA1;bB1 bA2;wB1 wA2;bB1 bQ;wB1 wQ;bB1 \bB1;wB1 wB1-;bB1 bQ;wB1 wQ").unwrap();
-        assert_eq!(None, Rules::get_winner(&board));
+        let game = GameState::from_game_string(r"Base;InProgress;black[11];wA1;bA1 wA1-;wQ /wA1;bQ bA1/;wS1 /wQ;bS1 bQ-;wS2 wQ\;bS2 bS1\;wS1 wS2-;bB1 /bS2;wA2 -wA1;bA2 bA1-;wB1 \wA1;bB1 bA2;wB1 wA2;bB1 bQ;wB1 wQ;bB1 \bB1;wB1 wB1-;bB1 bQ;wB1 wQ").unwrap();
+        assert_eq!(None, game.get_winner());
     }
 
     #[test]
     fn test_winner_sixmove_cycle() {
         // Regression: 6-move repetition cycles were not detected with step_by(4).
-        let before = Board::from_game_string(r"Base+ML;InProgress;Black[9];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1").unwrap();
-        assert_eq!(None, Rules::get_winner(&before));
-        let after = Board::from_game_string(r"Base+ML;InProgress;White[10];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/").unwrap();
-        assert_eq!(Some(minimax::Winner::Draw), Rules::get_winner(&after));
+        let before = GameState::from_game_string(r"Base+ML;InProgress;Black[9];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1").unwrap();
+        assert_eq!(None, before.get_winner());
+        let after = GameState::from_game_string(r"Base+ML;InProgress;White[10];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/").unwrap();
+        assert_eq!(Some(minimax::Winner::Draw), after.get_winner());
     }
 }

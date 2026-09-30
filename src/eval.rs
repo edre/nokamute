@@ -9,7 +9,7 @@ pub struct DumbEvaluator;
 
 impl Evaluator for DumbEvaluator {
     type G = Rules;
-    fn evaluate(&self, _: &Board) -> Evaluation {
+    fn evaluate(&self, _: &GameState) -> Evaluation {
         0
     }
 }
@@ -77,18 +77,18 @@ impl Default for BasicEvaluator {
     }
 }
 
-fn count_liberties(board: &Board, origin: Hex, hex: Hex) -> Evaluation {
-    adjacent(hex).into_iter().filter(|&adj| adj == origin || !board.occupied(adj)).count()
+fn count_liberties(game: &GameState, origin: Hex, hex: Hex) -> Evaluation {
+    adjacent(hex).into_iter().filter(|&adj| adj == origin || !game.occupied(adj)).count()
         as Evaluation
 }
 
-fn placeable(board: &Board, hex: Hex, color: Color) -> bool {
-    !adjacent(hex).iter().any(|&adj| board.occupied(adj) && board.node(adj).color() != color)
+fn placeable(game: &GameState, hex: Hex, color: Color) -> bool {
+    !adjacent(hex).iter().any(|&adj| game.occupied(adj) && game.node(adj).color() != color)
 }
 
 #[test]
 fn test_placeable() {
-    let b = Board::from_game_string("Base;;;wA1;bA1 wA1-;wA2 /wA1").unwrap();
+    let b = GameState::from_game_string("Base;;;wA1;bA1 wA1-;wA2 /wA1").unwrap();
     assert!(!placeable(&b, Direction::SE.apply(START_HEX), Color::White));
     assert!(!placeable(&b, Direction::NE.apply(START_HEX), Color::White));
     assert!(placeable(&b, Direction::NW.apply(START_HEX), Color::White));
@@ -100,16 +100,16 @@ fn test_placeable() {
 impl Evaluator for BasicEvaluator {
     type G = Rules;
 
-    fn evaluate(&self, board: &Board) -> Evaluation {
+    fn evaluate(&self, game: &GameState) -> Evaluation {
         let mut buf = [0; 6];
-        let mut immovable = board.find_cut_vertexes();
+        let mut immovable = game.find_cut_vertexes();
 
         let mut score = 0;
         let mut pillbug_defense = [false; 2];
         let mut queen_score = [0; 2];
 
-        let remaining = board.get_remaining();
-        let opp_remaining = board.get_opponent_remaining();
+        let remaining = game.get_remaining();
+        let opp_remaining = game.get_opponent_remaining();
         for bug in Bug::iter_all() {
             score += (remaining[bug as usize] as Evaluation
                 - opp_remaining[bug as usize] as Evaluation)
@@ -117,8 +117,8 @@ impl Evaluator for BasicEvaluator {
                 * self.value(bug);
         }
 
-        for &hex in board.occupied_hexes.iter().flatten() {
-            let node = board.node(hex);
+        for &hex in game.occupied_hexes.iter().flatten() {
+            let node = game.node(hex);
             let mut bug_score = self.value(node.bug());
             let mut pillbug_powers = node.bug() == Bug::Pillbug;
             let mut crawler = node.bug().crawler();
@@ -130,8 +130,8 @@ impl Evaluator for BasicEvaluator {
                     bug_score = self.value(Bug::Beetle);
                 } else {
                     for adj in adjacent(hex) {
-                        if board.occupied(adj) {
-                            let bug = board.node(adj).bug();
+                        if game.occupied(adj) {
+                            let bug = game.node(adj).bug();
                             if bug != Bug::Queen {
                                 bug_score = self.value(bug);
                             }
@@ -148,7 +148,7 @@ impl Evaluator for BasicEvaluator {
 
             if crawler {
                 // Treat blocked crawlers as immovable.
-                if board.slidable_adjacent(&mut buf, hex, hex).next().is_none() {
+                if game.slidable_adjacent(&mut buf, hex, hex).next().is_none() {
                     immovable.set(hex);
                 }
             }
@@ -157,7 +157,7 @@ impl Evaluator for BasicEvaluator {
                 bug_score *= 2;
             }
 
-            let friendly_queen = board.queens[node.color() as usize];
+            let friendly_queen = game.queens[node.color() as usize];
 
             // TODO: transpose this loop, i.e. categorize queen liberties after the bug loop.
             // Count libs for more if they are not crawlable (e.g. behind a gate)
@@ -169,14 +169,14 @@ impl Evaluator for BasicEvaluator {
                     // Lower penalty for being able to leave.
                     queen_score[node.color() as usize] -= self.queen_liberty_factor / 2;
                 }
-                if pillbug_powers && board.node(friendly_queen).clipped_height() == 1 {
+                if pillbug_powers && game.node(friendly_queen).clipped_height() == 1 {
                     let best_escape = adjacent(hex)
                         .into_iter()
                         .map(|lib| {
-                            if board.occupied(lib) {
+                            if game.occupied(lib) {
                                 0
                             } else {
-                                count_liberties(board, friendly_queen, lib)
+                                count_liberties(game, friendly_queen, lib)
                             }
                         })
                         .max()
@@ -187,7 +187,7 @@ impl Evaluator for BasicEvaluator {
                 }
             }
 
-            let enemy_queen = board.queens[node.color().other()];
+            let enemy_queen = game.queens[node.color().other()];
 
             if adjacent(enemy_queen).contains(&hex) {
                 // Discourage liberty filling by valuable bugs, by setting their score to zero when filling a liberty.
@@ -198,10 +198,10 @@ impl Evaluator for BasicEvaluator {
                     let best_unescape = adjacent(hex)
                         .into_iter()
                         .map(|lib| {
-                            if board.occupied(lib) {
+                            if game.occupied(lib) {
                                 6
                             } else {
-                                count_liberties(board, enemy_queen, lib)
+                                count_liberties(game, enemy_queen, lib)
                             }
                         })
                         .min()
@@ -218,7 +218,7 @@ impl Evaluator for BasicEvaluator {
             }
 
             bug_score *= self.movable_bug_factor;
-            if node.color() != board.to_move() {
+            if node.color() != game.to_move() {
                 bug_score = -bug_score;
                 // Make low-aggression mode value opponent movability higher than ours.
                 if self.aggression == 1 {
@@ -231,27 +231,27 @@ impl Evaluator for BasicEvaluator {
         }
 
         let mut pillbug_defense_score = self.pillbug_defense_bonus
-            * (pillbug_defense[board.to_move() as usize] as Evaluation
-                - pillbug_defense[board.to_move().other()] as Evaluation);
+            * (pillbug_defense[game.to_move() as usize] as Evaluation
+                - pillbug_defense[game.to_move().other()] as Evaluation);
 
         // Check for backup defensive pillbug placeability option, discounted value
         pillbug_defense = [false; 2];
         for &color in &[Color::Black, Color::White] {
-            if board.node(board.queens[color as usize]).clipped_height() == 1
-                && board.remaining[color as usize][Bug::Pillbug as usize] > 0
-                && adjacent(board.queens[color as usize])
+            if game.node(game.queens[color as usize]).clipped_height() == 1
+                && game.remaining[color as usize][Bug::Pillbug as usize] > 0
+                && adjacent(game.queens[color as usize])
                     .iter()
-                    .any(|&lib| placeable(board, lib, color))
+                    .any(|&lib| placeable(game, lib, color))
             {
                 pillbug_defense[color as usize] = true;
             }
         }
         pillbug_defense_score += self.pillbug_defense_bonus / 2
-            * (pillbug_defense[board.to_move() as usize] as Evaluation
-                - pillbug_defense[board.to_move().other()] as Evaluation);
+            * (pillbug_defense[game.to_move() as usize] as Evaluation
+                - pillbug_defense[game.to_move().other()] as Evaluation);
 
         let queen_score =
-            queen_score[board.to_move() as usize] - queen_score[board.to_move().other()];
+            queen_score[game.to_move() as usize] - queen_score[game.to_move().other()];
         queen_score + pillbug_defense_score + score
     }
 
@@ -262,19 +262,19 @@ impl Evaluator for BasicEvaluator {
     // usually pins one of your own pieces and doesn't put the new piece where
     // it will be useful. Thus, each player can get a bonus move to move a
     // piece that they have just placed (but not other pieces).
-    fn generate_noisy_moves(&self, board: &Board, moves: &mut Vec<Turn>) {
-        if board.turn_history.len() < 4 || board.get_remaining()[Bug::Queen as usize] == 0 {
+    fn generate_noisy_moves(&self, game: &GameState, moves: &mut Vec<Turn>) {
+        if game.turn_history.len() < 4 || game.get_remaining()[Bug::Queen as usize] == 0 {
             // Wait until movements are at least possible.
             return;
         }
-        let enemy_last_move = board.turn_history[board.turn_history.len() - 1];
-        let my_last_move = board.turn_history[board.turn_history.len() - 2];
+        let enemy_last_move = game.turn_history[game.turn_history.len() - 1];
+        let my_last_move = game.turn_history[game.turn_history.len() - 2];
 
         if let Turn::Place(hex, _) = my_last_move {
             // Drop attack is quiet enough.
-            if !adjacent(board.queens[board.to_move().other()]).contains(&hex) {
+            if !adjacent(game.queens[game.to_move().other()]).contains(&hex) {
                 // TODO: just generate from this spot (ignoring throws?).
-                board.generate_movements(moves);
+                game.generate_movements(moves);
                 moves.retain(|m| if let Turn::Move(start, _) = *m { start == hex } else { false });
                 // If the piece became pinned or covered, this will return no
                 // moves, which means the search will terminate.
@@ -283,10 +283,10 @@ impl Evaluator for BasicEvaluator {
         }
 
         if let Turn::Place(hex, _) = enemy_last_move {
-            if !adjacent(board.queens[board.to_move() as usize]).contains(&hex) {
+            if !adjacent(game.queens[game.to_move() as usize]).contains(&hex) {
                 // We didn't just place, but opponent did. Do some movement to
                 // give them a chance to quiesce.
-                board.generate_movements(moves);
+                game.generate_movements(moves);
             }
         }
 
@@ -306,38 +306,38 @@ mod tests {
         // ．．．🐝🕷．．
         //．．🐜🐜🐝．．
         // ．．．🦗🪲
-        let mut board = Board::default();
-        board.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Queen));
-        board.apply(Turn::Place(loc_to_hex((1, 0)), Bug::Spider));
-        board.apply(Turn::Place(loc_to_hex((-1, 1)), Bug::Ant));
-        board.apply(Turn::Place(loc_to_hex((0, 1)), Bug::Ant));
-        board.apply(Turn::Place(loc_to_hex((1, 2)), Bug::Grasshopper));
-        board.apply(Turn::Place(loc_to_hex((1, 1)), Bug::Queen));
-        board.apply(Turn::Place(loc_to_hex((2, 2)), Bug::Beetle));
-        board.apply(Turn::Pass);
+        let mut game = GameState::default();
+        game.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Queen));
+        game.apply(Turn::Place(loc_to_hex((1, 0)), Bug::Spider));
+        game.apply(Turn::Place(loc_to_hex((-1, 1)), Bug::Ant));
+        game.apply(Turn::Place(loc_to_hex((0, 1)), Bug::Ant));
+        game.apply(Turn::Place(loc_to_hex((1, 2)), Bug::Grasshopper));
+        game.apply(Turn::Place(loc_to_hex((1, 1)), Bug::Queen));
+        game.apply(Turn::Place(loc_to_hex((2, 2)), Bug::Beetle));
+        game.apply(Turn::Pass);
         for depth in 1..3 {
             let mut strategy = Negamax::new(DumbEvaluator {}, depth);
-            let m = strategy.choose_move(&mut board);
+            let m = strategy.choose_move(&mut game);
             assert_eq!(Some(Turn::Move(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
 
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
-            let m = strategy.choose_move(&mut board);
+            let m = strategy.choose_move(&mut game);
             assert_eq!(Some(Turn::Move(loc_to_hex((-1, 1)), loc_to_hex((2, 1)))), m);
         }
 
         // Find queen escape.
         //．．🕷🐝🐝．
         // ．．🦗🕷．
-        let mut board = Board::default();
-        board.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Queen));
-        board.apply(Turn::Place(loc_to_hex((1, 0)), Bug::Queen));
-        board.apply(Turn::Place(loc_to_hex((1, 1)), Bug::Spider));
-        board.apply(Turn::Place(loc_to_hex((0, 1)), Bug::Grasshopper));
-        board.apply(Turn::Place(loc_to_hex((-1, 0)), Bug::Beetle));
-        board.apply(Turn::Pass);
+        let mut game = GameState::default();
+        game.apply(Turn::Place(loc_to_hex((0, 0)), Bug::Queen));
+        game.apply(Turn::Place(loc_to_hex((1, 0)), Bug::Queen));
+        game.apply(Turn::Place(loc_to_hex((1, 1)), Bug::Spider));
+        game.apply(Turn::Place(loc_to_hex((0, 1)), Bug::Grasshopper));
+        game.apply(Turn::Place(loc_to_hex((-1, 0)), Bug::Beetle));
+        game.apply(Turn::Pass);
         for depth in 1..3 {
             let mut strategy = Negamax::new(BasicEvaluator::default(), depth);
-            let m = strategy.choose_move(&mut board);
+            let m = strategy.choose_move(&mut game);
             assert_eq!(Some(Turn::Move(loc_to_hex((0, 0)), loc_to_hex((0, -1)))), m);
         }
     }

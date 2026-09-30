@@ -2,7 +2,6 @@ extern crate minimax;
 
 use crate::notation::{Result, UhpError};
 use crate::*;
-use minimax::Game;
 
 use std::io::Write;
 #[cfg(not(target_arch = "wasm32"))]
@@ -10,7 +9,7 @@ use std::io::{stdin, stdout};
 use std::time::Duration;
 
 pub struct UhpServer<W: Write> {
-    board: Option<Board>,
+    game: Option<GameState>,
     pv_dirty: bool,
     config: PlayerConfig,
     engine: Option<Box<dyn Player + Send>>,
@@ -19,7 +18,7 @@ pub struct UhpServer<W: Write> {
 
 impl<W: Write> UhpServer<W> {
     pub fn new(config: PlayerConfig, output: W) -> Self {
-        UhpServer { board: None, pv_dirty: true, config, engine: None, output }
+        UhpServer { game: None, pv_dirty: true, config, engine: None, output }
     }
 
     pub fn swap_output(&mut self, mut output: W) -> W {
@@ -35,10 +34,10 @@ impl<W: Write> UhpServer<W> {
     }
 
     fn reset_engine(&mut self) {
-        if let Some(board) = &self.board {
+        if let Some(game) = &self.game {
             let mut engine = self.config.new_player();
-            engine.new_game(&board.game_type());
-            for &turn in &board.turn_history {
+            engine.new_game(&game.game_type());
+            for &turn in &game.turn_history {
                 engine.play_move(turn);
             }
             self.engine = Some(engine);
@@ -48,9 +47,9 @@ impl<W: Write> UhpServer<W> {
     fn new_game(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = true;
         let args = if args.is_empty() { "Base" } else { args };
-        self.board = Some(Board::from_game_string(args)?);
+        self.game = Some(GameState::from_game_string(args)?);
         self.reset_engine();
-        writeln!(self.output, "{}", self.board.as_mut().unwrap().game_string())?;
+        writeln!(self.output, "{}", self.game.as_mut().unwrap().game_string())?;
         Ok(())
     }
 
@@ -58,25 +57,25 @@ impl<W: Write> UhpServer<W> {
         writeln!(
             self.output,
             "{}",
-            self.board.as_ref().ok_or(UhpError::GameNotStarted)?.valid_moves()
+            self.game.as_ref().ok_or(UhpError::GameNotStarted)?.valid_moves()
         )?;
         Ok(())
     }
 
     fn play(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = true;
-        let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
-        let m = board.from_move_string(args)?;
-        board.apply_untrusted(m)?;
+        let game = self.game.as_mut().ok_or(UhpError::GameNotStarted)?;
+        let m = game.from_move_string(args)?;
+        game.apply_untrusted(m)?;
         self.engine.as_mut().unwrap().play_move(m);
-        writeln!(self.output, "{}", board.game_string())?;
+        writeln!(self.output, "{}", game.game_string())?;
         Ok(())
     }
 
     fn best_move(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = false;
-        let board = self.board.as_ref().ok_or(UhpError::GameNotStarted)?;
-        if Rules::get_winner(board).is_some() {
+        let game = self.game.as_ref().ok_or(UhpError::GameNotStarted)?;
+        if game.get_winner().is_some() {
             return Err(UhpError::EngineError("the game is already over".to_string()));
         }
         let arg_error = || UhpError::UnrecognizedCommand(args.to_string());
@@ -110,42 +109,42 @@ impl<W: Write> UhpServer<W> {
             return Err(arg_error());
         }
         let m = self.engine.as_mut().unwrap().generate_move();
-        writeln!(self.output, "{}", board.to_move_string(m))?;
+        writeln!(self.output, "{}", game.to_move_string(m))?;
         Ok(())
     }
 
     fn pv(&mut self) -> Result<()> {
         let pv = self.engine.as_ref().ok_or(UhpError::GameNotStarted)?.principal_variation();
-        let board = self.board.as_mut().unwrap();
+        let game = self.game.as_mut().unwrap();
         if self.pv_dirty {
-            return Err(UhpError::EngineError("Board changed since last engine move".into()));
+            return Err(UhpError::EngineError("game changed since last engine move".into()));
         }
         for &m in &pv {
-            writeln!(self.output, "{}", board.to_move_string(m))?;
-            board.apply(m);
+            writeln!(self.output, "{}", game.to_move_string(m))?;
+            game.apply(m);
         }
         for &m in pv.iter().rev() {
-            board.undo(m);
+            game.undo(m);
         }
         Ok(())
     }
 
     fn undo(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = true;
-        let board = self.board.as_mut().ok_or(UhpError::GameNotStarted)?;
+        let game = self.game.as_mut().ok_or(UhpError::GameNotStarted)?;
         let num_undo = if args.is_empty() {
             1
         } else {
             args.parse::<usize>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?
         };
-        if num_undo > board.turn_history.len() {
+        if num_undo > game.turn_history.len() {
             return Err(UhpError::TooManyUndos);
         }
         for _ in 0..num_undo {
-            self.engine.as_mut().unwrap().undo_move(board.last_move().unwrap());
-            board.undo_count(1)?;
+            self.engine.as_mut().unwrap().undo_move(game.last_move().unwrap());
+            game.undo_count(1)?;
         }
-        writeln!(self.output, "{}", board.game_string())?;
+        writeln!(self.output, "{}", game.game_string())?;
         Ok(())
     }
 
@@ -250,7 +249,7 @@ impl<W: Write> UhpServer<W> {
     // Bonus undocumented command.
     fn perft(&mut self, args: &str) -> Result<()> {
         let depth = args.parse::<u8>().unwrap_or(20);
-        let mut b = self.board.as_ref().ok_or(UhpError::GameNotStarted)?.clone();
+        let mut b = self.game.as_ref().ok_or(UhpError::GameNotStarted)?.clone();
         minimax::perft::<Rules>(&mut b, depth, false);
         Ok(())
     }
@@ -509,7 +508,7 @@ mod tests {
     fn bestmove_on_finished_game_returns_error_instead_of_panicking() {
         let mut server = test_server();
         // Same six-move-repetition draw position exercised by
-        // board::tests::test_winner_sixmove_cycle: Rules::get_winner() is Some(Draw) here.
+        // game::tests::test_winner_sixmove_cycle: Rules::get_winner() is Some(Draw) here.
         command(
             &mut server,
             r"newgame Base+ML;White[10];wB1;bB1 wB1-;wQ /wB1;bQ bB1\;wA1 -wB1;bQ /bB1;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/;wA1 -wQ;bB1 bQ;wA1 /wQ;bB1 wB1;wA1 -bB1;bB1 bQ/",
