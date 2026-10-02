@@ -1,12 +1,18 @@
 extern crate minimax;
 
-use crate::notation::{Result, UhpError};
 use crate::*;
+use hexbugs::*;
 
 use std::io::Write;
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::{stdin, stdout};
 use std::time::Duration;
+
+pub fn nokamute_version() -> &'static str {
+    let version =
+        git_version::git_version!(args = ["--tags", "--dirty=+"], cargo_prefix = "cargo-");
+    version.strip_prefix('v').unwrap_or(version)
+}
 
 pub struct UhpServer<W: Write> {
     game: Option<GameState>,

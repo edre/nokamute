@@ -1,7 +1,5 @@
-use crate::board::*;
-use crate::bug::Bug;
-use crate::hex_grid::*;
-
+use crate::*;
+use hexbugs::*;
 use minimax::{Evaluation, Evaluator};
 
 // An evaluator that knows nothing but the rules, and maximally explores the tree.

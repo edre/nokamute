@@ -1,17 +1,37 @@
+[workspace]
+members = [
+    ".",
+    "hexbugs",
+]
+default-members = [
+    ".",
+    "hexbugs",
+]
+
+[workspace.package]
+authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
+repository = "https://github.com/edre/nokamute"
+license = "MIT"
+readme = "README.md"
+
+[workspace.dependencies]
+rand = "0.9"
+
 [package]
 name = "nokamute"
 description = "Hive AI focused on speed"
 version = "1.0.3"
-authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
+authors.workspace = true
 edition = "2021"
-repository = "https://github.com/edre/nokamute"
-readme = "README.md"
-license = "MIT"
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
 
 [dependencies]
+hexbugs = { path = "hexbugs" }
 git-version = "0.3"
 minimax = "0.6.0"
-rand = "0.9"
+rand.workspace = true
 
 [target.'cfg(not(target_arch="wasm32"))'.dependencies]
 pico-args = "0.4"
@@ -25,15 +45,6 @@ easybench = "1.1.0"
 [target.'cfg(target_arch="wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
-[features]
-# No-ops for backwards compatibility.
-smaller-grid = []
-larger-grid = []
-
 [[bench]]
 name = "minimax"
 harness = false
-
-# For wasm32 library builds.
-[lib]
-crate-type=["cdylib", "rlib"]

@@ -1,0 +1,17 @@
+[package]
+name = "hexbugs"
+description = "Efficient Hive game representation"
+version = "0.1.0"
+
+authors.workspace = true
+edition = "2024"
+repository.workspace = true
+readme.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+
+# For wasm32 library builds.
+[lib]
+crate-type=["cdylib", "rlib"]

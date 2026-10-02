@@ -2,8 +2,9 @@ extern crate easybench;
 extern crate minimax;
 extern crate nokamute;
 
+use hexbugs::*;
 use minimax::{IterativeOptions, IterativeSearch, ParallelOptions, ParallelSearch, Strategy};
-use nokamute::{loc_to_hex, Bug, GameState, Rules, Turn};
+use nokamute::Rules;
 
 fn empty_game_depth(depth: u8) {
     let mut game = GameState::default();

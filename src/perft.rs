@@ -1,5 +1,6 @@
 use crate::uhp_client::UhpClient;
-use crate::{GameState, Rules, Turn, UhpError};
+use crate::Rules;
+use hexbugs::*;
 use minimax::{Game, Strategy};
 
 fn standard_games(game_string: &str) -> &str {
@@ -226,7 +227,9 @@ fn semantic_move_diff<'a>(
     difference
 }
 
-fn parse_comparable_move(game: &GameState, move_string: &str) -> Result<Turn, UhpError> {
+fn parse_comparable_move(
+    game: &GameState, move_string: &str,
+) -> std::result::Result<Turn, UhpError> {
     let move_string = move_string.trim();
     let turn = game.from_move_string(move_string)?;
     if let Turn::Move(_, _) = turn {

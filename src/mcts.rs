@@ -1,4 +1,5 @@
-use crate::{GameState, Rules, Turn};
+use crate::Rules;
+use hexbugs::{GameState, Turn, Winner};
 use minimax::Game;
 use rand::rngs::SmallRng;
 use rand::Rng;
@@ -9,7 +10,7 @@ impl minimax::RolloutPolicy for BiasedRollouts {
     type G = Rules;
     fn random_move(
         &self, game: &mut GameState, turns: &mut Vec<Turn>, rng: &mut SmallRng,
-    ) -> Result<Turn, minimax::Winner> {
+    ) -> std::result::Result<Turn, minimax::Winner> {
         // TODO: lazily generate moves
         if let Some(winner) = Rules::generate_moves(game, turns) {
             return Err(winner);
@@ -18,7 +19,7 @@ impl minimax::RolloutPolicy for BiasedRollouts {
         turns.rotate_left(rng.random_range(0..n));
         for &turn in turns.iter() {
             game.apply(turn);
-            if game.get_winner() == Some(minimax::Winner::PlayerJustMoved) {
+            if game.get_winner() == Some(Winner::PlayerJustMoved) {
                 game.undo(turn);
                 return Ok(turn);
             }

@@ -1,7 +1,5 @@
-extern crate minimax;
-
-use crate::notation::{Result, UhpError};
-use crate::{Color, GameState, Player, Turn};
+use crate::Player;
+use hexbugs::{Color, GameState, Result, Turn, UhpError};
 
 use minimax::Winner;
 use std::io::{BufRead, BufReader, Write};

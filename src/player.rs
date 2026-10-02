@@ -6,7 +6,8 @@ use crate::cli::CliPlayer;
 use crate::mcts::BiasedRollouts;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::uhp_client::UhpPlayer;
-use crate::{nokamute_version, BasicEvaluator, Bug, GameState, Rules, Turn};
+use crate::{nokamute_version, BasicEvaluator, Rules};
+use hexbugs::*;
 use minimax::*;
 use std::time::Duration;
 
@@ -212,7 +213,7 @@ pub struct PlayerConfig {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn configure_player() -> Result<(PlayerConfig, Vec<String>), pico_args::Error> {
+pub fn configure_player() -> std::result::Result<(PlayerConfig, Vec<String>), pico_args::Error> {
     let mut args = pico_args::Arguments::from_env();
 
     let mut config = PlayerConfig::new();

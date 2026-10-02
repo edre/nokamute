@@ -1,6 +1,4 @@
-extern crate git_version;
-extern crate minimax;
-use crate::{adjacent, Bug, Color, Direction, GameState, Hex, Node, Turn, START_HEX};
+use crate::{Bug, Color, Direction, GameState, Hex, Node, START_HEX, Turn, Winner, adjacent};
 
 #[derive(Debug)]
 pub enum UhpError {
@@ -23,12 +21,6 @@ impl From<std::io::Error> for UhpError {
 }
 
 pub type Result<T> = std::result::Result<T, UhpError>;
-
-pub fn nokamute_version() -> &'static str {
-    let version =
-        git_version::git_version!(args = ["--tags", "--dirty=+"], cargo_prefix = "cargo-");
-    version.strip_prefix('v').unwrap_or(version)
-}
 
 impl GameState {
     // New game from UHP GameTypeString, e.g. "Base+MLP"
@@ -104,7 +96,7 @@ impl GameState {
         }
     }
 
-    pub fn to_move_string(&self, m: crate::Turn) -> String {
+    pub fn to_move_string(&self, m: Turn) -> String {
         let mut out = String::new();
         match m {
             Turn::Move(start, _) => {
@@ -168,12 +160,12 @@ impl GameState {
             return "NotStarted";
         }
         match self.get_winner() {
-            Some(minimax::Winner::Draw) => "Draw",
-            Some(minimax::Winner::PlayerToMove) => match self.to_move() {
+            Some(Winner::Draw) => "Draw",
+            Some(Winner::PlayerToMove) => match self.to_move() {
                 Color::Black => "BlackWins",
                 Color::White => "WhiteWins",
             },
-            Some(minimax::Winner::PlayerJustMoved) => match self.to_move() {
+            Some(Winner::PlayerJustMoved) => match self.to_move() {
                 Color::White => "BlackWins",
                 Color::Black => "WhiteWins",
             },
@@ -288,11 +280,7 @@ impl GameState {
         let end: Hex = {
             let (color, bug, bug_num, dir) = self.parse_piece_name(tokens[1]).ok_or_else(err)?;
             let hex = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
-            if let Some(dir) = dir {
-                dir.apply(hex)
-            } else {
-                hex
-            }
+            if let Some(dir) = dir { dir.apply(hex) } else { hex }
         };
         if let Some(start) = start {
             if self.occupied(start) {
@@ -370,18 +358,19 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Rules;
-    use minimax::Strategy;
+    use rand::prelude::IndexedRandom;
 
     #[test]
     fn test_move_string_round_trip() {
         let mut game = GameState::from_game_type("Base+MLP").unwrap();
-        let mut rand = minimax::Random::<Rules>::new();
+        let mut rng = rand::rng();
         for iter in 0..20 {
             let mut depth = 0;
             for _ in 0..20 {
                 depth += 1;
-                let m = rand.choose_move(&game).unwrap();
+                let mut moves = vec![];
+                game.generate_moves(&mut moves);
+                let m = *moves.choose(&mut rng).unwrap();
                 let move_string = game.to_move_string(m);
                 assert_eq!(
                     m,
