@@ -73,7 +73,9 @@ impl<W: Write> UhpServer<W> {
         Ok(())
     }
 
-    fn best_move(&mut self, args: &str) -> Result<()> {
+    // Parse `bestmove` style limits (depth N | time hh:mm:ss | seconds S | depthorseconds D S)
+    // and configure the engine accordingly.
+    fn configure_search(&mut self, args: &str) -> Result<()> {
         self.pv_dirty = false;
         let board = self.board.as_ref().ok_or(UhpError::GameNotStarted)?;
         if Rules::get_winner(board).is_some() {
@@ -109,8 +111,27 @@ impl<W: Write> UhpServer<W> {
         } else {
             return Err(arg_error());
         }
+        Ok(())
+    }
+
+    fn best_move(&mut self, args: &str) -> Result<()> {
+        self.configure_search(args)?;
         let m = self.engine.as_mut().unwrap().generate_move();
+        let board = self.board.as_ref().unwrap();
         writeln!(self.output, "{}", board.to_move_string(m))?;
+        Ok(())
+    }
+
+    // Unofficial command: like `bestmove`, but prints `move;score;pvlen`, where score is the
+    // root value from the side to move's perspective (empty if the strategy has none).
+    fn search(&mut self, args: &str) -> Result<()> {
+        self.configure_search(args)?;
+        let engine = self.engine.as_mut().unwrap();
+        let m = engine.generate_move();
+        let score = engine.root_value().map(|s| s.to_string()).unwrap_or_default();
+        let pvlen = engine.principal_variation().len();
+        let board = self.board.as_ref().unwrap();
+        writeln!(self.output, "{};{};{}", board.to_move_string(m), score, pvlen)?;
         Ok(())
     }
 
@@ -267,6 +288,7 @@ impl<W: Write> UhpServer<W> {
             "play" => self.play(args),
             "pass" => self.play("pass"),
             "bestmove" => self.best_move(args),
+            "search" => self.search(args),
             "pv" => self.pv(),
             "undo" => self.undo(args),
             "options" => self.options(args),
@@ -516,5 +538,25 @@ mod tests {
         );
 
         assert!(command(&mut server, "bestmove depth 1").contains("err"));
+    }
+
+    #[test]
+    fn search_reports_move_score_and_pvlen() {
+        let mut server = test_server();
+        command(&mut server, "newgame Base");
+        let out = command(&mut server, "search depth 1");
+        let fields: Vec<&str> = out.split(';').collect();
+        assert_eq!(fields.len(), 3, "{out}");
+        // The move is legal and the score and pv length are numbers.
+        assert!(command(&mut server, &format!("play {}", fields[0])).starts_with("Base;InProgress"));
+        fields[1].parse::<i32>().unwrap();
+        assert!(fields[2].parse::<usize>().unwrap() >= 1);
+
+        // A random opening move has no search behind it, so no score is reported.
+        let mut server = test_server();
+        command(&mut server, "options set RandomOpening True");
+        command(&mut server, "newgame Base");
+        let out = command(&mut server, "search depth 1");
+        assert_eq!(out.split(';').nth(1), Some(""), "{out}");
     }
 }
