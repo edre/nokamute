@@ -23,7 +23,37 @@ pub(crate) trait Player {
     fn set_max_depth(&mut self, _depth: u8) {}
     fn set_timeout(&mut self, _time: Duration) {}
     fn set_depth_or_timeout(&mut self, _depth: u8, _time: Duration) {}
+    // Root score of the last search from the side to move's perspective, if the strategy has one.
+    fn root_value(&self) -> Option<Evaluation> {
+        None
+    }
 }
+
+// Strategy that can also report the root score of its last search.
+pub(crate) trait ScoredStrategy: Strategy<Rules> + Send {
+    fn root_value(&self) -> Option<Evaluation> {
+        None
+    }
+}
+
+impl ScoredStrategy for IterativeSearch<BasicEvaluator> {
+    fn root_value(&self) -> Option<Evaluation> {
+        Some(IterativeSearch::root_value(self))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ScoredStrategy for ParallelSearch<BasicEvaluator> {
+    fn root_value(&self) -> Option<Evaluation> {
+        Some(ParallelSearch::root_value(self))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ScoredStrategy for Random<Rules> {}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ScoredStrategy for MonteCarloTreeSearch<Rules> {}
 
 #[cfg(not(target_arch = "wasm32"))]
 fn face_off(
@@ -102,21 +132,29 @@ pub fn play_game(
 
 struct NokamutePlayer {
     board: Board,
-    strategy: Box<dyn Strategy<Rules> + Send>,
+    strategy: Box<dyn ScoredStrategy>,
     random_opening: bool,
+    // Whether the last generate_move ran the strategy (false after a random opening move).
+    searched: bool,
     name: String,
 }
 
 impl NokamutePlayer {
-    fn new(strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool) -> Self {
+    fn new(strategy: Box<dyn ScoredStrategy>, random_opening: bool) -> Self {
         Self::new_with_name(&format!("nokamute {}", nokamute_version()), strategy, random_opening)
     }
 
     fn new_with_name(
-        name: &str, mut strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool,
+        name: &str, mut strategy: Box<dyn ScoredStrategy>, random_opening: bool,
     ) -> Self {
         strategy.set_timeout(Duration::from_secs(5));
-        NokamutePlayer { board: Board::default(), strategy, random_opening, name: name.to_owned() }
+        NokamutePlayer {
+            board: Board::default(),
+            strategy,
+            random_opening,
+            searched: false,
+            name: name.to_owned(),
+        }
     }
 }
 
@@ -138,6 +176,7 @@ impl Player for NokamutePlayer {
     }
 
     fn generate_move(&mut self) -> Turn {
+        self.searched = false;
         if self.random_opening {
             // Ignore minimax and just throw out a random jumpy bug for the first move.
             if self.board.turn_num < 2 {
@@ -165,6 +204,7 @@ impl Player for NokamutePlayer {
                 }
             }
         }
+        self.searched = true;
         self.strategy.choose_move(&self.board).unwrap()
     }
 
@@ -182,6 +222,14 @@ impl Player for NokamutePlayer {
 
     fn set_depth_or_timeout(&mut self, depth: u8, time: Duration) {
         self.strategy.set_depth_or_timeout(depth, time);
+    }
+
+    fn root_value(&self) -> Option<Evaluation> {
+        if self.searched {
+            self.strategy.root_value()
+        } else {
+            None
+        }
     }
 }
 
