@@ -4,14 +4,15 @@ extern crate minimax;
 use crate::cli::CliPlayer;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::mcts::BiasedRollouts;
+use crate::{BasicEvaluator, Rules};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::uhp_client::UhpPlayer;
-use crate::{nokamute_version, BasicEvaluator, Rules};
 use hexbugs::*;
 use minimax::*;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 // A player that can play one color's moves.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) trait Player {
     fn name(&self) -> String;
     fn new_game(&mut self, game_type: &str);
@@ -23,7 +24,6 @@ pub(crate) trait Player {
     }
     fn set_max_depth(&mut self, _depth: u8) {}
     fn set_timeout(&mut self, _time: Duration) {}
-    fn set_depth_or_timeout(&mut self, _depth: u8, _time: Duration) {}
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -59,6 +59,55 @@ fn face_off(
         players[p].play_move(m);
         p = 1 - p;
         players[p].play_move(m);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub struct UhpPlayer {
+    client: UhpClient,
+    timeout: Option<Duration>,
+    depth: Option<u8>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl UhpPlayer {
+    pub fn new(cmd: &str) -> Result<Self> {
+        Ok(UhpPlayer { client: UhpClient::new(&[cmd.to_owned()])?, timeout: None, depth: None })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Player for UhpPlayer {
+    fn name(&self) -> String {
+        self.client.name.clone()
+    }
+
+    fn new_game(&mut self, game_type: &str) {
+        self.client.new_game(game_type).unwrap();
+    }
+
+    fn play_move(&mut self, m: Turn) {
+        self.client.apply(m).unwrap();
+    }
+
+    fn undo_move(&mut self, _: Turn) {
+        self.client.undo(1).unwrap();
+    }
+
+    fn generate_move(&mut self) -> Turn {
+        if let Some(depth) = self.depth {
+            self.client.best_move_depth(depth).unwrap()
+        } else {
+            self.client.best_move(self.timeout.unwrap_or_else(|| Duration::from_secs(5))).unwrap()
+        }
+    }
+
+    fn set_max_depth(&mut self, depth: u8) {
+        self.depth = Some(depth);
+    }
+
+    fn set_timeout(&mut self, time: Duration) {
+        self.timeout = Some(time);
     }
 }
 
@@ -101,6 +150,7 @@ pub fn play_game(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct NokamutePlayer {
     game: GameState,
     strategy: Box<dyn Strategy<Rules> + Send>,
@@ -108,11 +158,8 @@ struct NokamutePlayer {
     name: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl NokamutePlayer {
-    fn new(strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool) -> Self {
-        Self::new_with_name(&format!("nokamute {}", nokamute_version()), strategy, random_opening)
-    }
-
     fn new_with_name(
         name: &str, mut strategy: Box<dyn Strategy<Rules> + Send>, random_opening: bool,
     ) -> Self {
@@ -126,6 +173,7 @@ impl NokamutePlayer {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Player for NokamutePlayer {
     fn name(&self) -> String {
         self.name.clone()
@@ -182,10 +230,6 @@ impl Player for NokamutePlayer {
 
     fn set_timeout(&mut self, time: Duration) {
         self.strategy.set_timeout(time);
-    }
-
-    fn set_depth_or_timeout(&mut self, depth: u8, time: Duration) {
-        self.strategy.set_depth_or_timeout(depth, time);
     }
 }
 
@@ -306,34 +350,24 @@ impl PlayerConfig {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn new_player(&self) -> Box<dyn Player + Send> {
-        Box::new(NokamutePlayer::new(
-            Box::new(IterativeSearch::new(self.eval, self.opts)),
-            self.random_opening,
-        ))
+    pub(crate) fn new_strategy(&self) -> Box<dyn Strategy<Rules> + Send> {
+        Box::new(IterativeSearch::new(self.eval, self.opts))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn new_player(&self) -> Box<dyn Player + Send> {
-        Box::new(match &self.strategy {
-            PlayerStrategy::Random => NokamutePlayer::new_with_name(
-                "random",
-                Box::<Random<Rules>>::default(),
-                self.random_opening,
-            ),
+    pub(crate) fn new_strategy(&self) -> Box<dyn Strategy<Rules> + Send> {
+        match &self.strategy {
+            PlayerStrategy::Random => Box::<Random<Rules>>::default(),
             PlayerStrategy::Mcts(opts) => {
                 let mut opts = opts.clone();
                 let num_threads = self.num_threads.unwrap_or(0);
                 if num_threads > 0 {
                     opts = opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(
-                    Box::new(MonteCarloTreeSearch::new_with_policy(
-                        opts,
-                        Box::new(BiasedRollouts {}),
-                    )),
-                    self.random_opening,
-                )
+                Box::new(MonteCarloTreeSearch::new_with_policy(
+                    opts,
+                    Box::new(BiasedRollouts {}),
+                ))
             }
             PlayerStrategy::Iterative(parallel_opts) => {
                 let mut parallel_opts = *parallel_opts;
@@ -341,15 +375,25 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     parallel_opts = parallel_opts.with_num_threads(num_threads);
                 }
-                NokamutePlayer::new(
-                    if num_threads == 1 {
-                        Box::new(IterativeSearch::new(self.eval, self.opts))
-                    } else {
-                        Box::new(ParallelSearch::new(self.eval, self.opts, parallel_opts))
-                    },
-                    self.random_opening,
-                )
+                if num_threads == 1 {
+                    Box::new(IterativeSearch::new(self.eval, self.opts))
+                } else {
+                    Box::new(ParallelSearch::new(self.eval, self.opts, parallel_opts))
+                }
             }
-        })
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn new_player(&self) -> Box<dyn Player + Send> {
+        let name = match &self.strategy {
+            PlayerStrategy::Random => "random",
+            _ => "nokamute",
+        };
+        Box::new(NokamutePlayer::new_with_name(
+            name,
+            self.new_strategy(),
+            self.random_opening,
+        ))
     }
 }

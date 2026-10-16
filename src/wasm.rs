@@ -1,12 +1,13 @@
-use crate::{PlayerConfig, UhpServer};
+use crate::{NokamuteEngine, PlayerConfig};
+use hexbugs::UhpServer;
 use std::io::Cursor;
 use std::sync::{LazyLock, Mutex};
 use wasm_bindgen::prelude::*;
 
-static UHP_SERVER: LazyLock<Mutex<UhpServer<Cursor<Vec<u8>>>>> = LazyLock::new(|| {
+static UHP_SERVER: LazyLock<Mutex<UhpServer<NokamuteEngine, Cursor<Vec<u8>>>>> = LazyLock::new(|| {
     let mut config = PlayerConfig::new();
     config.opts = config.opts.with_table_byte_size(8 << 20);
-    Mutex::new(UhpServer::new(config, Cursor::new(Vec::new())))
+    Mutex::new(UhpServer::new(NokamuteEngine::new(config), Cursor::new(Vec::new())))
 });
 
 #[wasm_bindgen]
@@ -25,7 +26,6 @@ pub fn uhp(args: &str) -> String {
 pub mod test {
     use super::uhp;
     use wasm_bindgen_test::*;
-    wasm_bindgen_test_configure!(run_in_browser);
 
     #[wasm_bindgen_test]
     fn info_test() {

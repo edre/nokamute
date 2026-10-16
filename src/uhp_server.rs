@@ -1,12 +1,8 @@
-extern crate minimax;
-
-use crate::*;
-use hexbugs::*;
-
-use std::io::Write;
+use crate::{BasicEvaluator, PlayerConfig, Rules};
 #[cfg(not(target_arch = "wasm32"))]
-use std::io::{stdin, stdout};
-use std::time::Duration;
+use crate::PlayerStrategy;
+use hexbugs::*;
+use minimax::Strategy;
 
 pub fn nokamute_version() -> &'static str {
     let version =
@@ -14,160 +10,33 @@ pub fn nokamute_version() -> &'static str {
     version.strip_prefix('v').unwrap_or(version)
 }
 
-pub struct UhpServer<W: Write> {
-    game: Option<GameState>,
-    pv_dirty: bool,
+pub struct NokamuteEngine {
     config: PlayerConfig,
-    engine: Option<Box<dyn Player + Send>>,
-    output: W,
+    strategy: Box<dyn Strategy<Rules> + Send>,
 }
 
-impl<W: Write> UhpServer<W> {
-    pub fn new(config: PlayerConfig, output: W) -> Self {
-        UhpServer { game: None, pv_dirty: true, config, engine: None, output }
+impl NokamuteEngine {
+    pub fn new(config: PlayerConfig) -> Self {
+        let strategy = config.new_strategy();
+        Self { config, strategy }
     }
 
-    pub fn swap_output(&mut self, mut output: W) -> W {
-        std::mem::swap(&mut output, &mut self.output);
-        output
+    pub fn reset_strategy(&mut self) {
+        self.strategy = self.config.new_strategy();
     }
 
-    fn info(&mut self) -> Result<()> {
-        writeln!(self.output, "id {} {}", env!("CARGO_PKG_NAME"), nokamute_version())?;
-        // Capabilities
-        writeln!(self.output, "Mosquito;Ladybug;Pillbug")?;
-        Ok(())
-    }
-
-    fn reset_engine(&mut self) {
-        if let Some(game) = &self.game {
-            let mut engine = self.config.new_player();
-            engine.new_game(&game.game_type());
-            for &turn in &game.turn_history {
-                engine.play_move(turn);
-            }
-            self.engine = Some(engine);
-        }
-    }
-
-    fn new_game(&mut self, args: &str) -> Result<()> {
-        self.pv_dirty = true;
-        let args = if args.is_empty() { "Base" } else { args };
-        self.game = Some(GameState::from_game_string(args)?);
-        self.reset_engine();
-        writeln!(self.output, "{}", self.game.as_mut().unwrap().game_string())?;
-        Ok(())
-    }
-
-    fn valid_moves(&mut self) -> Result<()> {
-        writeln!(
-            self.output,
-            "{}",
-            self.game.as_ref().ok_or(UhpError::GameNotStarted)?.valid_moves()
-        )?;
-        Ok(())
-    }
-
-    fn play(&mut self, args: &str) -> Result<()> {
-        self.pv_dirty = true;
-        let game = self.game.as_mut().ok_or(UhpError::GameNotStarted)?;
-        let m = game.from_move_string(args)?;
-        game.apply_untrusted(m)?;
-        self.engine.as_mut().unwrap().play_move(m);
-        writeln!(self.output, "{}", game.game_string())?;
-        Ok(())
-    }
-
-    fn best_move(&mut self, args: &str) -> Result<()> {
-        self.pv_dirty = false;
-        let game = self.game.as_ref().ok_or(UhpError::GameNotStarted)?;
-        if game.get_winner().is_some() {
-            return Err(UhpError::EngineError("the game is already over".to_string()));
-        }
-        let arg_error = || UhpError::UnrecognizedCommand(args.to_string());
-        if let Some(arg) = args.strip_prefix("depth ") {
-            let depth = arg.parse::<u8>().map_err(|_| arg_error())?;
-            if depth == 0 {
-                return Err(UhpError::EngineError("depth must be positive".to_string()));
-            }
-            self.engine.as_mut().unwrap().set_max_depth(depth);
-        } else if let Some(arg) = args.strip_prefix("time ") {
-            let dur = parse_hhmmss(arg).ok_or_else(arg_error)?;
-            self.engine.as_mut().unwrap().set_timeout(dur);
-        } else if let Some(arg) = args.strip_prefix("seconds ") {
-            // Unofficial command offering sub-second precision.
-            let dur = parse_seconds(arg).ok_or_else(arg_error)?;
-            self.engine.as_mut().unwrap().set_timeout(dur);
-        } else if let Some(arg) = args.strip_prefix("depthorseconds ") {
-            // Unofficial command stopping whichever comes first.
-            let mut toks = arg.split(" ");
-            let depth =
-                toks.next().ok_or_else(arg_error)?.parse::<u8>().map_err(|_| arg_error())?;
-            if depth == 0 {
-                return Err(UhpError::EngineError("depth must be positive".to_string()));
-            }
-            let dur = parse_seconds(toks.next().ok_or_else(arg_error)?).ok_or_else(arg_error)?;
-            if toks.next().is_some() {
-                return Err(arg_error());
-            }
-            self.engine.as_mut().unwrap().set_depth_or_timeout(depth, dur);
-        } else {
-            return Err(arg_error());
-        }
-        let m = self.engine.as_mut().unwrap().generate_move();
-        writeln!(self.output, "{}", game.to_move_string(m))?;
-        Ok(())
-    }
-
-    fn pv(&mut self) -> Result<()> {
-        let pv = self.engine.as_ref().ok_or(UhpError::GameNotStarted)?.principal_variation();
-        let game = self.game.as_mut().unwrap();
-        if self.pv_dirty {
-            return Err(UhpError::EngineError("game changed since last engine move".into()));
-        }
-        for &m in &pv {
-            writeln!(self.output, "{}", game.to_move_string(m))?;
-            game.apply(m);
-        }
-        for &m in pv.iter().rev() {
-            game.undo(m);
-        }
-        Ok(())
-    }
-
-    fn undo(&mut self, args: &str) -> Result<()> {
-        self.pv_dirty = true;
-        let game = self.game.as_mut().ok_or(UhpError::GameNotStarted)?;
-        let num_undo = if args.is_empty() {
-            1
-        } else {
-            args.parse::<usize>().map_err(|_| UhpError::UnrecognizedCommand(args.to_string()))?
-        };
-        if num_undo > game.turn_history.len() {
-            return Err(UhpError::TooManyUndos);
-        }
-        for _ in 0..num_undo {
-            self.engine.as_mut().unwrap().undo_move(game.last_move().unwrap());
-            game.undo_count(1)?;
-        }
-        writeln!(self.output, "{}", game.game_string())?;
-        Ok(())
-    }
-
-    fn get_option_int<Option: UhpOptionInt>(&mut self) -> Result<()> {
-        writeln!(
-            self.output,
+    fn get_option_int<Option: UhpOptionInt>(&self) -> Result<String> {
+        Ok(format!(
             "{};int;{};{};{};{}",
             Option::name(),
             Option::current(&self.config)?,
             Option::current(&PlayerConfig::default())?,
             Option::min(),
             Option::max()
-        )?;
-        Ok(())
+        ))
     }
 
-    fn get_option_bool<Option: UhpOptionBool>(&mut self) -> Result<()> {
+    fn get_option_bool<Option: UhpOptionBool>(&self) -> Result<String> {
         fn fmt_bool(b: bool) -> &'static str {
             if b {
                 "True"
@@ -175,17 +44,15 @@ impl<W: Write> UhpServer<W> {
                 "False"
             }
         }
-        writeln!(
-            self.output,
+        Ok(format!(
             "{};bool;{};{}",
             Option::name(),
             fmt_bool(Option::current(&self.config)?),
             fmt_bool(Option::current(&PlayerConfig::default())?)
-        )?;
-        Ok(())
+        ))
     }
 
-    fn set_option_int<Option: UhpOptionInt>(&mut self, arg: &str) -> Result<()> {
+    fn set_option_int<Option: UhpOptionInt>(&mut self, arg: &str) -> Result<String> {
         let value = arg.parse::<usize>().map_err(|_| UhpError::InvalidOption(arg.into()))?;
         if value < Option::min() || value > Option::max() {
             return Err(UhpError::InvalidOption(arg.into()));
@@ -194,7 +61,7 @@ impl<W: Write> UhpServer<W> {
         self.get_option_int::<Option>()
     }
 
-    fn set_option_bool<Option: UhpOptionBool>(&mut self, arg: &str) -> Result<()> {
+    fn set_option_bool<Option: UhpOptionBool>(&mut self, arg: &str) -> Result<String> {
         let value = match arg {
             "True" => true,
             "False" => false,
@@ -203,116 +70,89 @@ impl<W: Write> UhpServer<W> {
         Option::set(value, &mut self.config);
         self.get_option_bool::<Option>()
     }
+}
 
-    fn get_option(&mut self, option: &str) -> Result<()> {
-        match option {
-            "Aggression" => self.get_option_int::<AggressionOption>(),
-            #[cfg(not(target_arch = "wasm32"))]
-            "BackgroundPondering" => self.get_option_bool::<BackgroundPonderingOption>(),
-            #[cfg(not(target_arch = "wasm32"))]
-            "NumThreads" => self.get_option_int::<NumThreadsOption>(),
-            "RandomOpening" => self.get_option_bool::<RandomOpeningOption>(),
-            "TableSizeMiB" => self.get_option_int::<TableSizeOption>(),
-            "Verbose" => self.get_option_bool::<VerboseOption>(),
-            _ => Err(UhpError::InvalidOption(option.into())),
-        }
+impl UhpEngine for NokamuteEngine {
+    fn name(&self) -> &str {
+        "nokamute"
     }
 
-    fn options(&mut self, args: &str) -> Result<()> {
-        let tokens = args.split(' ').collect::<Vec<_>>();
-        if args.is_empty() {
-            self.get_option_int::<AggressionOption>()?;
-            #[cfg(not(target_arch = "wasm32"))]
-            self.get_option_bool::<BackgroundPonderingOption>()?;
-            #[cfg(not(target_arch = "wasm32"))]
-            self.get_option_int::<NumThreadsOption>()?;
-            self.get_option_bool::<RandomOpeningOption>()?;
-            self.get_option_int::<TableSizeOption>()?;
-            self.get_option_bool::<VerboseOption>()?;
-        } else if tokens.len() == 2 && tokens[0] == "get" {
-            self.get_option(tokens[1])?;
-        } else if tokens.len() == 3 && tokens[0] == "set" {
-            match tokens[1] {
-                "Aggression" => self.set_option_int::<AggressionOption>(tokens[2])?,
-                #[cfg(not(target_arch = "wasm32"))]
-                "BackgroundPondering" => {
-                    self.set_option_bool::<BackgroundPonderingOption>(tokens[2])?
+    fn version(&self) -> &str {
+        nokamute_version()
+    }
+
+    fn best_move(&mut self, game: &GameState, limit: BestMoveLimit) -> Turn {
+        match limit {
+            BestMoveLimit::Depth(depth) => self.strategy.set_max_depth(depth),
+            BestMoveLimit::Time(dur) => self.strategy.set_timeout(dur),
+            BestMoveLimit::DepthOrTime(depth, dur) => self.strategy.set_depth_or_timeout(depth, dur),
+        }
+        if self.config.random_opening {
+            if game.turn_num < 2 {
+                loop {
+                    let turn = minimax::Random::<Rules>::default().choose_move(game).unwrap();
+                    if let Turn::Place(_, bug) = turn {
+                        if matches!(
+                            bug,
+                            Bug::Beetle | Bug::Grasshopper | Bug::Ladybug | Bug::Pillbug
+                        ) {
+                            return turn;
+                        }
+                    }
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                "NumThreads" => self.set_option_int::<NumThreadsOption>(tokens[2])?,
-                "RandomOpening" => self.set_option_bool::<RandomOpeningOption>(tokens[2])?,
-                "TableSizeMiB" => self.set_option_int::<TableSizeOption>(tokens[2])?,
-                "Verbose" => self.set_option_bool::<VerboseOption>(tokens[2])?,
-                _ => return Err(UhpError::InvalidOption(args.into())),
+            } else if game.turn_num < 4 {
+                loop {
+                    let turn = minimax::Random::<Rules>::default().choose_move(game).unwrap();
+                    if let Turn::Place(_, bug) = turn {
+                        if bug == Bug::Queen {
+                            return turn;
+                        }
+                    }
+                }
             }
-            self.reset_engine();
-        } else {
-            return Err(UhpError::UnrecognizedCommand(args.into()));
         }
-        Ok(())
+        self.strategy.choose_move(game).unwrap()
     }
 
-    // Bonus undocumented command.
-    fn perft(&mut self, args: &str) -> Result<()> {
-        let depth = args.parse::<u8>().unwrap_or(20);
-        let mut b = self.game.as_ref().ok_or(UhpError::GameNotStarted)?.clone();
-        minimax::perft::<Rules>(&mut b, depth, false);
-        Ok(())
+    fn principal_variation(&self) -> Vec<Turn> {
+        self.strategy.principal_variation()
     }
 
-    pub fn command(&mut self, line: &str) -> bool {
-        let line = line.trim();
-        let space = line.find(' ');
-        let command = if let Some(i) = space { &line[..i] } else { line };
-        let args = if let Some(i) = space { &line[i + 1..] } else { "" };
-        let result = match command {
-            "info" => self.info(),
-            "newgame" => self.new_game(args),
-            "validmoves" => self.valid_moves(),
-            "play" => self.play(args),
-            "pass" => self.play("pass"),
-            "bestmove" => self.best_move(args),
-            "pv" => self.pv(),
-            "undo" => self.undo(args),
-            "options" => self.options(args),
-            "perft" => self.perft(args),
-            "exit" => return true,
-            _ => Err(UhpError::UnrecognizedCommand(command.to_string())),
+    fn get_options(&self) -> Vec<String> {
+        vec![
+            self.get_option_int::<AggressionOption>().unwrap(),
+            #[cfg(not(target_arch = "wasm32"))]
+            self.get_option_bool::<BackgroundPonderingOption>().unwrap(),
+            #[cfg(not(target_arch = "wasm32"))]
+            self.get_option_int::<NumThreadsOption>().unwrap(),
+            self.get_option_bool::<RandomOpeningOption>().unwrap(),
+            self.get_option_int::<TableSizeOption>().unwrap(),
+            self.get_option_bool::<VerboseOption>().unwrap(),
+        ]
+    }
+
+    fn set_option(&mut self, name: &str, value: &str) -> Result<String> {
+        let updated = match name {
+            "Aggression" => self.set_option_int::<AggressionOption>(value)?,
+            #[cfg(not(target_arch = "wasm32"))]
+            "BackgroundPondering" => {
+                self.set_option_bool::<BackgroundPonderingOption>(value)?
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            "NumThreads" => self.set_option_int::<NumThreadsOption>(value)?,
+            "RandomOpening" => self.set_option_bool::<RandomOpeningOption>(value)?,
+            "TableSizeMiB" => self.set_option_int::<TableSizeOption>(value)?,
+            "Verbose" => self.set_option_bool::<VerboseOption>(value)?,
+            _ => return Err(UhpError::InvalidOption(name.into())),
         };
-        if let Err(err) = result {
-            if let UhpError::InvalidMove(invalid) = err {
-                writeln!(self.output, "invalidmove {invalid}").unwrap();
-            } else {
-                writeln!(self.output, "err {err:?}").unwrap();
-            }
-        }
-        false
+        self.reset_strategy();
+        Ok(updated)
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn uhp_serve(config: PlayerConfig) {
-    let mut server = UhpServer::new(config, stdout());
-    server.info().unwrap();
-    println!("ok");
-    loop {
-        let mut line = String::new();
-        match stdin().read_line(&mut line) {
-            Ok(size) => {
-                if size == 0 {
-                    return;
-                }
-            }
-            Err(err) => {
-                eprintln!("{err}");
-                return;
-            }
-        };
-        if server.command(&line) {
-            return;
-        }
-        println!("ok");
-    }
+    hexbugs::uhp_serve(NokamuteEngine::new(config));
 }
 
 trait UhpOptionInt {
@@ -437,73 +277,22 @@ impl UhpOptionBool for BackgroundPonderingOption {
     }
 }
 
-// Parse hh:mm:ss as a duration.
-fn parse_hhmmss(time: &str) -> Option<Duration> {
-    let mut toks = time.split(':');
-    let hours = toks.next().unwrap_or("").parse::<u64>().ok()?;
-    let minutes = toks.next().unwrap_or("").parse::<u64>().ok()?;
-    let seconds = toks.next().unwrap_or("").parse::<u64>().ok()?;
-    if toks.next().is_some() {
-        return None;
-    }
-    Some(Duration::from_secs(hours * 3600 + minutes * 60 + seconds))
-}
-
-#[test]
-fn test_parse_hhmmss() {
-    assert_eq!(Some(Duration::from_secs(7)), parse_hhmmss("00:00:07"));
-    assert_eq!(Some(Duration::from_secs(3661)), parse_hhmmss("01:01:01"));
-    assert_eq!(None, parse_hhmmss("45"));
-    assert_eq!(None, parse_hhmmss("1:23"));
-    assert_eq!(None, parse_hhmmss("01:02:03:04"));
-    assert_eq!(None, parse_hhmmss("five"));
-}
-
-// Parse nnn[.nnn] as number of seconds.
-fn parse_seconds(time: &str) -> Option<Duration> {
-    let dot = time.find('.');
-    let secs = time[..dot.unwrap_or(time.len())].parse::<u64>().ok()?;
-    let mut dur = Duration::from_secs(secs);
-    if let Some(i) = dot {
-        let trailing = &time[i + 1..];
-        let mut len = trailing.len();
-        if len > 9 {
-            return None;
-        }
-        let mut subsecs = trailing.parse::<u64>().ok()?;
-        while len < 9 {
-            len += 1;
-            subsecs *= 10;
-        }
-        dur += Duration::from_nanos(subsecs);
-    }
-    Some(dur)
-}
-
-#[test]
-fn test_parse_seconds() {
-    assert_eq!(Some(Duration::from_millis(5)), parse_seconds("0.005"));
-    assert_eq!(Some(Duration::from_mins(1)), parse_seconds("60"));
-    assert_eq!(None, parse_seconds("01:23:45"));
-    assert_eq!(None, parse_seconds("2e1"));
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
 
-    fn test_server() -> UhpServer<Cursor<Vec<u8>>> {
+    fn test_server() -> UhpServer<NokamuteEngine, Cursor<Vec<u8>>> {
         let mut config = PlayerConfig::new();
         config.opts = config.opts.with_table_byte_size(1 << 20);
         #[cfg(not(target_arch = "wasm32"))]
         {
             config.num_threads = Some(1);
         }
-        UhpServer::new(config, Cursor::new(Vec::new()))
+        UhpServer::new(NokamuteEngine::new(config), Cursor::new(Vec::new()))
     }
 
-    fn command(server: &mut UhpServer<Cursor<Vec<u8>>>, input: &str) -> String {
+    fn command(server: &mut UhpServer<NokamuteEngine, Cursor<Vec<u8>>>, input: &str) -> String {
         server.swap_output(Cursor::new(Vec::new()));
         server.command(input);
         let buf = server.swap_output(Cursor::new(Vec::new()));

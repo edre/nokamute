@@ -14,8 +14,6 @@ mod player;
 pub use player::*;
 mod rules;
 pub use rules::*;
-#[cfg(not(target_arch = "wasm32"))]
-mod uhp_client;
 mod uhp_server;
 pub use uhp_server::*;
 #[cfg(target_arch = "wasm32")]

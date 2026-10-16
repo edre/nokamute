@@ -1,7 +1,8 @@
-use crate::uhp_client::UhpClient;
 use crate::Rules;
 use hexbugs::*;
 use minimax::{Game, Strategy};
+
+pub use hexbugs::{semantic_move_diff, MoveDifference};
 
 fn standard_games(game_string: &str) -> &str {
     match game_string {
@@ -173,77 +174,6 @@ pub fn uhp_tests_with_verbosity(engine_cmd: &[String], verbose: bool) -> bool {
     success
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
-struct MoveDifference<'a> {
-    missing: Vec<&'a str>,
-    extra: Vec<&'a str>,
-    invalid_expected: Vec<&'a str>,
-    invalid_actual: Vec<&'a str>,
-}
-
-impl MoveDifference<'_> {
-    fn is_empty(&self) -> bool {
-        self.missing.is_empty()
-            && self.extra.is_empty()
-            && self.invalid_expected.is_empty()
-            && self.invalid_actual.is_empty()
-    }
-}
-
-fn semantic_move_diff<'a>(
-    game: &GameState, expected: &[&'a str], actual: &[&'a str],
-) -> MoveDifference<'a> {
-    use std::collections::BTreeMap;
-
-    fn group_moves<'a>(
-        game: &GameState, moves: &[&'a str],
-    ) -> (BTreeMap<Turn, Vec<&'a str>>, Vec<&'a str>) {
-        let mut grouped = BTreeMap::<Turn, Vec<&str>>::new();
-        let mut invalid = Vec::new();
-        for &move_string in moves {
-            match parse_comparable_move(game, move_string) {
-                Ok(turn) => grouped.entry(turn).or_default().push(move_string),
-                Err(_) => invalid.push(move_string),
-            }
-        }
-        (grouped, invalid)
-    }
-
-    // Keep each original string so diagnostics reproduce the exact notation after matching turns.
-    let (expected_by_turn, invalid_expected) = group_moves(game, expected);
-    let (mut actual_by_turn, invalid_actual) = group_moves(game, actual);
-    let mut difference = MoveDifference { invalid_expected, invalid_actual, ..Default::default() };
-
-    for (turn, expected_strings) in expected_by_turn {
-        let actual_strings = actual_by_turn.remove(&turn).unwrap_or_default();
-        let matched = expected_strings.len().min(actual_strings.len());
-        difference.missing.extend_from_slice(&expected_strings[matched..]);
-        difference.extra.extend_from_slice(&actual_strings[matched..]);
-    }
-    for actual_strings in actual_by_turn.into_values() {
-        difference.extra.extend(actual_strings);
-    }
-
-    difference
-}
-
-fn parse_comparable_move(
-    game: &GameState, move_string: &str,
-) -> std::result::Result<Turn, UhpError> {
-    let move_string = move_string.trim();
-    let turn = game.from_move_string(move_string)?;
-    if let Turn::Move(_, _) = turn {
-        let source = move_string.split_once(' ').map(|(source, _)| source);
-        let canonical = game.to_move_string(turn);
-        let canonical_source = canonical.split_once(' ').map(|(source, _)| source);
-        // Pillbug throws may move an opponent's piece, but the named source must still be on top.
-        if source != canonical_source {
-            return Err(UhpError::InvalidMove(move_string.to_owned()));
-        }
-    }
-    Ok(turn)
-}
-
 pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
     println!("\nExploring random games to compare with nokamute's move generator...");
     let game_string = standard_games(game_string);
@@ -273,7 +203,7 @@ pub fn perft_debug(engine_cmd: &[String], game_string: &str, depth: usize) {
             let m = rand.choose_move(&game).unwrap();
             stack.push(m);
             game.apply(m);
-            let game_winner = Rules::get_winner(&game);
+            let game_winner = game.get_winner();
             let engine_winner = engine.apply(m).unwrap();
             if game_winner != engine_winner {
                 println!(
@@ -366,52 +296,6 @@ fn test_perft() {
 #[test]
 fn test_uhp_tests_public_signature() {
     let _: fn(&[String]) -> bool = uhp_tests;
-}
-
-#[test]
-fn test_semantic_move_diff_accepts_equivalent_references() {
-    let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
-        .unwrap();
-    let difference = semantic_move_diff(&game, &[r"wA1 \wG1"], &["wA1 wQ/"]);
-    assert!(difference.is_empty(), "{difference:?}");
-}
-
-#[test]
-fn test_semantic_move_diff_finds_equal_count_mismatch() {
-    let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
-        .unwrap();
-    let difference = semantic_move_diff(&game, &[r"wA1 \wG1"], &["wA1 -wQ"]);
-    assert_eq!(difference.missing, vec![r"wA1 \wG1"]);
-    assert_eq!(difference.extra, vec!["wA1 -wQ"]);
-}
-
-#[test]
-fn test_semantic_move_diff_finds_duplicates_and_invalid_moves() {
-    let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
-        .unwrap();
-    let difference = semantic_move_diff(
-        &game,
-        &[r"wA1 \wG1", "invalid-fixture-move"],
-        &[r"wA1 \wG1", "wA1 wQ/", "invalid-engine-move"],
-    );
-    assert_eq!(difference.extra, vec!["wA1 wQ/"]);
-    assert_eq!(difference.invalid_expected, vec!["invalid-fixture-move"]);
-    assert_eq!(difference.invalid_actual, vec!["invalid-engine-move"]);
-}
-
-#[test]
-fn test_semantic_move_diff_rejects_covered_sources() {
-    let game = GameState::from_game_string(
-        r"Base;InProgress;White[10];wG1;bG1 wG1-;wQ /wG1;bQ bG1-;wS1 wQ\;bA1 bQ-;wB1 /wS1;bA1 -wQ;wB1 wS1\;bA2 bQ-;wB1 /wS1;bA2 wG1\;wB1 wS1\;bA3 bQ-;wB1 /wS1;bS1 bQ\;wB1 wS1;bS1 wB1\",
-    )
-    .unwrap();
-    let legal = "wB1 /wB1";
-    let covered = "wS1 /wB1";
-    assert_eq!(game.from_move_string(legal).unwrap(), game.from_move_string(covered).unwrap());
-
-    let difference = semantic_move_diff(&game, &[legal], &[covered]);
-    assert_eq!(difference.missing, vec![legal]);
-    assert_eq!(difference.invalid_actual, vec![covered]);
 }
 
 // Regression suite for bugs caught by perft-debug.
