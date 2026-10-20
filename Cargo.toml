@@ -46,6 +46,10 @@ easybench = "1.1.0"
 [target.'cfg(target_arch="wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
+# For wasm32 library builds.
+[lib]
+crate-type=["cdylib", "rlib"]
+
 [[bench]]
 name = "minimax"
 harness = false
