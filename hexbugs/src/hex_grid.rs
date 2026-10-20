@@ -29,12 +29,12 @@ pub const START_HEX: Hex = ROW_SIZE / 2 * (ROW_SIZE + 1);
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum Direction {
-    NW = (GRID_MASK & (ROW_SIZE + 1).wrapping_neg()) as u16,
-    NE = (GRID_MASK & ROW_SIZE.wrapping_neg()) as u16,
-    W = GRID_MASK as u16 & 1u16.wrapping_neg(),
+    NW = (GRID_MASK & (ROW_SIZE + 1).wrapping_neg()),
+    NE = (GRID_MASK & ROW_SIZE.wrapping_neg()),
+    W = GRID_MASK & 1u16.wrapping_neg(),
     E = 1,
-    SW = ROW_SIZE as u16,
-    SE = ROW_SIZE as u16 + 1,
+    SW = ROW_SIZE,
+    SE = ROW_SIZE + 1,
 }
 
 // In clockwise order
@@ -118,5 +118,11 @@ impl HexSet {
 
     pub fn get(&self, hex: Hex) -> bool {
         (self.table[hex as usize & HEXSET_MASK] >> (hex as u32 >> HEXSET_SHIFT)) & 1 != 0
+    }
+}
+
+impl Default for HexSet {
+    fn default() -> Self {
+        Self::new()
     }
 }

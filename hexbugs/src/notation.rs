@@ -282,11 +282,10 @@ impl GameState {
             let hex = self.find_bug(color, bug, bug_num).ok_or_else(err)?;
             if let Some(dir) = dir { dir.apply(hex) } else { hex }
         };
-        if let Some(start) = start {
-            if self.occupied(start) {
+        if let Some(start) = start
+            && self.occupied(start) {
                 return Ok(Turn::Move(start, end));
             }
-        }
         if color != self.to_move() {
             return Err(err());
         }
