@@ -1,8 +1,8 @@
 use crate::Rules;
 use hexbugs::{GameState, Turn, Winner};
 use minimax::Game;
-use rand::rngs::SmallRng;
 use rand::Rng;
+use rand::rngs::SmallRng;
 
 pub struct BiasedRollouts {}
 

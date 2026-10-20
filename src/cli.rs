@@ -1,5 +1,5 @@
-use crate::player::{Player, PlayerConfig};
 use crate::Rules;
+use crate::player::{Player, PlayerConfig};
 use hexbugs::{Bug, GameState, Hex, Turn, Winner};
 use minimax::{Game, Strategy};
 use std::io::{self, BufRead, Write};
@@ -72,11 +72,7 @@ fn input_movement(game: &GameState, moves: &[Turn]) -> Option<Turn> {
         .iter()
         .filter_map(|m| {
             if let Turn::Move(start2, end) = m {
-                if start == *start2 {
-                    Some(*end)
-                } else {
-                    None
-                }
+                if start == *start2 { Some(*end) } else { None }
             } else {
                 None
             }
@@ -150,10 +146,10 @@ impl Player for CliPlayer {
                 if let Some(m) = input_movement(&self.game, &moves) {
                     break m;
                 }
-            } else if line.starts_with("place") {
-                if let Some(m) = input_placement(&self.game, &moves) {
-                    break m;
-                }
+            } else if line.starts_with("place")
+                && let Some(m) = input_placement(&self.game, &moves)
+            {
+                break m;
             }
         }
     }

@@ -2,12 +2,14 @@ use crate::Rules;
 use hexbugs::*;
 use minimax::{Game, Strategy};
 
-pub use hexbugs::{semantic_move_diff, MoveDifference};
+pub use hexbugs::{MoveDifference, semantic_move_diff};
 
 fn standard_games(game_string: &str) -> &str {
     match game_string {
-	"beetle_gate" => "Base+MLP;InProgress;White[5];wB1;bB1 -wB1;wQ wB1-;bQ /bB1;wB2 wQ-;bQ /wB1;wB2 wQ;bB1 bQ",
-	_ => game_string,
+        "beetle_gate" => {
+            "Base+MLP;InProgress;White[5];wB1;bB1 -wB1;wQ wB1-;bQ /bB1;wB2 wQ-;bQ /wB1;wB2 wQ;bB1 bQ"
+        }
+        _ => game_string,
     }
 }
 

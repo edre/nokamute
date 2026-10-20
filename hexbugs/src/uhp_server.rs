@@ -42,12 +42,7 @@ pub struct UhpServer<E: UhpEngine, W: Write> {
 
 impl<E: UhpEngine, W: Write> UhpServer<E, W> {
     pub fn new(engine: E, output: W) -> Self {
-        UhpServer {
-            game: None,
-            pv_dirty: true,
-            engine,
-            output,
-        }
+        UhpServer { game: None, pv_dirty: true, engine, output }
     }
 
     pub fn game(&self) -> Option<&GameState> {

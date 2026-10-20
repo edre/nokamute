@@ -13,6 +13,7 @@ authors = ["Eric Roshan-Eisner <eric.d.eisner@gmail.com>"]
 repository = "https://github.com/edre/nokamute"
 license = "MIT"
 readme = "README.md"
+edition = "2024"
 
 [workspace.dependencies]
 rand = "0.9"
@@ -22,7 +23,7 @@ name = "nokamute"
 description = "Hive AI focused on speed"
 version = "1.0.3"
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 repository.workspace = true
 readme.workspace = true
 license.workspace = true

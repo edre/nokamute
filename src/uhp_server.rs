@@ -1,6 +1,6 @@
-use crate::{BasicEvaluator, PlayerConfig, Rules};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::PlayerStrategy;
+use crate::{BasicEvaluator, PlayerConfig, Rules};
 use hexbugs::*;
 use minimax::Strategy;
 
@@ -38,11 +38,7 @@ impl NokamuteEngine {
 
     fn get_option_bool<Option: UhpOptionBool>(&self) -> Result<String> {
         fn fmt_bool(b: bool) -> &'static str {
-            if b {
-                "True"
-            } else {
-                "False"
-            }
+            if b { "True" } else { "False" }
         }
         Ok(format!(
             "{};bool;{};{}",
@@ -85,28 +81,30 @@ impl UhpEngine for NokamuteEngine {
         match limit {
             BestMoveLimit::Depth(depth) => self.strategy.set_max_depth(depth),
             BestMoveLimit::Time(dur) => self.strategy.set_timeout(dur),
-            BestMoveLimit::DepthOrTime(depth, dur) => self.strategy.set_depth_or_timeout(depth, dur),
+            BestMoveLimit::DepthOrTime(depth, dur) => {
+                self.strategy.set_depth_or_timeout(depth, dur)
+            }
         }
         if self.config.random_opening {
             if game.turn_num < 2 {
                 loop {
                     let turn = minimax::Random::<Rules>::default().choose_move(game).unwrap();
-                    if let Turn::Place(_, bug) = turn {
-                        if matches!(
+                    if let Turn::Place(_, bug) = turn
+                        && matches!(
                             bug,
                             Bug::Beetle | Bug::Grasshopper | Bug::Ladybug | Bug::Pillbug
-                        ) {
-                            return turn;
-                        }
+                        )
+                    {
+                        return turn;
                     }
                 }
             } else if game.turn_num < 4 {
                 loop {
                     let turn = minimax::Random::<Rules>::default().choose_move(game).unwrap();
-                    if let Turn::Place(_, bug) = turn {
-                        if bug == Bug::Queen {
-                            return turn;
-                        }
+                    if let Turn::Place(_, bug) = turn
+                        && bug == Bug::Queen
+                    {
+                        return turn;
                     }
                 }
             }
@@ -135,9 +133,7 @@ impl UhpEngine for NokamuteEngine {
         let updated = match name {
             "Aggression" => self.set_option_int::<AggressionOption>(value)?,
             #[cfg(not(target_arch = "wasm32"))]
-            "BackgroundPondering" => {
-                self.set_option_bool::<BackgroundPonderingOption>(value)?
-            }
+            "BackgroundPondering" => self.set_option_bool::<BackgroundPonderingOption>(value)?,
             #[cfg(not(target_arch = "wasm32"))]
             "NumThreads" => self.set_option_int::<NumThreadsOption>(value)?,
             "RandomOpening" => self.set_option_bool::<RandomOpeningOption>(value)?,

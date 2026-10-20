@@ -4,7 +4,7 @@ description = "Efficient Hive game representation"
 version = "0.1.0"
 
 authors.workspace = true
-edition = "2024"
+edition.workspace = true
 repository.workspace = true
 readme.workspace = true
 license.workspace = true

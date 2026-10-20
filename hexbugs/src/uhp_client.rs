@@ -213,9 +213,7 @@ pub fn semantic_move_diff<'a>(
     difference
 }
 
-fn parse_comparable_move(
-    game: &GameState, move_string: &str,
-) -> Result<Turn> {
+fn parse_comparable_move(game: &GameState, move_string: &str) -> Result<Turn> {
     let move_string = move_string.trim();
     let turn = game.from_move_string(move_string)?;
     if let Turn::Move(_, _) = turn {
@@ -236,16 +234,18 @@ mod tests {
 
     #[test]
     fn test_semantic_move_diff_accepts_equivalent_references() {
-        let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
-            .unwrap();
+        let game =
+            GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
+                .unwrap();
         let difference = semantic_move_diff(&game, &[r"wA1 \wG1"], &["wA1 wQ/"]);
         assert!(difference.is_empty(), "{difference:?}");
     }
 
     #[test]
     fn test_semantic_move_diff_finds_equal_count_mismatch() {
-        let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
-            .unwrap();
+        let game =
+            GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
+                .unwrap();
         let difference = semantic_move_diff(&game, &[r"wA1 \wG1"], &["wA1 -wQ"]);
         assert_eq!(difference.missing, vec![r"wA1 \wG1"]);
         assert_eq!(difference.extra, vec!["wA1 -wQ"]);
@@ -253,8 +253,9 @@ mod tests {
 
     #[test]
     fn test_semantic_move_diff_finds_duplicates_and_invalid_moves() {
-        let game = GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
-            .unwrap();
+        let game =
+            GameState::from_game_string("Base;InProgress;White[3];wG1;bG1 wG1-;wQ -wG1;bQ bG1-")
+                .unwrap();
         let difference = semantic_move_diff(
             &game,
             &[r"wA1 \wG1", "invalid-fixture-move"],

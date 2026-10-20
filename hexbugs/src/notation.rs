@@ -283,9 +283,10 @@ impl GameState {
             if let Some(dir) = dir { dir.apply(hex) } else { hex }
         };
         if let Some(start) = start
-            && self.occupied(start) {
-                return Ok(Turn::Move(start, end));
-            }
+            && self.occupied(start)
+        {
+            return Ok(Turn::Move(start, end));
+        }
         if color != self.to_move() {
             return Err(err());
         }

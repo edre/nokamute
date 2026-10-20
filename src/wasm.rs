@@ -4,11 +4,12 @@ use std::io::Cursor;
 use std::sync::{LazyLock, Mutex};
 use wasm_bindgen::prelude::*;
 
-static UHP_SERVER: LazyLock<Mutex<UhpServer<NokamuteEngine, Cursor<Vec<u8>>>>> = LazyLock::new(|| {
-    let mut config = PlayerConfig::new();
-    config.opts = config.opts.with_table_byte_size(8 << 20);
-    Mutex::new(UhpServer::new(NokamuteEngine::new(config), Cursor::new(Vec::new())))
-});
+static UHP_SERVER: LazyLock<Mutex<UhpServer<NokamuteEngine, Cursor<Vec<u8>>>>> =
+    LazyLock::new(|| {
+        let mut config = PlayerConfig::new();
+        config.opts = config.opts.with_table_byte_size(8 << 20);
+        Mutex::new(UhpServer::new(NokamuteEngine::new(config), Cursor::new(Vec::new())))
+    });
 
 #[wasm_bindgen]
 pub fn uhp(args: &str) -> String {

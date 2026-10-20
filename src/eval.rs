@@ -280,12 +280,12 @@ impl Evaluator for BasicEvaluator {
             }
         }
 
-        if let Turn::Place(hex, _) = enemy_last_move {
-            if !adjacent(game.queens[game.to_move() as usize]).contains(&hex) {
-                // We didn't just place, but opponent did. Do some movement to
-                // give them a chance to quiesce.
-                game.generate_movements(moves);
-            }
+        if let Turn::Place(hex, _) = enemy_last_move
+            && !adjacent(game.queens[game.to_move() as usize]).contains(&hex)
+        {
+            // We didn't just place, but opponent did. Do some movement to
+            // give them a chance to quiesce.
+            game.generate_movements(moves);
         }
 
         // If no one just placed something, return nothing and stop the search.

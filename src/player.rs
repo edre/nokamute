@@ -197,22 +197,22 @@ impl Player for NokamutePlayer {
             if self.game.turn_num < 2 {
                 loop {
                     let turn = minimax::Random::<Rules>::default().choose_move(&self.game).unwrap();
-                    if let Turn::Place(_, bug) = turn {
-                        if matches!(
+                    if let Turn::Place(_, bug) = turn
+                        && matches!(
                             bug,
                             Bug::Beetle | Bug::Grasshopper | Bug::Ladybug | Bug::Pillbug
-                        ) {
-                            return turn;
-                        }
+                        )
+                    {
+                        return turn;
                     }
                 }
             } else if self.game.turn_num < 4 {
                 loop {
                     let turn = minimax::Random::<Rules>::default().choose_move(&self.game).unwrap();
-                    if let Turn::Place(_, bug) = turn {
-                        if bug == Bug::Queen {
-                            return turn;
-                        }
+                    if let Turn::Place(_, bug) = turn
+                        && bug == Bug::Queen
+                    {
+                        return turn;
                     }
                 }
             }
@@ -364,10 +364,7 @@ impl PlayerConfig {
                 if num_threads > 0 {
                     opts = opts.with_num_threads(num_threads);
                 }
-                Box::new(MonteCarloTreeSearch::new_with_policy(
-                    opts,
-                    Box::new(BiasedRollouts {}),
-                ))
+                Box::new(MonteCarloTreeSearch::new_with_policy(opts, Box::new(BiasedRollouts {})))
             }
             PlayerStrategy::Iterative(parallel_opts) => {
                 let mut parallel_opts = *parallel_opts;
@@ -390,10 +387,6 @@ impl PlayerConfig {
             PlayerStrategy::Random => "random",
             _ => "nokamute",
         };
-        Box::new(NokamutePlayer::new_with_name(
-            name,
-            self.new_strategy(),
-            self.random_opening,
-        ))
+        Box::new(NokamutePlayer::new_with_name(name, self.new_strategy(), self.random_opening))
     }
 }
